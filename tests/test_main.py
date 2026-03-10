@@ -739,3 +739,107 @@ class TestFeatureWorktree:
 
         runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert merged == ["0001-foo.md"]
+
+
+# ---------------------------------------------------------------------------
+# bootstrap command
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrap:
+    def test_creates_directory_structure(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(m.app, ["bootstrap"])
+        assert result.exit_code == 0
+        for subdir in ("roles", "squads", "vision", "work"):
+            assert (tmp_path / "orc" / subdir).is_dir()
+
+    def test_copies_bundled_roles(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        for role in ("planner", "coder", "qa"):
+            role_file = tmp_path / "orc" / "roles" / f"{role}.md"
+            assert role_file.exists(), f"Missing {role}.md"
+            assert len(role_file.read_text()) > 100
+
+    def test_copies_default_squad(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        squad_file = tmp_path / "orc" / "squads" / "default.yaml"
+        assert squad_file.exists()
+        import yaml
+        cfg = yaml.safe_load(squad_file.read_text())
+        assert cfg["planner"] == 1
+        assert cfg["coder"] == 1
+
+    def test_creates_vision_readme(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        readme = tmp_path / "orc" / "vision" / "README.md"
+        assert readme.exists()
+        assert "vision" in readme.read_text().lower()
+
+    def test_creates_empty_board(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        board = tmp_path / "orc" / "work" / "board.yaml"
+        assert board.exists()
+        import yaml
+        data = yaml.safe_load(board.read_text())
+        assert data["counter"] == 1
+        assert data["open"] == []
+        assert data["done"] == []
+
+    def test_creates_justfile(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        justfile = tmp_path / "orc" / "justfile"
+        assert justfile.exists()
+        content = justfile.read_text()
+        assert "orc run" in content
+        assert "orc status" in content
+        assert "orc merge" in content
+
+    def test_creates_env_example(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        env_example = tmp_path / ".env.example"
+        assert env_example.exists()
+        assert "COLONY_TELEGRAM_TOKEN" in env_example.read_text()
+
+    def test_skips_existing_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        # Overwrite the justfile with sentinel content
+        sentinel = "# my custom justfile"
+        (tmp_path / "orc" / "justfile").write_text(sentinel)
+        runner.invoke(m.app, ["bootstrap"])
+        # Should not have been overwritten
+        assert (tmp_path / "orc" / "justfile").read_text() == sentinel
+
+    def test_force_overwrites_existing_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        (tmp_path / "orc" / "justfile").write_text("# custom")
+        runner.invoke(m.app, ["bootstrap", "--force"])
+        # Should have been overwritten with generated content
+        assert "orc run" in (tmp_path / "orc" / "justfile").read_text()
+
+    def test_custom_orc_dir(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap", "--orc-dir", "agents"])
+        assert (tmp_path / "agents" / "roles" / "planner.md").exists()
+        assert (tmp_path / "agents" / "work" / "board.yaml").exists()
+
+    def test_output_reports_created_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(m.app, ["bootstrap"])
+        assert "Created" in result.output
+        assert "justfile" in result.output
+        assert "Next steps" in result.output
+
+    def test_output_reports_skipped_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap"])
+        assert "Skipped" in result.output
