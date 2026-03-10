@@ -21,8 +21,9 @@ Local log
 ---------
 Because the Telegram Bot API's ``getUpdates`` only returns *incoming* messages
 (not messages the bot itself sends), outbound ``send_message`` calls are also
-appended to a local JSONL log at ``orc/chat.log``.  ``get_messages`` merges
-both sources so the state machine always sees the full history.
+appended to a local JSONL log at ``{AGENTS_DIR}/chat.log`` (i.e. inside the
+project's ``.orc/`` config directory).  ``get_messages`` merges both sources
+so the state machine always sees the full history.
 """
 
 import json
@@ -45,7 +46,21 @@ _TOKEN = os.environ.get("COLONY_TELEGRAM_TOKEN")
 _CHAT_ID = os.environ.get("COLONY_TELEGRAM_CHAT_ID")
 _API_BASE = f"https://api.telegram.org/bot{_TOKEN}"
 
-_LOG_FILE = Path.cwd() / "orc" / "chat.log"
+# Sentinel — resolved lazily on first use so that config.AGENTS_DIR is fully
+# initialised before we compute the path.  Tests may patch this directly.
+_LOG_FILE: Path | None = None
+
+
+def _get_log_file() -> Path:
+    """Return the chat log path, creating the file if it does not yet exist."""
+    global _LOG_FILE
+    if _LOG_FILE is None:
+        from orc import config  # import here to avoid circular-import at module level
+
+        _LOG_FILE = config.AGENTS_DIR / "chat.log"
+    _LOG_FILE.touch(exist_ok=True)
+    return _LOG_FILE
+
 
 # Use certifi's bundled CA certs so we don't depend on system cert paths
 # (which may be absent inside containers).
@@ -92,16 +107,15 @@ def _append_to_log(text: str) -> None:
         "date": int(datetime.now(UTC).timestamp()),
         "from": {"username": "bot", "first_name": "bot"},
     }
-    with _LOG_FILE.open("a") as fh:
+    with _get_log_file().open("a") as fh:
         fh.write(json.dumps(entry) + "\n")
 
 
 def _read_log() -> list[dict]:
     """Return all entries from the local chat.log."""
-    if not _LOG_FILE.exists():
-        return []
+    log_file = _get_log_file()
     msgs = []
-    for line in _LOG_FILE.read_text().splitlines():
+    for line in log_file.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
