@@ -10,27 +10,28 @@
 
 ```
 orc run
-  └── planner   – reads vision docs, creates tasks in orc/work/
-        └── coder     – implements each task on a feature branch
-              └── qa        – reviews the branch, commits qa(passed): or qa(failed):
-                    └── orc merges the feature branch into dev, loops back to planner
+  └── planner                   – reads vision docs, creates tasks in orc/work/
+        └── coder               – implements each task on a feature branch
+              └── qa            – reviews the branch, commits qa(passed): or qa(failed):
+                    └── orc     – merges the feature branch into dev, loops back to planner
 ```
 
-All inter-agent communication happens over a Telegram bot. The orchestrator reads the chat history to determine the current state and decides which agent to run next.
+Inter-agent synchronization happens over git and interaction with the user is mediated by a telegram bot. 
+The orchestrator inspects the git tree status to determine the current state and decide which agent(s) to run next depending on the pool of available agents.
 
 ## Installation
 
 ```bash
-pip install orc
+pip install qorc
 # or with uv:
-uv add orc
+uv add qorc
 ```
 
 ## Quick start
 
 ```bash
 # 1. Install
-pip install orc
+pip install qorc
 
 # 2. Scaffold the orc/ config directory in your project
 cd your-project/
