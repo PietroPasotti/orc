@@ -17,15 +17,68 @@ All inter-agent communication happens over a Telegram bot. The orchestrator read
 ## Installation
 
 ```bash
-# In your project:
-uv add git+https://github.com/your-org/orc
-# or
 pip install orc
+# or with uv:
+uv add orc
 ```
 
-## Project setup
+## Quick start
 
-Create the `orc/` directory structure in your project root:
+```bash
+# 1. Install
+pip install orc
+
+# 2. Scaffold the orc/ config directory in your project
+cd your-project/
+orc bootstrap
+
+# 3. Edit orc/roles/*.md to customise agent instructions (optional)
+# 4. Add vision documents to orc/vision/
+# 5. Copy .env.example → .env and fill in credentials
+# 6. Add to your root justfile (optional):
+#       mod orc 'orc/justfile'
+# 7. Run
+orc run           # or: just orc run
+```
+
+## bootstrap
+
+`orc bootstrap` scaffolds the entire `orc/` directory structure in one command:
+
+```
+your-project/
+  orc/
+    roles/
+      planner.md    ← bundled generic template (edit for your project)
+      coder.md
+      qa.md
+    squads/
+      default.yaml  ← 1 planner, 1 coder, 1 QA
+    vision/
+      README.md     ← placeholder; add your vision docs here
+    work/
+      board.yaml    ← empty kanban board
+    justfile        ← run / status / merge recipes
+  .env.example      ← credential template; copy to .env and fill in
+```
+
+Options:
+
+```bash
+orc bootstrap                   # scaffolds into ./orc/
+orc bootstrap --orc-dir agents  # use a different directory name
+orc bootstrap --force           # overwrite existing files
+```
+
+Existing files are **never overwritten** unless `--force` is passed.
+
+After bootstrapping, the only things left to do are:
+
+1. Customise `orc/roles/*.md` for your project's conventions.
+2. Drop vision documents into `orc/vision/`.
+3. Fill in `.env`.
+
+## Project setup (manual)
 
 ```
 your-project/
