@@ -1,3 +1,6 @@
+---
+symbol: "🛠️"
+---
 # Role: Coder
 
 You are the **coder** agent in the multi-agent development workflow.

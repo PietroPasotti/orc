@@ -785,6 +785,30 @@ def _parse_role_file(agent_name: str) -> str:
     return raw
 
 
+def _role_symbol(role: str) -> str:
+    """Return the symbol declared in the role file's frontmatter, or '' if absent.
+
+    Checks the project ROLES_DIR first, then falls back to the package bundled
+    roles. Falls through to the next candidate if the frontmatter exists but
+    contains no 'symbol' key, so project overrides without a symbol still
+    inherit the package default.
+    """
+    for directory in (ROLES_DIR, _PACKAGE_ROLES_DIR):
+        role_file = directory / f"{role}.md"
+        if not role_file.exists():
+            continue
+        raw = role_file.read_text()
+        if not raw.startswith("---"):
+            continue
+        end = raw.find("\n---", 3)
+        if end == -1:
+            continue
+        fm = yaml.safe_load(raw[3:end]) or {}
+        if "symbol" in fm:
+            return str(fm["symbol"])
+    return ""
+
+
 def build_agent_context(
     agent_name: str,
     messages: list[dict],
@@ -1143,7 +1167,13 @@ def _status(squad: str = "default") -> None:
 
         width = 12  # column width for agent ID
         typer.echo("\nAgent status:")
-        typer.echo(f"  {'planner-1':<{width}}  {planner_note}")
+
+        sym_p = _role_symbol("planner")
+        sym_c = _role_symbol("coder")
+        sym_q = _role_symbol("qa")
+
+        label_p = f"{sym_p} planner-1" if sym_p else "planner-1"
+        typer.echo(f"  {label_p:<{width}}  {planner_note}")
 
         for i in range(1, squad_cfg.coder + 1):
             idx = i - 1
@@ -1152,7 +1182,8 @@ def _status(squad: str = "default") -> None:
                 note = f"ready to pick  {name}"
             else:
                 note = "idle  (no work ready)"
-            typer.echo(f"  {f'coder-{i}':<{width}}  {note}")
+            label = f"{sym_c} coder-{i}" if sym_c else f"coder-{i}"
+            typer.echo(f"  {label:<{width}}  {note}")
 
         for i in range(1, squad_cfg.qa + 1):
             idx = i - 1
@@ -1161,7 +1192,8 @@ def _status(squad: str = "default") -> None:
                 note = f"ready to review  {branch}"
             else:
                 note = "idle"
-            typer.echo(f"  {f'qa-{i}':<{width}}  {note}")
+            label = f"{sym_q} qa-{i}" if sym_q else f"qa-{i}"
+            typer.echo(f"  {label:<{width}}  {note}")
 
         if merge_pending:
             typer.echo(f"\n  ⟳ Merge pending: {', '.join(merge_pending)}")

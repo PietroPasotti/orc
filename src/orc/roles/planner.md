@@ -1,3 +1,6 @@
+---
+symbol: "📋"
+---
 # Role: Planner
 
 You are the **planner** agent in the multi-agent development workflow.

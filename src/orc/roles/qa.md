@@ -1,3 +1,6 @@
+---
+symbol: "🎯"
+---
 # Role: QA
 
 You are the **qa** agent in the multi-agent development workflow.
