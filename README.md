@@ -1,5 +1,9 @@
 # orc
 
+<p align="center">
+  <img src="assets/icon.png" alt="orc icon" width="200"/>
+</p>
+
 **orc** is a standalone multi-agent orchestrator that runs a planner → coder → qa loop against any git repository, coordinating agents over Telegram.
 
 ## How it works
