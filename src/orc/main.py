@@ -109,14 +109,24 @@ _init_paths(_found_at_import if _found_at_import is not None else Path.cwd() / "
 
 WORK_DEV_BRANCH = "dev"
 
+
 # Placeholder values from .env.example that have not been filled in
-_PLACEHOLDERS = {
-    "your-bot-token-here",
-    "your-chat-id-here",
-    "your-gh-token-here",
-    "your-anthropic-api-key-here",
-    "",
-}
+def _load_placeholders() -> frozenset[str]:
+    """Read default values from .env.example and treat them as placeholders."""
+    values: set[str] = {""}
+    env_example = _TEMPLATES_DIR / ".env.example"
+    for line in env_example.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            val = line.split("=", 1)[1].strip()
+            if val:
+                values.add(val)
+    return frozenset(values)
+
+
+_PLACEHOLDERS = _load_placeholders()
 
 
 def validate_env() -> list[str]:
@@ -1257,6 +1267,10 @@ def _run(maxloops: int = 1, dry_run: bool = False, squad: str = "default") -> No
     except Exception:
         logger.exception("orc run loop crashed")
         raise
+
+
+# TODO: instruct the coder to also grep for TODOs and FIXMEs in the dev branch
+#  and generate tasks for them, which should take priority over new features.
 
 
 @app.command()
