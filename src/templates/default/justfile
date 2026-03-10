@@ -19,16 +19,16 @@ default:
 #   just orc run --squad broad            # load orc/squads/broad.yaml
 #   just orc run --dry-run                # print context without invoking
 run *args:
-    cd {{repo_root}} && uv run orc run {{args}}
+    uv run orc --project-dir {{repo_root}} run {{args}}
 
 # Print current workflow state without running any agent
 status:
-    cd {{repo_root}} && uv run orc status
+    uv run orc --project-dir {{repo_root}} status
 
 # Rebase dev on main and fast-forward merge into main
 merge:
-    cd {{repo_root}} && uv run orc merge
+    uv run orc --project-dir {{repo_root}} merge
 
 # List available squad profiles and their composition
 squads:
-    cd {{repo_root}} && uv run orc squads
+    uv run orc --project-dir {{repo_root}} squads

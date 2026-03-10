@@ -1009,9 +1009,23 @@ def _app_entry(
             show_default=False,
         ),
     ] = None,
+    project_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-dir",
+            help=(
+                "Project root directory. orc will change to this directory before "
+                "resolving paths, loading .env, and running git commands. "
+                "Defaults to the current working directory."
+            ),
+            show_default=False,
+        ),
+    ] = None,
 ) -> None:
     """Bootstrap observability and resolve the config directory."""
     _obs.setup()
+    if project_dir is not None:
+        os.chdir(project_dir.resolve())
     if config_dir is not None:
         found = _find_config_dir(base=config_dir)
         if found is None:
