@@ -72,13 +72,17 @@ def _find_config_dir(base: Path | None = None) -> Path | None:
 def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     """(Re)initialise all module-level path globals.
 
-    *repo_root* is the project root (where ``.env``, ``README.md``, and git
-    live).  When omitted it falls back to ``agents_dir.parent``, which is
-    correct for the common case where the config dir sits directly inside the
-    project root (e.g. ``{project}/.orc/`` or ``{project}/orc/``).
+    *repo_root* is the project root (where ``README.md`` and git live).
+    When omitted it falls back to ``agents_dir.parent``, which is correct
+    for the common case where the config dir sits directly inside the project
+    root (e.g. ``{project}/.orc/`` or ``{project}/orc/``).
 
     Pass ``repo_root=Path.cwd()`` explicitly when the config dir is nested
     deeper (e.g. ``{project}/src/.orc/`` with ``--config-dir src``).
+
+    ``.env`` is always resolved relative to ``Path.cwd()`` so that orc reads
+    the credentials of the project you are running it *from*, regardless of
+    where the config dir lives.
     """
     global AGENTS_DIR, WORK_DIR, BOARD_FILE, ROLES_DIR, REPO_ROOT, ENV_FILE
     global DEV_WORKTREE, _worktree_sibling
@@ -87,7 +91,7 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     WORK_DIR = agents_dir / "work"
     BOARD_FILE = WORK_DIR / "board.yaml"
     ROLES_DIR = agents_dir / "roles"
-    ENV_FILE = REPO_ROOT / ".env"
+    ENV_FILE = Path.cwd() / ".env"
     _worktree_sibling = REPO_ROOT.parent / f"{REPO_ROOT.name}-dev"
     DEV_WORKTREE = (
         _worktree_sibling
