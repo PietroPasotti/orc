@@ -1,0 +1,6 @@
+# Default squad profile: one agent of each type (equivalent to the original
+# sequential behaviour). This is the minimal, lowest-risk configuration.
+planner: 1
+coder: 1
+qa: 1
+timeout_minutes: 120

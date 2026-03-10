@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orc"
+version = "0.1.0"
+description = "A standalone multi-agent orchestrator engine"
+requires-python = ">=3.13"
+dependencies = [
+    "typer>=0.15",
+    "httpx>=0.28",
+    "structlog>=25.5.0",
+    "pyyaml>=6.0.3",
+    "python-dotenv>=1.0",
+    "certifi>=2024.0",
+]
+
+[project.scripts]
+orc = "orc.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+    "pre-commit>=4.0",
+    "commitizen>=4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ""
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "T20", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/orc/main.py" = ["T201"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+version_files = [
+    "pyproject.toml:version",
+]
