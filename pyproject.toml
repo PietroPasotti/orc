@@ -38,7 +38,7 @@ version_scheme = "no-guess-dev"
 version-file = "src/orc/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/orc"]
+packages = ["src/orc", "src/templates"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

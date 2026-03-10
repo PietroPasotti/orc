@@ -46,6 +46,7 @@ logger = structlog.get_logger(__name__)
 
 _PACKAGE_DIR = Path(__file__).parent  # where the package is installed
 _PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"  # fallback for role files
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "default"  # bootstrap template
 
 
 def _find_config_dir(base: Path | None = None) -> Path | None:
@@ -1269,153 +1270,6 @@ def run(
         raise
 
 
-_JUSTFILE_CONTENT = """\
-# orc agent orchestrator recipes.
-#
-# Usage from root: add this to your root justfile:
-#
-#   mod orc 'orc/justfile'
-#
-# Then: just orc run, just orc status, just orc merge
-
-repo_root := justfile_directory() / ".."
-
-# List available orc recipes
-default:
-    @just --list --justfile {{{{source_file()}}}}
-
-# Run the next agent(s) in the workflow
-# Examples:
-#   just orc run                          # default squad, 1 invocation
-#   just orc run --maxloops 0             # run until complete
-#   just orc run --squad broad            # load orc/squads/broad.yaml
-#   just orc run --dry-run                # print context without invoking
-run *args:
-    cd {{{{repo_root}}}} && uv run orc run {{{{args}}}}
-
-# Print current workflow state without running any agent
-status:
-    cd {{{{repo_root}}}} && uv run orc status
-
-# Rebase dev on main and fast-forward merge into main
-merge:
-    cd {{{{repo_root}}}} && uv run orc merge
-
-# List available squad profiles and their composition
-squads:
-    cd {{{{repo_root}}}} && uv run orc squads
-"""
-
-_ENV_EXAMPLE_CONTENT = """\
-# AI backend: "copilot" (GitHub Copilot CLI) or "claude" (Anthropic API)
-COLONY_AI_CLI=copilot
-
-# Anthropic API key — required only when COLONY_AI_CLI=claude
-ANTHROPIC_API_KEY=your-anthropic-key-here
-
-# GitHub personal access token — required only when COLONY_AI_CLI=copilot
-GH_TOKEN=your-gh-token-here
-
-# Telegram bot credentials (from @BotFather)
-COLONY_TELEGRAM_TOKEN=your-bot-token-here
-COLONY_TELEGRAM_CHAT_ID=your-chat-id-here
-
-# Optional: override the orc configuration directory search.
-# orc searches $CWD/.orc/ first, then $CWD/orc/, then exits with an error.
-# Setting this env var skips the search and uses the specified path directly.
-# ORC_DIR=/absolute/path/to/orc
-"""
-
-_VISION_README = """\
-# Vision
-
-This folder contains vision documents for the project.
-
-Vision documents are the source of truth for _what_ to build. The planner agent
-reads them and translates each piece of work into either an ADR (`docs/adr/`) or
-a task (`orc/work/`).
-
-## Format
-
-Each vision document is a markdown file describing a feature, system, or
-product direction. There is no strict format, but a good vision document
-includes:
-
-- **What** – the feature or capability being described
-- **Why** – the motivation and value for the user/project
-- **Constraints** – things that must be true of the implementation
-- **Out of scope** – things explicitly not included
-
-## Getting started
-
-Add `.md` files here describing what you want to build. The planner will pick
-them up on the next `orc run`.
-"""
-
-_ROLES_README = """\
-# Role overrides
-
-Drop `.md` files here to override the bundled agent role prompts for this
-project.  Any file placed here takes precedence over the package defaults.
-
-Expected filenames:
-
-- `planner.md` – instructions for the planner agent
-- `coder.md`   – instructions for the coder agent
-- `qa.md`      – instructions for the QA agent
-
-If a file is absent the bundled template is used unchanged.
-
-To select the AI model for each role, set it in the squad profile
-(``orc/squads/*.yaml``) rather than in the role file.
-"""
-
-_SQUADS_README = """\
-# Squad profiles
-
-Drop `.yaml` files here to define or override squad configurations for this
-project.  Project-level profiles take precedence over the package defaults.
-
-## Schema
-
-```yaml
-name: broad
-description: |
-  Wider parallel configuration for larger projects.
-composition:
-  - role: planner
-    count: 1                  # must always be 1
-    model: claude-sonnet-4.6
-  - role: coder
-    count: 4                  # parallel coders
-    model: claude-sonnet-4.6
-  - role: qa
-    count: 2                  # parallel QA reviewers
-    model: claude-sonnet-4.6
-timeout_minutes: 180
-```
-
-Run `orc squads` to list all available profiles.
-"""
-
-_BOARD_YAML = """\
-# orc kanban board
-#
-# counter  – next available task ID (integer; format as 4-digit zero-padded
-#            string when naming files, e.g. counter=3 → "0003-title.md").
-#            The planner increments this every time it creates a new task.
-#
-# open     – tasks currently being worked on.
-# done     – completed tasks.
-
-counter: 1
-
-open: []
-
-done: []
-"""
-
-
 def _write_file(path: Path, content: str, created: list[str], skipped: list[str]) -> None:
     """Write *content* to *path* if it does not exist; record the outcome."""
     if path.exists():
@@ -1464,6 +1318,8 @@ def bootstrap(
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)
     """
+    import shutil
+
     _obs.setup()
     project_root = Path.cwd()
     target = (project_root / to).resolve()
@@ -1472,58 +1328,38 @@ def bootstrap(
     skipped: list[str] = []
 
     if force:
-        # In force mode, patch _write_file/_copy_file to always overwrite.
-        import shutil as _shutil
-
-        def _write(path: Path, content: str, c: list, s: list) -> None:
-            path.write_text(content)
-            c.append(str(path))
 
         def _copy(src: Path, dst: Path, c: list, s: list) -> None:
-            _shutil.copy2(src, dst)
+            shutil.copy2(src, dst)
             c.append(str(dst))
-
     else:
-        _write = _write_file  # type: ignore[assignment]
         _copy = _copy_file  # type: ignore[assignment]
 
-    # ── directories ──────────────────────────────────────────────────────────
-    for subdir in ("roles", "squads", "vision", "work"):
-        (target / subdir).mkdir(parents=True, exist_ok=True)
-
-    # ── bundled roles ─────────────────────────────────────────────────────────
-    for role in ("planner", "coder", "qa"):
-        src = _PACKAGE_DIR / "roles" / f"{role}.md"
-        _copy(src, target / "roles" / f"{role}.md", created, skipped)
-
-    # ── bundled squads ────────────────────────────────────────────────────────
-    _copy(
-        _PACKAGE_DIR / "squads" / "default.yaml",
-        target / "squads" / "default.yaml",
-        created,
-        skipped,
-    )
-
-    # ── generated files ───────────────────────────────────────────────────────
-    _write(target / "roles" / "README.md", _ROLES_README, created, skipped)
-    _write(target / "squads" / "README.md", _SQUADS_README, created, skipped)
-    _write(target / "vision" / "README.md", _VISION_README, created, skipped)
-    _write(target / "work" / "board.yaml", _BOARD_YAML, created, skipped)
-    _write(target / "justfile", _JUSTFILE_CONTENT, created, skipped)
-    _write(project_root / ".env.example", _ENV_EXAMPLE_CONTENT, created, skipped)
+    # ── copy every file from the template tree ────────────────────────────────
+    for src in sorted(_TEMPLATES_DIR.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(_TEMPLATES_DIR)
+        if rel.parts[0] == ".env.example":
+            # .env.example lands in the project root, not in the orc dir
+            dst = project_root / ".env.example"
+        else:
+            dst = target / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        _copy(src, dst, created, skipped)
 
     # ── summary ───────────────────────────────────────────────────────────────
-    rel = lambda p: Path(p).relative_to(project_root)  # noqa: E731
+    rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
 
     if created:
         typer.echo("\n✓ Created:")
         for f in created:
-            typer.echo(f"    {rel(f)}")
+            typer.echo(f"    {rel_path(f)}")
 
     if skipped:
         typer.echo("\n⚠ Skipped (already exists):")
         for f in skipped:
-            typer.echo(f"    {rel(f)}")
+            typer.echo(f"    {rel_path(f)}")
         typer.echo("  Use --force to overwrite.")
 
     typer.echo(

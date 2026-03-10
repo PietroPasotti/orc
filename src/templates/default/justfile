@@ -1,0 +1,34 @@
+# orc agent orchestrator recipes.
+#
+# Usage from root: add this to your root justfile:
+#
+#   mod orc 'orc/justfile'
+#
+# Then: just orc run, just orc status, just orc merge
+
+repo_root := justfile_directory() / ".."
+
+# List available orc recipes
+default:
+    @just --list --justfile {{source_file()}}
+
+# Run the next agent(s) in the workflow
+# Examples:
+#   just orc run                          # default squad, 1 invocation
+#   just orc run --maxloops 0             # run until complete
+#   just orc run --squad broad            # load orc/squads/broad.yaml
+#   just orc run --dry-run                # print context without invoking
+run *args:
+    cd {{repo_root}} && uv run orc run {{args}}
+
+# Print current workflow state without running any agent
+status:
+    cd {{repo_root}} && uv run orc status
+
+# Rebase dev on main and fast-forward merge into main
+merge:
+    cd {{repo_root}} && uv run orc merge
+
+# List available squad profiles and their composition
+squads:
+    cd {{repo_root}} && uv run orc squads
