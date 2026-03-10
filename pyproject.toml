@@ -47,6 +47,7 @@ addopts = ""
 [tool.ruff]
 src = ["src"]
 line-length = 100
+exclude = ["src/orc/_version.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T20", "UP"]
