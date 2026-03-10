@@ -1,0 +1,415 @@
+"""Integration tests: full orc workflow loop.
+
+Verifies the complete design → coding → QA → merge → design cycle with:
+
+- A real temporary git repository bootstrapped via ``orc bootstrap``.
+- A single dummy vision document added before the run.
+- All LLM invocations replaced by scripted :class:`~conftest.FakePopen` handlers
+  that perform the same git / board side-effects a real agent would.
+- All Telegram HTTP calls replaced by a local in-process log.
+
+Reusable fixtures
+-----------------
+``git_project``
+    Creates a temp git repo, runs ``orc bootstrap``, adds a vision doc, and
+    records an initial commit.  Returns the project root path.
+
+``orc_env``
+    Patches every ``main.py`` module-level path global to point at the temp
+    project so git operations, board reads/writes, and role lookups all use
+    the isolated tree.
+
+``mock_telegram``
+    Replaces ``tg.send_message`` with a local-log-only variant and stubs
+    ``tg._get_telegram_updates`` to return an empty list.
+
+``scripted_spawn``
+    Patches ``inv.spawn`` with a deterministic four-step script:
+    planner-1 → coder-1 → qa-1 → planner-2.  Each step performs the git /
+    board side-effects the real agent would perform, then returns a
+    :class:`~conftest.FakePopen` that completes immediately.
+    Returns the list of recorded spawn calls for assertions.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+from conftest import FakePopen
+from typer.testing import CliRunner
+
+import orc.dispatcher as _disp
+import orc.invoke as inv
+import orc.main as m
+import orc.telegram as tg
+
+runner = CliRunner()
+
+# ---------------------------------------------------------------------------
+# Shared constants
+# ---------------------------------------------------------------------------
+
+_TASK_NAME = "0001-feature-x.md"
+_VISION_DOC = "# Feature X\n\nBuild feature X.\n"
+
+
+# ---------------------------------------------------------------------------
+# Fixture: real git project with orc bootstrapped
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def git_project(tmp_path, monkeypatch):
+    """Create a temp git repo, bootstrap orc, and add a dummy vision document.
+
+    Changes the working directory to *tmp_path* for the duration of the test
+    so that any ``Path.cwd()``-relative code (e.g. ``bootstrap``) lands in
+    the right place.
+
+    Returns the project root :class:`~pathlib.Path`.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    # Minimal git setup
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "orc-test@example.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Orc Test"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    (tmp_path / "README.md").write_text("# Test Project\n")
+
+    # Bootstrap the orc/ structure using the real CLI
+    result = runner.invoke(m.app, ["bootstrap", "--orc-dir", "orc"], catch_exceptions=False)
+    assert result.exit_code == 0, f"bootstrap failed:\n{result.output}"
+
+    # Add a single dummy vision document
+    (tmp_path / "orc" / "vision" / "feature-x.md").write_text(_VISION_DOC)
+
+    # Initial commit — required for git worktree operations
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Fixture: patch main.py path globals to the temp project
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def orc_env(git_project, monkeypatch):
+    """Redirect every ``main.py`` path global to the temp project tree.
+
+    Returns the project root :class:`~pathlib.Path`.
+    """
+    root = git_project
+    agents_dir = root / "orc"
+    # Mirror the default DEV_WORKTREE convention (sibling of repo root)
+    dev_wt = root.parent / f"{root.name}-dev"
+
+    monkeypatch.setattr(m, "REPO_ROOT", root)
+    monkeypatch.setattr(m, "AGENTS_DIR", agents_dir)
+    monkeypatch.setattr(m, "_AGENTS_DIR", agents_dir)
+    monkeypatch.setattr(m, "WORK_DIR", agents_dir / "work")
+    monkeypatch.setattr(m, "BOARD_FILE", agents_dir / "work" / "board.yaml")
+    monkeypatch.setattr(m, "ROLES_DIR", agents_dir / "roles")
+    monkeypatch.setattr(m, "ENV_FILE", root / ".env")
+    monkeypatch.setattr(m, "DEV_WORKTREE", dev_wt)
+
+    return root
+
+
+# ---------------------------------------------------------------------------
+# Fixture: mock Telegram (local log only, no HTTP)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_telegram(orc_env, monkeypatch):
+    """Stub out all Telegram HTTP calls.
+
+    - ``tg.send_message`` writes only to the local chat.log (no HTTP request).
+    - ``tg._get_telegram_updates`` always returns an empty list.
+    - ``tg._LOG_FILE`` is redirected to the temp project's ``orc/chat.log``
+      so each test starts with a clean message history.
+
+    Returns the path to the chat.log file.
+    """
+    log_file = orc_env / "orc" / "chat.log"
+    monkeypatch.setattr(tg, "_LOG_FILE", log_file)
+    monkeypatch.setattr(tg, "_get_telegram_updates", lambda limit=100: [])
+
+    def _send_local(text: str) -> dict:
+        tg._append_to_log(text)
+        return {}
+
+    monkeypatch.setattr(tg, "send_message", _send_local)
+    return log_file
+
+
+# ---------------------------------------------------------------------------
+# Scripted-spawn agent handlers
+# ---------------------------------------------------------------------------
+
+
+def _planner_handler(task_name: str):
+    """Return a callable that simulates a planner creating one task on the board.
+
+    The handler is invoked with the same ``(context, cwd, model, log_path)``
+    signature as ``inv.spawn`` would pass to the real agent subprocess.
+    *cwd* is the dev worktree.
+    """
+
+    def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        board_path = cwd / "orc" / "work" / "board.yaml"
+        task_file = cwd / "orc" / "work" / task_name
+
+        task_file.write_text(f"# {task_name}\n\nImplement feature X per vision doc.\n")
+
+        board = yaml.safe_load(board_path.read_text()) or {}
+        board.setdefault("open", [])
+        board["open"].append({"name": task_name})
+        board["counter"] = 2
+        board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
+
+        subprocess.run(["git", "add", "orc/work/"], cwd=cwd, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"chore(orc): add task {task_name}"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+
+        tg._append_to_log(
+            tg.format_agent_message("planner-1", "ready", f"Created task {task_name}.")
+        )
+
+    return handler
+
+
+def _coder_handler():
+    """Return a callable that simulates a coder implementing a feature.
+
+    *cwd* is the feature worktree (on the feature branch).
+    """
+
+    def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        impl = cwd / "feature_x.py"
+        impl.write_text("# Feature X implementation\n\ndef feature_x():\n    pass\n")
+
+        subprocess.run(["git", "add", "feature_x.py"], cwd=cwd, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "feat: implement feature-x"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+
+        tg._append_to_log(tg.format_agent_message("coder-1", "done", "Implemented feature X."))
+
+    return handler
+
+
+def _qa_handler():
+    """Return a callable that simulates a QA agent committing a passed verdict.
+
+    *cwd* is the feature worktree.  A ``qa(passed):`` commit is required so
+    the orchestrator recognises the QA verdict and triggers a merge.
+    """
+
+    def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        qa_note = cwd / "qa_review.txt"
+        qa_note.write_text("Reviewed. All checks passed.\n")
+
+        subprocess.run(["git", "add", "qa_review.txt"], cwd=cwd, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "qa(passed): feature-x reviewed, all tests pass"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+
+        tg._append_to_log(
+            tg.format_agent_message("qa-1", "passed", "Review complete, all tests pass.")
+        )
+
+    return handler
+
+
+def _idle_planner_handler():
+    """Return a callable for a planner that finds nothing new to do (loop-back).
+
+    This represents the workflow looping back to the design phase after the
+    feature has been merged.  The planner simply signals readiness without
+    creating any additional tasks.
+    """
+
+    def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        tg._append_to_log(
+            tg.format_agent_message("planner-2", "ready", "No new tasks at this time.")
+        )
+
+    return handler
+
+
+# ---------------------------------------------------------------------------
+# Fixture: scripted spawn (replaces inv.spawn with deterministic handlers)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def scripted_spawn(orc_env, mock_telegram, monkeypatch):
+    """Replace ``inv.spawn`` with a deterministic four-step script.
+
+    Script (in order):
+      1. planner-1 — writes a task to the board and commits it to dev.
+      2. coder-1   — creates a feature commit on the feature branch.
+      3. qa-1      — commits a ``qa(passed):`` verdict on the feature branch.
+      4. planner-2 — posts a ready message (loop-back to design, no new tasks).
+
+    Each step returns a :class:`~conftest.FakePopen` that reports immediate
+    success (``returncode=0``), so the dispatcher moves on without waiting.
+
+    The ``_POLL_INTERVAL`` is also zeroed out so the test does not sleep.
+
+    Returns a list of dicts recording each spawn call::
+
+        [{"idx": 0, "cwd": Path(...), "model": "..."},  ...]
+    """
+    handlers = [
+        _planner_handler(_TASK_NAME),
+        _coder_handler(),
+        _qa_handler(),
+        _idle_planner_handler(),
+    ]
+
+    call_records: list[dict] = []
+    idx_box = [0]  # mutable container so the closure can mutate it
+
+    def _fake_spawn(
+        context: str,
+        cwd: Path,
+        model: str | None = None,
+        log_path: Path | None = None,
+    ) -> tuple[FakePopen, None]:
+        idx = idx_box[0]
+        call_records.append({"idx": idx, "cwd": cwd, "model": model})
+        if idx < len(handlers):
+            handlers[idx](context, cwd, model, log_path)
+        idx_box[0] += 1
+        return FakePopen(), None
+
+    monkeypatch.setattr(inv, "spawn", _fake_spawn)
+    monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+
+    return call_records
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrap:
+    """Verify that ``orc bootstrap`` produces the expected directory layout."""
+
+    def test_creates_expected_structure(self, git_project):
+        root = git_project
+        assert (root / "orc" / "roles" / "planner.md").exists()
+        assert (root / "orc" / "roles" / "coder.md").exists()
+        assert (root / "orc" / "roles" / "qa.md").exists()
+        assert (root / "orc" / "squads" / "default.yaml").exists()
+        assert (root / "orc" / "work" / "board.yaml").exists()
+        assert (root / "orc" / "vision" / "feature-x.md").exists()
+        assert (root / ".env.example").exists()
+
+    def test_board_starts_empty(self, git_project):
+        board = yaml.safe_load((git_project / "orc" / "work" / "board.yaml").read_text())
+        assert board["open"] == []
+        assert board["done"] == []
+        assert board["counter"] == 1
+
+    def test_vision_doc_content(self, git_project):
+        content = (git_project / "orc" / "vision" / "feature-x.md").read_text()
+        assert content == _VISION_DOC
+
+
+class TestFullWorkflowLoop:
+    """Verify the complete design → coding → QA → merge → design cycle."""
+
+    def test_design_coding_qa_back_to_design(
+        self,
+        orc_env,
+        mock_telegram,
+        scripted_spawn,
+        monkeypatch,
+    ):
+        """Run four agent invocations and assert the full workflow state machine."""
+        monkeypatch.setattr(m, "validate_env", lambda: [])
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+
+        result = runner.invoke(m.app, ["run", "--maxloops", "4"], catch_exceptions=False)
+
+        assert result.exit_code == 0, f"orc run exited non-zero:\n{result.output}"
+
+        # ── Spawn count ──────────────────────────────────────────────────────
+        assert len(scripted_spawn) == 4, (
+            f"Expected 4 spawns (planner→coder→qa→planner), "
+            f"got {len(scripted_spawn)}.\nCLI output:\n{result.output}"
+        )
+
+        # ── Telegram message sequence ────────────────────────────────────────
+        messages = tg.get_messages()
+        parsed: list[tuple[str, str]] = []
+        for msg in messages:
+            mo = tg._MSG_RE.match(msg.get("text", ""))
+            if mo:
+                parsed.append((mo.group(1), mo.group(2)))
+
+        agent_ids = {name for name, _ in parsed}
+        assert "planner-1" in agent_ids, f"planner-1 missing from messages: {parsed}"
+        assert "coder-1" in agent_ids, f"coder-1 missing from messages: {parsed}"
+        assert "qa-1" in agent_ids, f"qa-1 missing from messages: {parsed}"
+        assert "planner-2" in agent_ids, f"planner-2 missing from messages: {parsed}"
+
+        # Non-boot terminal states must all be present
+        terminal = [(name, state) for name, state in parsed if state != "boot"]
+        assert ("planner-1", "ready") in terminal, terminal
+        assert ("coder-1", "done") in terminal, terminal
+        assert ("qa-1", "passed") in terminal, terminal
+        assert ("planner-2", "ready") in terminal, terminal
+
+        # The first occurrence of each agent must follow the expected order
+        def _first(target: str) -> int:
+            return next(i for i, (n, _) in enumerate(parsed) if n == target)
+
+        assert _first("planner-1") < _first("coder-1"), "planner must precede coder"
+        assert _first("coder-1") < _first("qa-1"), "coder must precede qa"
+        assert _first("qa-1") < _first("planner-2"), "qa must precede second planner"
+
+        # ── Board state after merge ──────────────────────────────────────────
+        dev_wt = orc_env.parent / f"{orc_env.name}-dev"
+        board = yaml.safe_load((dev_wt / "orc" / "work" / "board.yaml").read_text())
+
+        assert board["open"] == [], "Open task list should be empty after the merge"
+
+        done_names = [(t["name"] if isinstance(t, dict) else str(t)) for t in board.get("done", [])]
+        assert _TASK_NAME in done_names, f"{_TASK_NAME!r} not found in done list: {done_names}"

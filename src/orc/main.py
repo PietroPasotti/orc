@@ -23,6 +23,7 @@ import os
 import re as _re
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -34,7 +35,7 @@ from orc import dispatcher as _disp
 from orc import invoke as inv
 from orc import logger as _obs
 from orc import telegram as tg
-from orc.squad import load_squad
+from orc.squad import SquadConfig, load_all_squads, load_squad
 
 logger = structlog.get_logger(__name__)
 
@@ -633,14 +634,26 @@ def _do_close_board(task_name: str) -> None:
         )
 
 
-def _build_context_for_dispatcher(
-    role: str,
-    agent_id: str,
-    messages: list[dict],
-    worktree: Path | None,
-) -> tuple[str, str]:
-    """Adapter: bridge dispatcher's 4-arg build_context to build_agent_context."""
-    return build_agent_context(role, messages, worktree=worktree, agent_id=agent_id)
+def _make_context_builder(
+    squad_cfg: SquadConfig,
+) -> Callable[[str, str, list[dict], Path | None], tuple[str, str]]:
+    """Return a ``build_context`` callback that sources models from *squad_cfg*."""
+
+    def _build(
+        role: str,
+        agent_id: str,
+        messages: list[dict],
+        worktree: Path | None,
+    ) -> tuple[str, str]:
+        return build_agent_context(
+            role,
+            messages,
+            worktree=worktree,
+            agent_id=agent_id,
+            model=squad_cfg.model(role),
+        )
+
+    return _build
 
 
 def determine_next_agent(messages: list[dict]) -> tuple[str | None, str]:
@@ -690,36 +703,27 @@ def _read_adrs() -> str:
 _DEFAULT_MODEL = "claude-sonnet-4.6"
 
 
-def _parse_role_file(agent_name: str) -> tuple[str, str]:
-    """Read a role file and return ``(model, content)``.
+def _parse_role_file(agent_name: str) -> str:
+    """Read a role file and return its content.
 
     Searches project ROLES_DIR first, then falls back to the package's
     bundled roles directory.  If the file starts with a YAML front-matter
-    block (``---`` … ``---``), the ``model`` key is extracted and the block
-    is stripped from the returned content.  Falls back to ``_DEFAULT_MODEL``
-    when no front-matter is present.
+    block (``---`` … ``---``), the block is stripped from the returned content.
     """
     role_file = ROLES_DIR / f"{agent_name}.md"
     if not role_file.exists():
         role_file = _PACKAGE_ROLES_DIR / f"{agent_name}.md"
     if not role_file.exists():
-        return _DEFAULT_MODEL, f"You are the {agent_name} agent."
+        return f"You are the {agent_name} agent."
 
     raw = role_file.read_text()
-    model = _DEFAULT_MODEL
 
     if raw.startswith("---"):
         end = raw.find("\n---", 3)
         if end != -1:
-            front = raw[3:end]
-            for line in front.splitlines():
-                key, _, val = line.partition(":")
-                if key.strip() == "model" and val.strip():
-                    model = val.strip()
-                    break
             raw = raw[end + 4 :].lstrip("\n")
 
-    return model, raw
+    return raw
 
 
 def build_agent_context(
@@ -728,12 +732,16 @@ def build_agent_context(
     extra: str = "",
     worktree: Path | None = None,
     agent_id: str | None = None,
+    model: str | None = None,
 ) -> tuple[str, str]:
     """Return ``(model, context)`` for the given agent.
 
-    Parses the role file's YAML front-matter for the model name, then combines
-    the role content with all shared context documents (README, CONTRIBUTING,
-    ADRs, Telegram chat history, kanban board).
+    The *model* parameter specifies which AI model to use.  When provided it
+    takes precedence; when omitted it falls back to ``_DEFAULT_MODEL``.  The
+    recommended source for the model is the squad profile (``SquadConfig.model``).
+
+    Combines the role content with all shared context documents (README,
+    CONTRIBUTING, ADRs, Telegram chat history, kanban board).
 
     *worktree* is the directory where the agent will run.  When omitted it
     defaults to the dev worktree.  Pass *extra* to prepend additional context
@@ -742,7 +750,8 @@ def build_agent_context(
     *agent_id* — the unique agent identifier (e.g. ``"coder-1"``).  Injected
     into the context so the agent knows its own ID for Telegram messages.
     """
-    model, role = _parse_role_file(agent_name)
+    resolved_model = model or _DEFAULT_MODEL
+    role = _parse_role_file(agent_name)
 
     dev_worktree = _ensure_dev_worktree()
     orc_readme_path = AGENTS_DIR / "README.md"
@@ -814,7 +823,7 @@ def build_agent_context(
         f"### Chat history (Telegram)\n\n{chat}\n\n"
         f"### Kanban board (orc/work/)\n\n{plans}\n"
     )
-    return model, context
+    return resolved_model, context
 
 
 # ---------------------------------------------------------------------------
@@ -1028,7 +1037,7 @@ def status() -> None:
             typer.echo(f"  ✓ {name}  ({tag}){ts_str}")
 
 
-def _rebase_dev_on_main(messages: list) -> None:
+def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
     """Rebase dev on top of main so every session starts with the latest instructions.
 
     If the rebase is clean, the worktree is left on the updated dev branch
@@ -1061,7 +1070,8 @@ def _rebase_dev_on_main(messages: list) -> None:
         "5. Exit when the rebase is complete.\n"
     )
 
-    model, context = build_agent_context("coder", messages, extra=conflict_extra)
+    coder_model = squad_cfg.model("coder") if squad_cfg is not None else _DEFAULT_MODEL
+    model, context = build_agent_context("coder", messages, extra=conflict_extra, model=coder_model)
     rc = invoke_agent("coder", context, model)
 
     if rc != 0:
@@ -1076,6 +1086,27 @@ def _rebase_dev_on_main(messages: list) -> None:
 
     logger.info("dev rebased on main after conflict resolution by coder")
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
+
+
+@app.command()
+def squads() -> None:
+    """List available squad profiles and their composition."""
+    _obs.setup()
+    profiles = load_all_squads(agents_dir=AGENTS_DIR)
+    if not profiles:
+        typer.echo("No squad profiles found.")
+        return
+
+    typer.echo("\nAvailable squad profiles:\n")
+    for cfg in profiles:
+        coder_label = f"{cfg.coder} coder{'s' if cfg.coder != 1 else ''}"
+        qa_label = f"{cfg.qa} QA"
+        composition = f"1 planner · {coder_label} · {qa_label} · {cfg.timeout_minutes} min"
+        typer.echo(f"  {cfg.name:<12}  {composition}")
+        if cfg.description:
+            for line in cfg.description.strip().splitlines():
+                typer.echo(f"               {line}")
+        typer.echo("")
 
 
 @app.command()
@@ -1130,7 +1161,7 @@ def run(
     )
     typer.echo("⟳ Syncing dev on main…")
     messages = tg.get_messages()
-    _rebase_dev_on_main(messages)
+    _rebase_dev_on_main(messages, squad_cfg)
 
     clear_all_assignments()
 
@@ -1149,7 +1180,7 @@ def run(
         post_boot_message=_post_boot_message,
         post_resolved=_post_resolved,
         boot_message_body=_boot_message_body,
-        build_context=_build_context_for_dispatcher,
+        build_context=_make_context_builder(squad_cfg),
         spawn_fn=inv.spawn,
     )
 
@@ -1192,6 +1223,10 @@ status:
 # Rebase dev on main and fast-forward merge into main
 merge:
     cd {{{{repo_root}}}} && uv run orc merge
+
+# List available squad profiles and their composition
+squads:
+    cd {{{{repo_root}}}} && uv run orc squads
 """
 
 _ENV_EXAMPLE_CONTENT = """\
@@ -1236,6 +1271,52 @@ includes:
 
 Add `.md` files here describing what you want to build. The planner will pick
 them up on the next `orc run`.
+"""
+
+_ROLES_README = """\
+# Role overrides
+
+Drop `.md` files here to override the bundled agent role prompts for this
+project.  Any file placed here takes precedence over the package defaults.
+
+Expected filenames:
+
+- `planner.md` – instructions for the planner agent
+- `coder.md`   – instructions for the coder agent
+- `qa.md`      – instructions for the QA agent
+
+If a file is absent the bundled template is used unchanged.
+
+To select the AI model for each role, set it in the squad profile
+(``orc/squads/*.yaml``) rather than in the role file.
+"""
+
+_SQUADS_README = """\
+# Squad profiles
+
+Drop `.yaml` files here to define or override squad configurations for this
+project.  Project-level profiles take precedence over the package defaults.
+
+## Schema
+
+```yaml
+name: broad
+description: |
+  Wider parallel configuration for larger projects.
+composition:
+  - role: planner
+    count: 1                  # must always be 1
+    model: claude-sonnet-4.6
+  - role: coder
+    count: 4                  # parallel coders
+    model: claude-sonnet-4.6
+  - role: qa
+    count: 2                  # parallel QA reviewers
+    model: claude-sonnet-4.6
+timeout_minutes: 180
+```
+
+Run `orc squads` to list all available profiles.
 """
 
 _BOARD_YAML = """\
@@ -1345,6 +1426,8 @@ def bootstrap(
     )
 
     # ── generated files ───────────────────────────────────────────────────────
+    _write(target / "roles" / "README.md", _ROLES_README, created, skipped)
+    _write(target / "squads" / "README.md", _SQUADS_README, created, skipped)
     _write(target / "vision" / "README.md", _VISION_README, created, skipped)
     _write(target / "work" / "board.yaml", _BOARD_YAML, created, skipped)
     _write(target / "justfile", _JUSTFILE_CONTENT, created, skipped)

@@ -3,13 +3,14 @@
 import time
 from unittest.mock import MagicMock
 
+import yaml as _yaml
+from conftest import FakePopen, make_msg
+from typer.testing import CliRunner
+
 import orc.dispatcher as _disp
 import orc.invoke as inv
 import orc.main as m
 import orc.telegram as tg
-import yaml as _yaml
-from conftest import FakePopen, make_msg
-from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -69,7 +70,7 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -91,7 +92,7 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def fake_spawn(*a, **kw):
@@ -266,7 +267,7 @@ class TestBlockedResumption:
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(m, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
@@ -279,7 +280,7 @@ class TestBlockedResumption:
     def test_blocked_resumes_correct_agent(self, monkeypatch, tmp_path):
         """After a hard-block reply, the dispatcher routes to the correct role."""
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(m, "wait_for_human_reply", lambda msgs, **kw: "Help.")
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
@@ -355,7 +356,7 @@ class TestBlockedResumption:
         sent: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda t: sent.append(t))
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def _timeout(msgs, **kw):
@@ -384,7 +385,7 @@ class TestBlockedResumption:
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
         monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -498,7 +499,7 @@ class TestMergeCommand:
 
         received_extra: list[str] = []
 
-        def capture_context(name, msgs, extra=""):
+        def capture_context(name, msgs, extra="", **kwargs):
             received_extra.append(extra)
             return "model", "ctx"
 
@@ -659,7 +660,7 @@ class TestFeatureWorktree:
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
@@ -686,7 +687,7 @@ class TestFeatureWorktree:
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
@@ -713,7 +714,7 @@ class TestFeatureWorktree:
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda msgs: None)
+        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
@@ -768,9 +769,16 @@ class TestBootstrap:
         squad_file = tmp_path / "orc" / "squads" / "default.yaml"
         assert squad_file.exists()
         import yaml
+
         cfg = yaml.safe_load(squad_file.read_text())
-        assert cfg["planner"] == 1
-        assert cfg["coder"] == 1
+        composition = cfg.get("composition") or cfg
+        if isinstance(composition, list):
+            roles = {e["role"]: e["count"] for e in composition}
+            assert roles["planner"] == 1
+            assert roles["coder"] == 1
+        else:
+            assert composition["planner"] == 1
+            assert composition["coder"] == 1
 
     def test_creates_vision_readme(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -785,6 +793,7 @@ class TestBootstrap:
         board = tmp_path / "orc" / "work" / "board.yaml"
         assert board.exists()
         import yaml
+
         data = yaml.safe_load(board.read_text())
         assert data["counter"] == 1
         assert data["open"] == []

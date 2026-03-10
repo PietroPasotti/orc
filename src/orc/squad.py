@@ -1,23 +1,53 @@
 """Squad profile loader for the orc orchestrator.
 
-A squad profile defines how many agents of each role may run in parallel.
+A squad profile defines how many agents of each role may run in parallel and
+which AI model each role should use.
 Profiles are YAML files stored in ``orc/squads/`` (project-level) or in the
 package's bundled ``squads/`` directory.
 
 Usage::
 
-    from orc.squad import load_squad, SquadConfig
+    from orc.squad import load_squad, load_all_squads, SquadConfig
 
     squad = load_squad("default")                      # package default
     squad = load_squad("broad", agents_dir=orc_dir)   # project-level first
     squad.count("coder")                               # → 1
+    squad.model("coder")                               # → "claude-sonnet-4.6"
 
-Profile format::
+    all_squads = load_all_squads(agents_dir=orc_dir)   # list[SquadConfig]
 
-    planner: 1          # must always be 1 — planning is serialised
-    coder: 4            # up to 4 parallel coders
-    qa: 2               # up to 2 parallel QA reviewers
+Profile format (current)::
+
+    name: default
+    description: |
+      One agent of each type, running sequentially.
+    composition:
+      - role: planner
+        count: 1
+        model: claude-sonnet-4.6
+      - role: coder
+        count: 4
+        model: claude-sonnet-4.6
+      - role: qa
+        count: 2
+        model: claude-sonnet-4.6
     timeout_minutes: 120  # watchdog: kill stuck agents after this many minutes
+
+Legacy dict composition format (still accepted for backward compatibility)::
+
+    name: default
+    composition:
+      planner: 1        # must always be 1 — planning is serialised
+      coder: 4          # up to 4 parallel coders
+      qa: 2             # up to 2 parallel QA reviewers
+    timeout_minutes: 120
+
+Legacy flat format (still accepted for backward compatibility)::
+
+    planner: 1
+    coder: 4
+    qa: 2
+    timeout_minutes: 120
 
 Constraints
 -----------
@@ -31,7 +61,7 @@ Constraints
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -44,6 +74,7 @@ SQUADS_DIR = _PACKAGE_SQUADS_DIR
 
 _VALID_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
 _DEFAULT_TIMEOUT_MINUTES = 120
+_DEFAULT_MODEL = "claude-sonnet-4.6"
 
 
 @dataclass(frozen=True)
@@ -54,6 +85,9 @@ class SquadConfig:
     coder: int
     qa: int
     timeout_minutes: int
+    name: str = ""
+    description: str = ""
+    _models: dict[str, str] = field(default_factory=dict, compare=False)
 
     def count(self, role: str) -> int:
         """Return the configured agent count for *role*."""
@@ -61,30 +95,73 @@ class SquadConfig:
             raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
         return getattr(self, role)
 
+    def model(self, role: str) -> str:
+        """Return the configured model name for *role*.
 
-def _parse_squad_file(name: str, path: Path) -> SquadConfig:
-    """Parse and validate a squad YAML file at *path*."""
+        Falls back to ``_DEFAULT_MODEL`` when no model is specified for the role.
+        """
+        if role not in _VALID_ROLES:
+            raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
+        return self._models.get(role, _DEFAULT_MODEL)
+
+
+def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
+    """Parse and validate a squad YAML file at *path*.
+
+    Accepts three schemas in order of preference:
+    1. New list format: ``composition:`` is a list of ``{name, count, model}`` dicts.
+    2. Legacy dict format: ``composition:`` is a mapping of ``role: count``.
+    3. Legacy flat format: role counts appear at the top level.
+    """
     raw = yaml.safe_load(path.read_text()) or {}
 
-    planner = int(raw.get("planner", 1))
-    coder = int(raw.get("coder", 1))
-    qa = int(raw.get("qa", 1))
+    composition = raw.get("composition") or {}
+    models: dict[str, str] = {}
+
+    if isinstance(composition, list):
+        # New format: list of {name, count, model}
+        counts: dict[str, int] = {}
+        for entry in composition:
+            if not isinstance(entry, dict):
+                continue
+            role = str(entry.get("role", ""))
+            if role not in _VALID_ROLES:
+                continue
+            counts[role] = int(entry.get("count", 1))
+            if "model" in entry and entry["model"]:
+                models[role] = str(entry["model"]).strip()
+        planner = counts.get("planner", 1)
+        coder = counts.get("coder", 1)
+        qa = counts.get("qa", 1)
+    elif composition:
+        # Legacy dict format: composition: {planner: 1, coder: 4, qa: 2}
+        planner = int(composition.get("planner", 1))
+        coder = int(composition.get("coder", 1))
+        qa = int(composition.get("qa", 1))
+    else:
+        # Legacy flat format: top-level role keys
+        planner = int(raw.get("planner", 1))
+        coder = int(raw.get("coder", 1))
+        qa = int(raw.get("qa", 1))
+
     timeout_minutes = int(raw.get("timeout_minutes", _DEFAULT_TIMEOUT_MINUTES))
+    name = str(raw.get("name", "") or path.stem)
+    description = str(raw.get("description", "") or "").strip()
 
     if planner != 1:
         raise ValueError(
-            f"Squad profile {name!r}: planner must be 1, got {planner}.\n"
+            f"Squad profile {file_name!r}: planner must be 1, got {planner}.\n"
             "Planning is serialised — only one planner is supported.\n"
             "Scale throughput by adding more coders and QA reviewers instead."
         )
 
     for role, cnt in [("coder", coder), ("qa", qa)]:
         if cnt < 1:
-            raise ValueError(f"Squad profile {name!r}: {role} count must be >= 1, got {cnt}.")
+            raise ValueError(f"Squad profile {file_name!r}: {role} count must be >= 1, got {cnt}.")
 
     if timeout_minutes < 1:
         raise ValueError(
-            f"Squad profile {name!r}: timeout_minutes must be >= 1, got {timeout_minutes}."
+            f"Squad profile {file_name!r}: timeout_minutes must be >= 1, got {timeout_minutes}."
         )
 
     return SquadConfig(
@@ -92,6 +169,9 @@ def _parse_squad_file(name: str, path: Path) -> SquadConfig:
         coder=coder,
         qa=qa,
         timeout_minutes=timeout_minutes,
+        name=name,
+        description=description,
+        _models=models,
     )
 
 
@@ -123,6 +203,38 @@ def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
         f"Available profiles: {available}\n"
         f"Create orc/squads/{name}.yaml to define a new profile."
     )
+
+
+def load_all_squads(agents_dir: Path | None = None) -> list[SquadConfig]:
+    """Return a :class:`SquadConfig` for every squad file visible to the project.
+
+    Project-level profiles (``{agents_dir}/squads/``) take precedence over the
+    package-bundled ones.  Any package profile not overridden by the project is
+    included as well.
+
+    Invalid files are silently skipped (logged to stderr at DEBUG level).
+    """
+    seen: dict[str, SquadConfig] = {}
+
+    # Project-level profiles win.
+    if agents_dir is not None:
+        project_dir = agents_dir / "squads"
+        if project_dir.exists():
+            for p in sorted(project_dir.glob("*.yaml")):
+                try:
+                    seen[p.stem] = _parse_squad_file(p.stem, p)
+                except (ValueError, Exception):
+                    pass
+
+    # Package bundled profiles fill in any gaps.
+    for p in sorted(_PACKAGE_SQUADS_DIR.glob("*.yaml")):
+        if p.stem not in seen:
+            try:
+                seen[p.stem] = _parse_squad_file(p.stem, p)
+            except (ValueError, Exception):
+                pass
+
+    return list(seen.values())
 
 
 def list_squads(agents_dir: Path | None = None) -> list[str]:

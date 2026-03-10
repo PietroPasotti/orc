@@ -1,6 +1,3 @@
----
-model: claude-sonnet-4.6
----
 # Role: Coder
 
 You are the **coder** agent in the multi-agent development workflow.

@@ -1,6 +1,3 @@
----
-model: claude-sonnet-4.6
----
 # Role: QA
 
 You are the **qa** agent in the multi-agent development workflow.
