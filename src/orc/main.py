@@ -1060,9 +1060,7 @@ def _dev_log_since_main() -> list[str]:
     return result.stdout.strip().splitlines()
 
 
-@app.command()
-def status() -> None:
-    """Print current workflow state without running any agent."""
+def _status() -> None:
     messages = tg.get_messages()
     blocked_agent, blocked_state = _has_unresolved_block(messages)
     next_agent, reason = determine_next_agent(messages)
@@ -1113,6 +1111,12 @@ def status() -> None:
             ts = task.get("timestamp", "") if isinstance(task, dict) else ""
             ts_str = f"  {ts}" if ts else ""
             typer.echo(f"  ✓ {name}  ({tag}){ts_str}")
+
+
+@app.command()
+def status() -> None:
+    """Print current workflow state without running any agent."""
+    return _status()
 
 
 def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
@@ -1166,9 +1170,7 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
-@app.command()
-def squads() -> None:
-    """List available squad profiles and their composition."""
+def _squads() -> None:
     _obs.setup()
     profiles = load_all_squads(agents_dir=AGENTS_DIR)
     if not profiles:
@@ -1188,12 +1190,12 @@ def squads() -> None:
 
 
 @app.command()
-def merge() -> None:
-    """Rebase dev on top of main and fast-forward merge dev into main.
+def squads() -> None:
+    """List available squad profiles and their composition."""
+    return _squads()
 
-    If the rebase produces conflicts the coder agent is invoked to resolve them.
-    Once the agent exits the merge is completed automatically.
-    """
+
+def _merge() -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
     _rebase_dev_on_main(messages)
@@ -1203,29 +1205,16 @@ def merge() -> None:
 
 
 @app.command()
-def run(
-    maxloops: Annotated[
-        int,
-        typer.Option(
-            help=(
-                "Maximum agent invocations before stopping. "
-                "0 = run until the workflow completes or blocks."
-            ),
-        ),
-    ] = 1,
-    dry_run: Annotated[
-        bool,
-        typer.Option("--dry-run", help="Print the agent context/prompt without invoking."),
-    ] = False,
-    squad: Annotated[
-        str,
-        typer.Option(
-            "--squad",
-            help="Squad profile name (file in orc/squads/).  Default: 'default'.",
-        ),
-    ] = "default",
-) -> None:
-    """Run the next agent(s) in the workflow."""
+def merge() -> None:
+    """Rebase dev on top of main and fast-forward merge dev into main.
+
+    If the rebase produces conflicts the coder agent is invoked to resolve them.
+    Once the agent exits the merge is completed automatically.
+    """
+    return _merge()
+
+
+def _run(maxloops: int = 1, dry_run: bool = False, squad: str = "default") -> None:
     _check_env_or_exit()
 
     squad_cfg = load_squad(squad, agents_dir=AGENTS_DIR)
@@ -1270,6 +1259,33 @@ def run(
         raise
 
 
+@app.command()
+def run(
+    maxloops: Annotated[
+        int,
+        typer.Option(
+            help=(
+                "Maximum agent invocations before stopping. "
+                "0 = run until the workflow completes or blocks."
+            ),
+        ),
+    ] = 1,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print the agent context/prompt without invoking."),
+    ] = False,
+    squad: Annotated[
+        str,
+        typer.Option(
+            "--squad",
+            help="Squad profile name (file in orc/squads/).  Default: 'default'.",
+        ),
+    ] = "default",
+) -> None:
+    """Run the next agent(s) in the workflow."""
+    return _run(maxloops=maxloops, dry_run=dry_run, squad=squad)
+
+
 def _write_file(path: Path, content: str, created: list[str], skipped: list[str]) -> None:
     """Write *content* to *path* if it does not exist; record the outcome."""
     if path.exists():
@@ -1290,34 +1306,7 @@ def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> 
         created.append(str(dst))
 
 
-@app.command()
-def bootstrap(
-    to: Annotated[
-        str,
-        typer.Option(
-            "--to",
-            help="Path (relative to CWD) for the orc configuration directory to create.",
-        ),
-    ] = ".orc",
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="Overwrite existing files."),
-    ] = False,
-) -> None:
-    """Scaffold an orc configuration directory in the current project.
-
-    Creates the .orc/ directory structure, copies bundled role templates and
-    the default squad profile, and generates a justfile.
-
-    After bootstrapping:
-
-    \\b
-    1. Edit .orc/roles/*.md to customise the agent instructions for your project.
-    2. Add vision documents to .orc/vision/.
-    3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
-    4. Copy .env.example to .env and fill in your credentials.
-    5. Run: just orc run   (or: orc run)
-    """
+def _bootstrap(to: str = ".orc", force: bool = False) -> None:
     import shutil
 
     _obs.setup()
@@ -1381,11 +1370,46 @@ Next steps
 
 
 @app.command()
+def bootstrap(
+    to: Annotated[
+        str,
+        typer.Option(
+            "--to",
+            help="Path (relative to CWD) for the orc configuration directory to create.",
+        ),
+    ] = ".orc",
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite existing files."),
+    ] = False,
+) -> None:
+    """Scaffold an orc configuration directory in the current project.
+
+    Creates the .orc/ directory structure, copies bundled role templates and
+    the default squad profile, and generates a justfile.
+
+    After bootstrapping:
+
+    \\b
+    1. Edit .orc/roles/*.md to customise the agent instructions for your project.
+    2. Add vision documents to .orc/vision/.
+    3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
+    4. Copy .env.example to .env and fill in your credentials.
+    5. Run: just orc run   (or: orc run)
+    """
+    return _bootstrap(to=to, force=force)
+
+
+def _version() -> None:
+    from importlib.metadata import version as _ver
+
+    typer.echo(_ver("orc"))
+
+
+@app.command()
 def version() -> None:
     """Print the orc version."""
-    from importlib.metadata import version as _version
-
-    typer.echo(_version("orc"))
+    return _version()
 
 
 if __name__ == "__main__":  # pragma: no cover
