@@ -9,8 +9,8 @@ the Telegram chat channel and applying the transition table.
 
 Usage::
 
-    orc run [--maxloops N] [--dry-run] [--squad NAME]
-    orc status
+    orc run [--maxloops N] [--dry-run] [--squad NAME] [--config-dir PATH]
+    orc status [--config-dir PATH]
 
 Environment variables (via .env)::
 
@@ -40,38 +40,67 @@ from orc.squad import SquadConfig, load_all_squads, load_squad
 logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Paths — resolved at import time via ORC_DIR env var or $CWD/orc
+# Paths — resolved at startup; can be overridden via --config-dir CLI option
 # ---------------------------------------------------------------------------
 
 _PACKAGE_DIR = Path(__file__).parent  # where the package is installed
+_PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"  # fallback for role files
 
 
-def _resolve_agents_dir() -> Path:
-    """Resolve the project's orc configuration directory.
+def _find_config_dir(base: Path | None = None) -> Path | None:
+    """Find the orc configuration directory.
 
-    Checks ORC_DIR env var first, then falls back to $CWD/orc.
+    Resolution order:
+    1. ``ORC_DIR`` environment variable (absolute path, used as-is).
+    2. ``{base}/.orc/`` — new default name.
+    3. ``{base}/orc/`` — legacy name (backward compatibility).
+
+    *base* defaults to ``Path.cwd()`` when omitted.
+    Returns the first existing directory, or ``None`` if none is found.
     """
     env = os.environ.get("ORC_DIR", "").strip()
     if env:
         return Path(env).resolve()
-    return Path.cwd() / "orc"
+    search = (base or Path.cwd()).resolve()
+    for name in (".orc", "orc"):
+        candidate = search / name
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
-_AGENTS_DIR = _resolve_agents_dir()
-AGENTS_DIR = _AGENTS_DIR
-WORK_DIR = AGENTS_DIR / "work"
-BOARD_FILE = WORK_DIR / "board.yaml"
-ROLES_DIR = AGENTS_DIR / "roles"
-_PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"  # fallback
-REPO_ROOT = AGENTS_DIR.parent
-ENV_FILE = REPO_ROOT / ".env"
+def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
+    """(Re)initialise all module-level path globals.
+
+    *repo_root* is the project root (where ``.env``, ``README.md``, and git
+    live).  When omitted it falls back to ``agents_dir.parent``, which is
+    correct for the common case where the config dir sits directly inside the
+    project root (e.g. ``{project}/.orc/`` or ``{project}/orc/``).
+
+    Pass ``repo_root=Path.cwd()`` explicitly when the config dir is nested
+    deeper (e.g. ``{project}/src/.orc/`` with ``--config-dir src``).
+    """
+    global AGENTS_DIR, WORK_DIR, BOARD_FILE, ROLES_DIR, REPO_ROOT, ENV_FILE
+    global DEV_WORKTREE, _worktree_sibling
+    AGENTS_DIR = agents_dir
+    REPO_ROOT = (repo_root or agents_dir.parent).resolve()
+    WORK_DIR = agents_dir / "work"
+    BOARD_FILE = WORK_DIR / "board.yaml"
+    ROLES_DIR = agents_dir / "roles"
+    ENV_FILE = REPO_ROOT / ".env"
+    _worktree_sibling = REPO_ROOT.parent / f"{REPO_ROOT.name}-dev"
+    DEV_WORKTREE = (
+        _worktree_sibling
+        if os.access(REPO_ROOT.parent, os.W_OK)
+        else Path("/tmp") / f"{REPO_ROOT.name}-dev"
+    )
+
+
+# Initialise at import time (best-effort; commands re-validate at runtime).
+_found_at_import = _find_config_dir()
+_init_paths(_found_at_import if _found_at_import is not None else Path.cwd() / ".orc")
+
 WORK_DEV_BRANCH = "dev"
-_worktree_sibling = REPO_ROOT.parent / f"{REPO_ROOT.name}-dev"
-DEV_WORKTREE = (
-    _worktree_sibling
-    if os.access(REPO_ROOT.parent, os.W_OK)
-    else Path("/tmp") / f"{REPO_ROOT.name}-dev"
-)
 
 # Placeholder values from .env.example that have not been filled in
 _PLACEHOLDERS = {
@@ -247,7 +276,11 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
     """
     from datetime import UTC, datetime
 
-    board_path = dev_wt / "orc" / "work" / "board.yaml"
+    try:
+        config_rel = AGENTS_DIR.relative_to(REPO_ROOT)
+    except ValueError:
+        config_rel = Path(AGENTS_DIR.name)
+    board_path = dev_wt / config_rel / "work" / "board.yaml"
     if not board_path.exists():
         logger.warning("board.yaml not found in dev worktree, skipping board update")
         return
@@ -273,7 +306,7 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
     board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
 
     # Delete the task .md file if present
-    task_md = dev_wt / "orc" / "work" / task_name
+    task_md = dev_wt / config_rel / "work" / task_name
     if task_md.exists():
         task_md.unlink()
         logger.info("deleted task file", path=str(task_md))
@@ -350,7 +383,12 @@ def _dev_board_file() -> Path:
     Prefers the dev-worktree copy (where the planner writes) when the worktree
     exists, falling back to the main-repo copy.
     """
-    candidate = DEV_WORKTREE / "orc" / "work" / "board.yaml"
+    # Mirror the config dir path relative to REPO_ROOT into DEV_WORKTREE.
+    try:
+        rel = AGENTS_DIR.relative_to(REPO_ROOT)
+    except ValueError:
+        rel = Path(AGENTS_DIR.name)
+    candidate = DEV_WORKTREE / rel / "work" / "board.yaml"
     return candidate if candidate.exists() else BOARD_FILE
 
 
@@ -941,12 +979,45 @@ app = typer.Typer(
 
 
 @app.callback()
-def _bootstrap() -> None:
-    """Bootstrap observability before any subcommand runs."""
+def _app_entry(
+    config_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--config-dir",
+            help=(
+                "Base directory to search for the orc configuration folder. "
+                "orc looks for <config-dir>/.orc/ then <config-dir>/orc/. "
+                "Defaults to the current working directory."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Bootstrap observability and resolve the config directory."""
     _obs.setup()
+    if config_dir is not None:
+        found = _find_config_dir(base=config_dir)
+        if found is None:
+            typer.echo(
+                f"✗ No orc config directory found in '{config_dir}'.\n"
+                f"  Expected '{config_dir}/.orc/' or '{config_dir}/orc/'.\n"
+                "  Run 'orc bootstrap' to create one.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        _init_paths(found, repo_root=Path.cwd())
 
 
 def _check_env_or_exit() -> None:
+    if not AGENTS_DIR.is_dir():
+        typer.echo(
+            f"✗ orc configuration directory not found.\n"
+            f"  Searched: {AGENTS_DIR.parent}/.orc/  and  {AGENTS_DIR.parent}/orc/\n"
+            "  Run 'orc bootstrap' to create one, or pass --config-dir <base> to "
+            "point to an existing configuration.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     errors = validate_env()
     if errors:
         typer.echo("✗ Configuration errors — fix .env before running:\n", err=True)
@@ -1243,7 +1314,9 @@ GH_TOKEN=your-gh-token-here
 COLONY_TELEGRAM_TOKEN=your-bot-token-here
 COLONY_TELEGRAM_CHAT_ID=your-chat-id-here
 
-# Optional: override the orc configuration directory (default: $CWD/orc)
+# Optional: override the orc configuration directory search.
+# orc searches $CWD/.orc/ first, then $CWD/orc/, then exits with an error.
+# Setting this env var skips the search and uses the specified path directly.
 # ORC_DIR=/absolute/path/to/orc
 """
 
@@ -1359,13 +1432,13 @@ def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> 
 
 @app.command()
 def bootstrap(
-    orc_dir: Annotated[
+    to: Annotated[
         str,
         typer.Option(
-            "--orc-dir",
-            help="Path to the orc configuration directory to create. Default: ./orc",
+            "--to",
+            help="Path (relative to CWD) for the orc configuration directory to create.",
         ),
-    ] = "orc",
+    ] = ".orc",
     force: Annotated[
         bool,
         typer.Option("--force", help="Overwrite existing files."),
@@ -1373,21 +1446,21 @@ def bootstrap(
 ) -> None:
     """Scaffold an orc configuration directory in the current project.
 
-    Creates the orc/ directory structure, copies bundled role templates and
+    Creates the .orc/ directory structure, copies bundled role templates and
     the default squad profile, and generates a justfile.
 
     After bootstrapping:
 
     \\b
-    1. Edit orc/roles/*.md to customise the agent instructions for your project.
-    2. Add vision documents to orc/vision/.
-    3. Add 'mod orc \\"orc/justfile\\"' to your root justfile (if you use just).
+    1. Edit .orc/roles/*.md to customise the agent instructions for your project.
+    2. Add vision documents to .orc/vision/.
+    3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)
     """
     _obs.setup()
     project_root = Path.cwd()
-    target = (project_root / orc_dir).resolve()
+    target = (project_root / to).resolve()
 
     created: list[str] = []
     skipped: list[str] = []
@@ -1451,12 +1524,12 @@ def bootstrap(
         f"""
 Next steps
 ──────────
-1. Edit {orc_dir}/roles/*.md  — customise agent instructions for your project.
-2. Add vision docs to {orc_dir}/vision/  — describe what you want to build.
+1. Edit {to}/roles/*.md  — customise agent instructions for your project.
+2. Add vision docs to {to}/vision/  — describe what you want to build.
 3. Copy .env.example → .env and fill in your credentials.
 4. Add to your root justfile:
 
-       mod orc '{orc_dir}/justfile'
+       mod orc '{to}/justfile'
 
    Then run:  just orc run
 

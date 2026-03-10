@@ -12,18 +12,18 @@ install:
 # Examples:
 #   just run                    # default squad, 1 invocation
 #   just run --maxloops 0       # run until complete
-#   just run --squad broad      # use orc/squads/broad.yaml
+#   just run --squad broad      # use src/.orc/squads/broad.yaml
 #   just run --dry-run          # print context without invoking
 run *args:
-    uv run orc run {{args}}
+    uv run orc --config-dir src run {{args}}
 
 # Print current workflow state
 status:
-    uv run orc status
+    uv run orc --config-dir src status
 
 # Rebase dev on main and merge
 merge:
-    uv run orc merge
+    uv run orc --config-dir src merge
 
 # Run the test suite
 test:

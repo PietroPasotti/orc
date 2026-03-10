@@ -11,8 +11,9 @@ Covers:
 import json
 from unittest.mock import MagicMock, patch
 
-from orc import telegram as tg
 from conftest import make_msg
+
+from orc import telegram as tg
 from orc.main import (
     _ORC_RESOLVED_RE,
     _derive_state_from_git,
@@ -466,10 +467,14 @@ class TestLocalChatLog:
 
 
 class TestBoardReconciliation:
-    def test_close_task_moves_to_done(self, tmp_path):
+    def test_close_task_moves_to_done(self, tmp_path, monkeypatch):
+        import orc.main as m
         from orc.main import _close_task_on_board
 
-        board_path = tmp_path / "orc" / "work" / "board.yaml"
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+
+        board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)
         existing_done = (
             "done:\n  - name: 0002-bar.md\n    commit-tag: abc\n"
@@ -490,29 +495,41 @@ class TestBoardReconciliation:
         done_entry = next(t for t in board["done"] if t.get("name") == "0003-foo.md")
         assert done_entry["commit-tag"] == "deadbeef"
 
-    def test_close_task_deletes_md_file(self, tmp_path):
+    def test_close_task_deletes_md_file(self, tmp_path, monkeypatch):
+        import orc.main as m
         from orc.main import _close_task_on_board
 
-        board_path = tmp_path / "orc" / "work" / "board.yaml"
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+
+        board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)
         board_path.write_text("counter: 1\nopen:\n  - name: 0003-foo.md\ndone: []\n")
-        task_md = tmp_path / "orc" / "work" / "0003-foo.md"
+        task_md = tmp_path / ".orc" / "work" / "0003-foo.md"
         task_md.write_text("# Task\n")
 
         _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc123")
 
         assert not task_md.exists()
 
-    def test_close_task_missing_board_does_not_raise(self, tmp_path):
+    def test_close_task_missing_board_does_not_raise(self, tmp_path, monkeypatch):
+        import orc.main as m
         from orc.main import _close_task_on_board
+
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
 
         # Should not raise even when board.yaml doesn't exist
         _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
 
-    def test_close_task_other_tasks_preserved(self, tmp_path):
+    def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
+        import orc.main as m
         from orc.main import _close_task_on_board
 
-        board_path = tmp_path / "orc" / "work" / "board.yaml"
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+
+        board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)
         board_path.write_text(
             "counter: 3\nopen:\n  - name: 0003-foo.md\n  - name: 0004-bar.md\ndone: []\n"

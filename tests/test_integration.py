@@ -91,11 +91,11 @@ def git_project(tmp_path, monkeypatch):
     (tmp_path / "README.md").write_text("# Test Project\n")
 
     # Bootstrap the orc/ structure using the real CLI
-    result = runner.invoke(m.app, ["bootstrap", "--orc-dir", "orc"], catch_exceptions=False)
+    result = runner.invoke(m.app, ["bootstrap", "--to", ".orc"], catch_exceptions=False)
     assert result.exit_code == 0, f"bootstrap failed:\n{result.output}"
 
     # Add a single dummy vision document
-    (tmp_path / "orc" / "vision" / "feature-x.md").write_text(_VISION_DOC)
+    (tmp_path / ".orc" / "vision" / "feature-x.md").write_text(_VISION_DOC)
 
     # Initial commit — required for git worktree operations
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
@@ -121,13 +121,12 @@ def orc_env(git_project, monkeypatch):
     Returns the project root :class:`~pathlib.Path`.
     """
     root = git_project
-    agents_dir = root / "orc"
+    agents_dir = root / ".orc"
     # Mirror the default DEV_WORKTREE convention (sibling of repo root)
     dev_wt = root.parent / f"{root.name}-dev"
 
     monkeypatch.setattr(m, "REPO_ROOT", root)
     monkeypatch.setattr(m, "AGENTS_DIR", agents_dir)
-    monkeypatch.setattr(m, "_AGENTS_DIR", agents_dir)
     monkeypatch.setattr(m, "WORK_DIR", agents_dir / "work")
     monkeypatch.setattr(m, "BOARD_FILE", agents_dir / "work" / "board.yaml")
     monkeypatch.setattr(m, "ROLES_DIR", agents_dir / "roles")
@@ -153,7 +152,7 @@ def mock_telegram(orc_env, monkeypatch):
 
     Returns the path to the chat.log file.
     """
-    log_file = orc_env / "orc" / "chat.log"
+    log_file = orc_env / ".orc" / "chat.log"
     monkeypatch.setattr(tg, "_LOG_FILE", log_file)
     monkeypatch.setattr(tg, "_get_telegram_updates", lambda limit=100: [])
 
@@ -179,8 +178,8 @@ def _planner_handler(task_name: str):
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
-        board_path = cwd / "orc" / "work" / "board.yaml"
-        task_file = cwd / "orc" / "work" / task_name
+        board_path = cwd / ".orc" / "work" / "board.yaml"
+        task_file = cwd / ".orc" / "work" / task_name
 
         task_file.write_text(f"# {task_name}\n\nImplement feature X per vision doc.\n")
 
@@ -190,7 +189,7 @@ def _planner_handler(task_name: str):
         board["counter"] = 2
         board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
 
-        subprocess.run(["git", "add", "orc/work/"], cwd=cwd, check=True, capture_output=True)
+        subprocess.run(["git", "add", ".orc/work/"], cwd=cwd, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", f"chore(orc): add task {task_name}"],
             cwd=cwd,
@@ -333,22 +332,22 @@ class TestBootstrap:
 
     def test_creates_expected_structure(self, git_project):
         root = git_project
-        assert (root / "orc" / "roles" / "planner.md").exists()
-        assert (root / "orc" / "roles" / "coder.md").exists()
-        assert (root / "orc" / "roles" / "qa.md").exists()
-        assert (root / "orc" / "squads" / "default.yaml").exists()
-        assert (root / "orc" / "work" / "board.yaml").exists()
-        assert (root / "orc" / "vision" / "feature-x.md").exists()
+        assert (root / ".orc" / "roles" / "planner.md").exists()
+        assert (root / ".orc" / "roles" / "coder.md").exists()
+        assert (root / ".orc" / "roles" / "qa.md").exists()
+        assert (root / ".orc" / "squads" / "default.yaml").exists()
+        assert (root / ".orc" / "work" / "board.yaml").exists()
+        assert (root / ".orc" / "vision" / "feature-x.md").exists()
         assert (root / ".env.example").exists()
 
     def test_board_starts_empty(self, git_project):
-        board = yaml.safe_load((git_project / "orc" / "work" / "board.yaml").read_text())
+        board = yaml.safe_load((git_project / ".orc" / "work" / "board.yaml").read_text())
         assert board["open"] == []
         assert board["done"] == []
         assert board["counter"] == 1
 
     def test_vision_doc_content(self, git_project):
-        content = (git_project / "orc" / "vision" / "feature-x.md").read_text()
+        content = (git_project / ".orc" / "vision" / "feature-x.md").read_text()
         assert content == _VISION_DOC
 
 
@@ -407,7 +406,7 @@ class TestFullWorkflowLoop:
 
         # ── Board state after merge ──────────────────────────────────────────
         dev_wt = orc_env.parent / f"{orc_env.name}-dev"
-        board = yaml.safe_load((dev_wt / "orc" / "work" / "board.yaml").read_text())
+        board = yaml.safe_load((dev_wt / ".orc" / "work" / "board.yaml").read_text())
 
         assert board["open"] == [], "Open task list should be empty after the merge"
 

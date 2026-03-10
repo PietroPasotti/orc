@@ -51,6 +51,7 @@ class TestBootMessageBody:
 class TestBootMessageSentBeforeInvoke:
     def _common_patches(self, monkeypatch, tmp_path):
         """Patch git helpers so tests don't hit subprocess."""
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
@@ -242,6 +243,7 @@ class TestBlockedResumption:
         return [make_msg(f"[{agent_id}](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
 
     def _common_patches(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
@@ -279,6 +281,7 @@ class TestBlockedResumption:
 
     def test_blocked_resumes_correct_agent(self, monkeypatch, tmp_path):
         """After a hard-block reply, the dispatcher routes to the correct role."""
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "validate_env", lambda: [])
         monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
@@ -345,6 +348,7 @@ class TestBlockedResumption:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
@@ -375,6 +379,7 @@ class TestBlockedResumption:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
@@ -419,6 +424,7 @@ class TestMergeCommand:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(m, "validate_env", lambda: [])
 
     def test_clean_rebase_merges_and_returns(self, monkeypatch, tmp_path):
@@ -621,9 +627,10 @@ class TestFeatureWorktree:
         monkeypatch.setattr(m.subprocess, "run", fake_run)
         monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
 
         # Create the board.yaml that _close_task_on_board expects in the dev worktree
-        work_dir = tmp_path / "orc" / "work"
+        work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True)
         board_yaml = work_dir / "board.yaml"
         board_yaml.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
@@ -651,6 +658,7 @@ class TestFeatureWorktree:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
 
         # Git-derived state: open task, no feature branch → coder
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
@@ -678,6 +686,7 @@ class TestFeatureWorktree:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
 
         # Git state: coder has commits → route to QA
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: True)
@@ -705,6 +714,7 @@ class TestFeatureWorktree:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
         monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
 
         # Git state: last commit is qa(passed) → _QA_PASSED sentinel → merge
         monkeypatch.setattr(m, "_feature_branch_exists", lambda b: True)
@@ -753,20 +763,20 @@ class TestBootstrap:
         result = runner.invoke(m.app, ["bootstrap"])
         assert result.exit_code == 0
         for subdir in ("roles", "squads", "vision", "work"):
-            assert (tmp_path / "orc" / subdir).is_dir()
+            assert (tmp_path / ".orc" / subdir).is_dir()
 
     def test_copies_bundled_roles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
         for role in ("planner", "coder", "qa"):
-            role_file = tmp_path / "orc" / "roles" / f"{role}.md"
+            role_file = tmp_path / ".orc" / "roles" / f"{role}.md"
             assert role_file.exists(), f"Missing {role}.md"
             assert len(role_file.read_text()) > 100
 
     def test_copies_default_squad(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        squad_file = tmp_path / "orc" / "squads" / "default.yaml"
+        squad_file = tmp_path / ".orc" / "squads" / "default.yaml"
         assert squad_file.exists()
         import yaml
 
@@ -783,14 +793,14 @@ class TestBootstrap:
     def test_creates_vision_readme(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        readme = tmp_path / "orc" / "vision" / "README.md"
+        readme = tmp_path / ".orc" / "vision" / "README.md"
         assert readme.exists()
         assert "vision" in readme.read_text().lower()
 
     def test_creates_empty_board(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        board = tmp_path / "orc" / "work" / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
         assert board.exists()
         import yaml
 
@@ -802,7 +812,7 @@ class TestBootstrap:
     def test_creates_justfile(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        justfile = tmp_path / "orc" / "justfile"
+        justfile = tmp_path / ".orc" / "justfile"
         assert justfile.exists()
         content = justfile.read_text()
         assert "orc run" in content
@@ -821,22 +831,22 @@ class TestBootstrap:
         runner.invoke(m.app, ["bootstrap"])
         # Overwrite the justfile with sentinel content
         sentinel = "# my custom justfile"
-        (tmp_path / "orc" / "justfile").write_text(sentinel)
+        (tmp_path / ".orc" / "justfile").write_text(sentinel)
         runner.invoke(m.app, ["bootstrap"])
         # Should not have been overwritten
-        assert (tmp_path / "orc" / "justfile").read_text() == sentinel
+        assert (tmp_path / ".orc" / "justfile").read_text() == sentinel
 
     def test_force_overwrites_existing_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        (tmp_path / "orc" / "justfile").write_text("# custom")
+        (tmp_path / ".orc" / "justfile").write_text("# custom")
         runner.invoke(m.app, ["bootstrap", "--force"])
         # Should have been overwritten with generated content
-        assert "orc run" in (tmp_path / "orc" / "justfile").read_text()
+        assert "orc run" in (tmp_path / ".orc" / "justfile").read_text()
 
     def test_custom_orc_dir(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        runner.invoke(m.app, ["bootstrap", "--orc-dir", "agents"])
+        runner.invoke(m.app, ["bootstrap", "--to", "agents"])
         assert (tmp_path / "agents" / "roles" / "planner.md").exists()
         assert (tmp_path / "agents" / "work" / "board.yaml").exists()
 
