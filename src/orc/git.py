@@ -17,6 +17,28 @@ from orc.dispatcher import QA_PASSED as _QA_PASSED
 logger = structlog.get_logger(__name__)
 
 
+def _default_branch() -> str:
+    """Return the repo's default branch name (e.g. 'main' or 'master')."""
+    result = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=_cfg.REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        # "origin/main" -> "main"
+        return result.stdout.strip().split("/", 1)[-1]
+    # Fallback: use the current branch name from HEAD (works in fresh local repos)
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=_cfg.REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def _ensure_dev_worktree() -> Path:
     """Ensure the ``dev`` branch and its worktree exist."""
     existing = subprocess.run(
@@ -66,7 +88,7 @@ def _ensure_feature_worktree(task_name: str) -> Path:
         text=True,
     )
     if not existing.stdout.strip():
-        subprocess.run(["git", "branch", branch, "main"], cwd=_cfg.REPO_ROOT, check=True)
+        subprocess.run(["git", "branch", branch, _default_branch()], cwd=_cfg.REPO_ROOT, check=True)
 
     if not wt_path.exists():
         subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
@@ -160,9 +182,9 @@ def _merge_feature_into_dev(task_name: str) -> None:
 
 
 def _feature_has_commits_ahead_of_main(branch: str) -> bool:
-    """Return True if *branch* has at least one commit not in main."""
+    """Return True if *branch* has at least one commit not in the default branch."""
     result = subprocess.run(
-        ["git", "log", "main.." + branch, "--oneline"],
+        ["git", "log", _default_branch() + ".." + branch, "--oneline"],
         cwd=_cfg.REPO_ROOT,
         capture_output=True,
         text=True,
