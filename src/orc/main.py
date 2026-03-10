@@ -112,7 +112,11 @@ WORK_DEV_BRANCH = "dev"
 
 # Placeholder values from .env.example that have not been filled in
 def _load_placeholders() -> frozenset[str]:
-    """Read default values from .env.example and treat them as placeholders."""
+    """Read unfilled placeholder values from .env.example.
+
+    Only values that look like example tokens (contain 'your-' or end in '-here')
+    are treated as placeholders; real defaults like 'copilot' are kept as valid.
+    """
     values: set[str] = {""}
     env_example = _TEMPLATES_DIR / ".env.example"
     for line in env_example.read_text().splitlines():
@@ -121,7 +125,7 @@ def _load_placeholders() -> frozenset[str]:
             continue
         if "=" in line:
             val = line.split("=", 1)[1].strip()
-            if val:
+            if val and ("your-" in val or val.endswith("-here")):
                 values.add(val)
     return frozenset(values)
 
@@ -1037,6 +1041,11 @@ def _app_entry(
             )
             raise typer.Exit(code=1)
         _init_paths(found, repo_root=Path.cwd())
+    elif project_dir is not None:
+        # --project-dir changed cwd; re-discover the config dir from the new root.
+        found = _find_config_dir()
+        if found is not None:
+            _init_paths(found)
 
 
 def _check_env_or_exit() -> None:

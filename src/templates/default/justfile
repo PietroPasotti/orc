@@ -6,7 +6,7 @@
 #
 # Then: just orc run, just orc status, just orc merge
 
-repo_root := justfile_directory() / ".."
+repo_root := source_directory() / ".."
 
 # List available orc recipes
 default:
