@@ -1544,5 +1544,13 @@ Next steps
     )
 
 
+@app.command()
+def version() -> None:
+    """Print the orc version."""
+    from importlib.metadata import version as _version
+
+    typer.echo(_version("orc"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
