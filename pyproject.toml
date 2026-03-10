@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "orc"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A standalone multi-agent orchestrator engine"
 requires-python = ">=3.13"
 dependencies = [
@@ -25,7 +25,17 @@ dev = [
     "ruff>=0.9",
     "pre-commit>=4.0",
     "commitizen>=4.0",
+    "hatch-vcs>=0.4",
 ]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "no-guess-dev"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/orc/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orc"]
@@ -46,10 +56,6 @@ select = ["E", "F", "I", "T20", "UP"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
 tag_format = "v$version"
-version_files = [
-    "pyproject.toml:version",
-]
 update_changelog_on_bump = true
 major_version_zero = true

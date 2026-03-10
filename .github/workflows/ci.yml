@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -11,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so hatch-vcs can read tags
 
       - uses: astral-sh/setup-uv@v5
         with:
@@ -28,12 +31,14 @@ jobs:
   release:
     needs: lint-and-test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     environment: pypi
     permissions:
       id-token: write  # required for trusted publishing
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so hatch-vcs can read tags
 
       - uses: astral-sh/setup-uv@v5
         with:

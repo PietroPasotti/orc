@@ -5,3 +5,4 @@ __pycache__/
 dist/
 *.egg-info/
 .ruff_cache/
+src/orc/_version.py
