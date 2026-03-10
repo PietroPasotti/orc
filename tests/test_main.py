@@ -7,7 +7,11 @@ import yaml as _yaml
 from conftest import FakePopen, make_msg
 from typer.testing import CliRunner
 
+import orc.cli.merge as _merge_mod
+import orc.config as _cfg
+import orc.context as _ctx
 import orc.dispatcher as _disp
+import orc.git as _git
 import orc.invoke as inv
 import orc.main as m
 import orc.telegram as tg
@@ -23,23 +27,23 @@ class TestBootMessageBody:
     def test_single_open_task(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         assert m._boot_message_body() == "picking up work/0002-foo.md."
 
     def test_multiple_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         assert m._boot_message_body() == "picking up work/0002-foo.md, work/0003-bar.md."
 
     def test_no_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen: []\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         assert m._boot_message_body() == "no open tasks on board."
 
     def test_missing_board(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(m, "BOARD_FILE", tmp_path / "nonexistent.yaml")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "nonexistent.yaml")
         assert m._boot_message_body() == "no open tasks on board."
 
 
@@ -51,27 +55,27 @@ class TestBootMessageBody:
 class TestBootMessageSentBeforeInvoke:
     def _common_patches(self, monkeypatch, tmp_path):
         """Patch git helpers so tests don't hit subprocess."""
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: None)
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda task: tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
+        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
     def test_boot_message_sent(self, tmp_path, monkeypatch):
         """Orchestrator sends (boot) message before invoking the agent."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         self._common_patches(monkeypatch, tmp_path)
 
         sent: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda text: sent.append(text))
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -85,15 +89,15 @@ class TestBootMessageSentBeforeInvoke:
         """Boot message must be sent BEFORE spawn is called."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         self._common_patches(monkeypatch, tmp_path)
 
         call_order: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda text: call_order.append("send"))
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def fake_spawn(*a, **kw):
@@ -243,18 +247,18 @@ class TestBlockedResumption:
         return [make_msg(f"[{agent_id}](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
 
     def _common_patches(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: None)
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda task: tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
+        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
     def test_blocked_agent_resumes_after_reply(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         self._common_patches(monkeypatch, tmp_path)
 
         blocked = self._blocked_msgs("coder-1")
@@ -268,10 +272,10 @@ class TestBlockedResumption:
             "build_agent_context",
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
-        monkeypatch.setattr(m, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
+        monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -281,11 +285,11 @@ class TestBlockedResumption:
 
     def test_blocked_resumes_correct_agent(self, monkeypatch, tmp_path):
         """After a hard-block reply, the dispatcher routes to the correct role."""
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
-        monkeypatch.setattr(m, "wait_for_human_reply", lambda msgs, **kw: "Help.")
+        monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Help.")
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -321,11 +325,11 @@ class TestBlockedResumption:
         for agent_id, board_content, git_map in cases:
             board = tmp_path / "board.yaml"
             board.write_text(board_content)
-            monkeypatch.setattr(m, "BOARD_FILE", board)
-            monkeypatch.setattr(m, "_ensure_feature_worktree", lambda task: tmp_path)
-            monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+            monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+            monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+            monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
             for attr, val in git_map.items():
-                monkeypatch.setattr(m, attr, lambda _b, v=val: v)
+                monkeypatch.setattr(_git, attr, lambda _b, v=val: v)
 
             blocked = self._blocked_msgs(agent_id)
             msg_iter = iter([blocked, []])
@@ -347,26 +351,26 @@ class TestBlockedResumption:
     def test_timeout_posts_telegram_message_and_exits(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: None)
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda task: tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
+        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
         monkeypatch.setattr(tg, "get_messages", lambda: self._blocked_msgs("coder-1"))
         sent: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda t: sent.append(t))
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def _timeout(msgs, **kw):
             raise TimeoutError("timed out")
 
-        monkeypatch.setattr(m, "wait_for_human_reply", _timeout)
+        monkeypatch.setattr(_ctx, "wait_for_human_reply", _timeout)
 
         rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert rc.exit_code == 1
@@ -378,19 +382,19 @@ class TestBlockedResumption:
         """planner(done) is not a blocked state — git routes to planner (no tasks)."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: None)
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda task: tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
+        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
         monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -423,15 +427,15 @@ class TestMergeCommand:
     def _setup(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
-        monkeypatch.setattr(m, "validate_env", lambda: [])
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
 
     def test_clean_rebase_merges_and_returns(self, monkeypatch, tmp_path):
         """Clean rebase: _complete_merge is called, exit 0."""
         self._setup(monkeypatch, tmp_path)
 
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         runs: list[list[str]] = []
 
         def fake_run(cmd, cwd=None, check=False, **kw):
@@ -442,7 +446,7 @@ class TestMergeCommand:
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
         completed: list[bool] = []
-        monkeypatch.setattr(m, "_complete_merge", lambda wt: completed.append(True))
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
@@ -451,7 +455,7 @@ class TestMergeCommand:
     def test_conflict_delegates_to_coder_then_completes(self, monkeypatch, tmp_path):
         """On conflict the coder is invoked; after it finishes the merge completes."""
         self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -467,16 +471,16 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "_conflict_status", lambda wt: "UU src/conflict.py")
-        monkeypatch.setattr(m, "_rebase_in_progress", lambda wt: False)
+        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/conflict.py")
+        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
 
         invocations: list[str] = []
         monkeypatch.setattr(
-            m, "invoke_agent", lambda name, ctx, mdl, **kw: invocations.append(name) or 0
+            _ctx, "invoke_agent", lambda name, ctx, mdl, **kw: invocations.append(name) or 0
         )
-        monkeypatch.setattr(m, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
         completed: list[bool] = []
-        monkeypatch.setattr(m, "_complete_merge", lambda wt: completed.append(True))
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
@@ -487,7 +491,7 @@ class TestMergeCommand:
     def test_conflict_agent_passes_conflict_extra_context(self, monkeypatch, tmp_path):
         """The coder agent receives an extra section describing the conflict."""
         self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -498,10 +502,10 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "_conflict_status", lambda wt: "UU src/foo.py")
-        monkeypatch.setattr(m, "_rebase_in_progress", lambda wt: False)
-        monkeypatch.setattr(m, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(m, "_complete_merge", lambda wt: None)
+        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
+        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: None)
 
         received_extra: list[str] = []
 
@@ -509,7 +513,7 @@ class TestMergeCommand:
             received_extra.append(extra)
             return "model", "ctx"
 
-        monkeypatch.setattr(m, "build_agent_context", capture_context)
+        monkeypatch.setattr(_ctx, "build_agent_context", capture_context)
 
         runner.invoke(m.app, ["merge"])
         assert len(received_extra) == 1
@@ -519,7 +523,7 @@ class TestMergeCommand:
     def test_conflict_agent_failure_exits_nonzero(self, monkeypatch, tmp_path):
         """If the coder agent fails, merge exits with its exit code."""
         self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -530,9 +534,9 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "_conflict_status", lambda wt: "UU src/foo.py")
-        monkeypatch.setattr(m, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
-        monkeypatch.setattr(m, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 2
@@ -540,7 +544,7 @@ class TestMergeCommand:
     def test_rebase_still_in_progress_after_agent_exits_nonzero(self, monkeypatch, tmp_path):
         """If the agent exits 0 but rebase is still stalled, exit 1."""
         self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -551,10 +555,10 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "_conflict_status", lambda wt: "UU src/foo.py")
-        monkeypatch.setattr(m, "_rebase_in_progress", lambda wt: True)
-        monkeypatch.setattr(m, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(m, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
+        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: True)
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1
@@ -578,17 +582,17 @@ class TestFeatureWorktree:
     def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         assert m._active_task_name() == "0001-foo.md"
 
     def test_active_task_name_returns_none_when_empty(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         assert m._active_task_name() is None
 
     def test_active_task_name_returns_none_when_no_board(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(m, "BOARD_FILE", tmp_path / "missing.yaml")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "missing.yaml")
         assert m._active_task_name() is None
 
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):
@@ -602,10 +606,10 @@ class TestFeatureWorktree:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
         # Point worktree path to a non-existent directory so the worktree add is triggered.
         absent_wt = tmp_path / "feat-0001-foo"
-        monkeypatch.setattr(m, "_feature_worktree_path", lambda t: absent_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: absent_wt)
 
         m._ensure_feature_worktree("0001-foo.md")
 
@@ -625,9 +629,9 @@ class TestFeatureWorktree:
             return r
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
 
         # Create the board.yaml that _close_task_on_board expects in the dev worktree
         work_dir = tmp_path / ".orc" / "work"
@@ -639,7 +643,7 @@ class TestFeatureWorktree:
         # Simulate worktree existing
         fake_wt = tmp_path / "colony-feat-0001-foo"
         fake_wt.mkdir()
-        monkeypatch.setattr(m, "_feature_worktree_path", lambda t: fake_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: fake_wt)
 
         m._merge_feature_into_dev("0001-foo.md")
 
@@ -657,26 +661,28 @@ class TestFeatureWorktree:
     def test_run_creates_feature_worktree_before_coder(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
 
         # Git-derived state: open task, no feature branch → coder
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: None)
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
-        monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         created: list[str] = []
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda t: created.append(t) or tmp_path)
+        monkeypatch.setattr(
+            _git, "_ensure_feature_worktree", lambda t: created.append(t) or tmp_path
+        )
 
         runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert created == ["0001-foo.md"]
@@ -685,26 +691,28 @@ class TestFeatureWorktree:
         """QA also gets a feature worktree, not the dev worktree."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
 
         # Git state: coder has commits → route to QA
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: True)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: True)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: "feat: implement it")
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: True)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: True)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: "feat: implement it")
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
-        monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         created: list[str] = []
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda t: created.append(t) or tmp_path)
+        monkeypatch.setattr(
+            _git, "_ensure_feature_worktree", lambda t: created.append(t) or tmp_path
+        )
 
         runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert created == ["0001-foo.md"], "QA should get the feature worktree, not dev"
@@ -713,22 +721,22 @@ class TestFeatureWorktree:
         """Merge is triggered by a qa(passed): commit, not by Telegram."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
-        monkeypatch.setattr(m, "BOARD_FILE", board)
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
 
         # Git state: last commit is qa(passed) → _QA_PASSED sentinel → merge
-        monkeypatch.setattr(m, "_feature_branch_exists", lambda b: True)
-        monkeypatch.setattr(m, "_feature_has_commits_ahead_of_main", lambda b: True)
-        monkeypatch.setattr(m, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(m, "_last_feature_commit_message", lambda b: "qa(passed): all good")
+        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: True)
+        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: True)
+        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: "qa(passed): all good")
 
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
-        monkeypatch.setattr(m, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
-        monkeypatch.setattr(m, "_ensure_dev_worktree", lambda: tmp_path)
-        monkeypatch.setattr(m, "_ensure_feature_worktree", lambda t: tmp_path)
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda t: tmp_path)
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -746,7 +754,7 @@ class TestFeatureWorktree:
             board_data.setdefault("done", []).append({"name": t})
             board.write_text(_yaml.dump(board_data))
 
-        monkeypatch.setattr(m, "_merge_feature_into_dev", fake_merge)
+        monkeypatch.setattr(_git, "_merge_feature_into_dev", fake_merge)
 
         runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert merged == ["0001-foo.md"]

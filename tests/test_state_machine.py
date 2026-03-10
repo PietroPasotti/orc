@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 from conftest import make_msg
 
+import orc.config as _cfg
 from orc import telegram as tg
 from orc.main import (
     _ORC_RESOLVED_RE,
@@ -56,11 +57,11 @@ class TestDeriveStateFromGit:
         is_merged=False,
         last_commit_msg=None,
     ):
-        monkeypatch.setattr("orc.main._active_task_name", lambda: active_task)
-        monkeypatch.setattr("orc.main._feature_branch_exists", lambda b: branch_exists)
-        monkeypatch.setattr("orc.main._feature_has_commits_ahead_of_main", lambda b: has_commits)
-        monkeypatch.setattr("orc.main._feature_merged_into_dev", lambda b: is_merged)
-        monkeypatch.setattr("orc.main._last_feature_commit_message", lambda b: last_commit_msg)
+        monkeypatch.setattr("orc.board._active_task_name", lambda: active_task)
+        monkeypatch.setattr("orc.git._feature_branch_exists", lambda b: branch_exists)
+        monkeypatch.setattr("orc.git._feature_has_commits_ahead_of_main", lambda b: has_commits)
+        monkeypatch.setattr("orc.git._feature_merged_into_dev", lambda b: is_merged)
+        monkeypatch.setattr("orc.git._last_feature_commit_message", lambda b: last_commit_msg)
 
     def test_no_open_tasks_returns_planner(self, monkeypatch):
         self._patch(monkeypatch, active_task=None, branch_exists=False, has_commits=False)
@@ -290,7 +291,7 @@ class TestPostResolved:
 
 class TestDetermineNextAgent:
     def _git_patch(self, monkeypatch, agent: str, reason: str = "test"):
-        monkeypatch.setattr("orc.main._derive_state_from_git", lambda: (agent, reason))
+        monkeypatch.setattr("orc.git._derive_state_from_git", lambda: (agent, reason))
 
     def test_no_messages_falls_through_to_git(self, monkeypatch):
         self._git_patch(monkeypatch, "coder")
@@ -468,11 +469,10 @@ class TestLocalChatLog:
 
 class TestBoardReconciliation:
     def test_close_task_moves_to_done(self, tmp_path, monkeypatch):
-        import orc.main as m
         from orc.main import _close_task_on_board
 
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)
@@ -496,11 +496,10 @@ class TestBoardReconciliation:
         assert done_entry["commit-tag"] == "deadbeef"
 
     def test_close_task_deletes_md_file(self, tmp_path, monkeypatch):
-        import orc.main as m
         from orc.main import _close_task_on_board
 
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)
@@ -513,21 +512,19 @@ class TestBoardReconciliation:
         assert not task_md.exists()
 
     def test_close_task_missing_board_does_not_raise(self, tmp_path, monkeypatch):
-        import orc.main as m
         from orc.main import _close_task_on_board
 
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
 
         # Should not raise even when board.yaml doesn't exist
         _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
 
     def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
-        import orc.main as m
         from orc.main import _close_task_on_board
 
-        monkeypatch.setattr(m, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(m, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True)

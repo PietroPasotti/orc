@@ -41,6 +41,8 @@ import yaml
 from conftest import FakePopen
 from typer.testing import CliRunner
 
+import orc.cli.merge as _merge_mod
+import orc.config as _cfg
 import orc.dispatcher as _disp
 import orc.invoke as inv
 import orc.main as m
@@ -125,13 +127,13 @@ def orc_env(git_project, monkeypatch):
     # Mirror the default DEV_WORKTREE convention (sibling of repo root)
     dev_wt = root.parent / f"{root.name}-dev"
 
-    monkeypatch.setattr(m, "REPO_ROOT", root)
-    monkeypatch.setattr(m, "AGENTS_DIR", agents_dir)
-    monkeypatch.setattr(m, "WORK_DIR", agents_dir / "work")
-    monkeypatch.setattr(m, "BOARD_FILE", agents_dir / "work" / "board.yaml")
-    monkeypatch.setattr(m, "ROLES_DIR", agents_dir / "roles")
-    monkeypatch.setattr(m, "ENV_FILE", root / ".env")
-    monkeypatch.setattr(m, "DEV_WORKTREE", dev_wt)
+    monkeypatch.setattr(_cfg, "REPO_ROOT", root)
+    monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
+    monkeypatch.setattr(_cfg, "WORK_DIR", agents_dir / "work")
+    monkeypatch.setattr(_cfg, "BOARD_FILE", agents_dir / "work" / "board.yaml")
+    monkeypatch.setattr(_cfg, "ROLES_DIR", agents_dir / "roles")
+    monkeypatch.setattr(_cfg, "ENV_FILE", root / ".env")
+    monkeypatch.setattr(_cfg, "DEV_WORKTREE", dev_wt)
 
     return root
 
@@ -362,8 +364,8 @@ class TestFullWorkflowLoop:
         monkeypatch,
     ):
         """Run four agent invocations and assert the full workflow state machine."""
-        monkeypatch.setattr(m, "validate_env", lambda: [])
-        monkeypatch.setattr(m, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
 
         result = runner.invoke(m.app, ["run", "--maxloops", "4"], catch_exceptions=False)
 
