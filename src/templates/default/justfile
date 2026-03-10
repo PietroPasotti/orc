@@ -22,8 +22,8 @@ run *args:
     uv run orc --project-dir {{repo_root}} run {{args}}
 
 # Print current workflow state without running any agent
-status:
-    uv run orc --project-dir {{repo_root}} status
+status *args:
+    uv run orc --project-dir {{repo_root}} status {{args}}
 
 # Rebase dev on main and fast-forward merge into main
 merge:

@@ -1093,22 +1093,80 @@ def _dev_log_since_main() -> list[str]:
     return result.stdout.strip().splitlines()
 
 
-def _status() -> None:
+def _status(squad: str = "default") -> None:
     messages = tg.get_messages()
     blocked_agent, blocked_state = _has_unresolved_block(messages)
-    next_agent, reason = determine_next_agent(messages)
-    # Translate action sentinels into human-readable labels for display
-    display_agent = next_agent
-    if next_agent == _QA_PASSED:
-        display_agent = "(merge pending)"
-    elif next_agent == _CLOSE_BOARD:
-        display_agent = "(board close pending)"
-    typer.echo(f"Open work  : {'yes' if has_open_work() else 'none'}")
-    if blocked_agent:
-        typer.echo(f"Blocked    : {blocked_agent}({blocked_state})")
-    typer.echo(f"Next agent : {display_agent or '(none – workflow blocked)'} — {reason}")
 
-    # --- Board summary ---------------------------------------------------
+    # Load squad (best-effort — status should degrade gracefully)
+    try:
+        squad_cfg = load_squad(squad, agents_dir=AGENTS_DIR)
+    except Exception:
+        squad_cfg = None
+
+    # --- Squad header --------------------------------------------------------
+    if squad_cfg:
+        coder_label = f"{squad_cfg.coder} coder{'s' if squad_cfg.coder != 1 else ''}"
+        qa_label = f"{squad_cfg.qa} QA"
+        typer.echo(
+            f"Squad  : {squad_cfg.name}"
+            f"  (1 planner · {coder_label} · {qa_label} · {squad_cfg.timeout_minutes} min)"
+        )
+
+    # --- Hard block warning --------------------------------------------------
+    if blocked_agent and blocked_state == "blocked":
+        typer.echo(f"\n⛔ Hard block: {blocked_agent} is waiting for human intervention.")
+
+    # --- Per-agent status ----------------------------------------------------
+    if squad_cfg:
+        # Categorise open tasks by which agent role they need next
+        coder_tasks: list[tuple[str, str]] = []  # (task_name, reason)
+        qa_tasks: list[tuple[str, str]] = []  # (task_name, branch)
+        merge_pending: list[str] = []
+        for task in get_open_tasks():
+            name = task["name"]
+            token, reason = _derive_task_state(name)
+            if token == "coder":
+                coder_tasks.append((name, reason))
+            elif token == "qa":
+                qa_tasks.append((name, _feature_branch(name)))
+            elif token == _QA_PASSED:
+                merge_pending.append(name)
+            # _CLOSE_BOARD is a housekeeping sentinel — skip from display
+
+        # Planner status
+        if not has_open_work():
+            planner_note = "ready to plan  (board empty)"
+        elif blocked_agent and blocked_state == "soft-blocked":
+            planner_note = f"ready to clarify soft-block from {blocked_agent}"
+        else:
+            planner_note = "idle"
+
+        width = 12  # column width for agent ID
+        typer.echo("\nAgent status:")
+        typer.echo(f"  {'planner-1':<{width}}  {planner_note}")
+
+        for i in range(1, squad_cfg.coder + 1):
+            idx = i - 1
+            if idx < len(coder_tasks):
+                name, _ = coder_tasks[idx]
+                note = f"ready to pick  {name}"
+            else:
+                note = "idle  (no work ready)"
+            typer.echo(f"  {f'coder-{i}':<{width}}  {note}")
+
+        for i in range(1, squad_cfg.qa + 1):
+            idx = i - 1
+            if idx < len(qa_tasks):
+                name, branch = qa_tasks[idx]
+                note = f"ready to review  {branch}"
+            else:
+                note = "idle"
+            typer.echo(f"  {f'qa-{i}':<{width}}  {note}")
+
+        if merge_pending:
+            typer.echo(f"\n  ⟳ Merge pending: {', '.join(merge_pending)}")
+
+    # --- Board summary -------------------------------------------------------
     board = _read_board()
     open_tasks = board.get("open", [])
     done_tasks = board.get("done", [])
@@ -1124,21 +1182,21 @@ def _status() -> None:
             else:
                 typer.echo(f"  • {name}  (no branch yet)")
 
-    # --- dev vs main -----------------------------------------------------
+    # --- dev vs main ---------------------------------------------------------
     ahead = _dev_ahead_of_main()
     if ahead:
         typer.echo(f"\ndev is {ahead} commit{'s' if ahead != 1 else ''} ahead of main")
-        log_lines = _dev_log_since_main()
-        for line in log_lines:
+        for line in _dev_log_since_main():
             typer.echo(f"  {line}")
         typer.echo("\nRun `orc merge` to fast-forward main.")
     else:
         typer.echo("\nmain is up to date with dev.")
 
-    # --- Done log --------------------------------------------------------
+    # --- Last completed tasks (newest first, capped at 5) --------------------
     if done_tasks:
-        typer.echo("\nCompleted tasks:")
-        for task in done_tasks:
+        recent = list(reversed(done_tasks[-5:]))
+        typer.echo(f"\nLast completed tasks ({len(recent)} of {len(done_tasks)}):")
+        for task in recent:
             name = task.get("name", "?") if isinstance(task, dict) else str(task)
             tag = task.get("commit-tag", "?") if isinstance(task, dict) else "?"
             ts = task.get("timestamp", "") if isinstance(task, dict) else ""
@@ -1147,9 +1205,17 @@ def _status() -> None:
 
 
 @app.command()
-def status() -> None:
+def status(
+    squad: Annotated[
+        str,
+        typer.Option(
+            "--squad",
+            help="Squad profile name used to determine agent slots. Default: 'default'.",
+        ),
+    ] = "default",
+) -> None:
     """Print current workflow state without running any agent."""
-    return _status()
+    return _status(squad=squad)
 
 
 def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:

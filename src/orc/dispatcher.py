@@ -48,6 +48,7 @@ from pathlib import Path
 
 import structlog
 import typer
+
 from orc import telegram as tg
 from orc.pool import AGENT_LOG_DIR, AgentPool, AgentProcess
 from orc.squad import SquadConfig
@@ -241,6 +242,10 @@ class Dispatcher:
                 dispatched = 0
 
             # 6. Check termination.
+            if self.dry_run:
+                logger.info("dry-run mode: printed one cycle, stopping")
+                break
+
             if maxloops > 0 and self._total_spawned >= maxloops:
                 logger.info("reached maxloops, stopping", maxloops=maxloops)
                 typer.echo(f"\n↩ Reached --maxloops {maxloops}. Stopping.")
@@ -252,9 +257,6 @@ class Dispatcher:
                     logger.info("no pending work and pool empty — workflow complete")
                     typer.echo("\n✓ No pending work. Workflow complete.")
                     break
-
-            if self.dry_run:
-                break  # dry-run: printed one cycle, done
 
             time.sleep(_POLL_INTERVAL)
 
@@ -347,13 +349,7 @@ class Dispatcher:
         model, context = self.cb.build_context(role, agent_id, messages, worktree)
 
         if self.dry_run:
-            sep = "─" * 60
-            typer.echo(f"\n{sep}")
-            typer.echo(f"Agent context for '{agent_id}' (model={model}, {len(context)} chars):")
-            typer.echo(sep)
-            typer.echo(context[:3000])
-            if len(context) > 3000:
-                typer.echo(f"\n... [{len(context) - 3000} chars truncated] ...")
+            typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
         body = self.cb.boot_message_body()
