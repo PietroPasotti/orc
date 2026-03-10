@@ -30,6 +30,7 @@ from typing import Annotated
 import structlog
 import typer
 import yaml
+from dotenv import load_dotenv
 
 from orc import dispatcher as _disp
 from orc import invoke as inv
@@ -92,6 +93,7 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     BOARD_FILE = WORK_DIR / "board.yaml"
     ROLES_DIR = agents_dir / "roles"
     ENV_FILE = Path.cwd() / ".env"
+    load_dotenv(ENV_FILE)  # load credentials from the project being orchestrated
     _worktree_sibling = REPO_ROOT.parent / f"{REPO_ROOT.name}-dev"
     DEV_WORKTREE = (
         _worktree_sibling
