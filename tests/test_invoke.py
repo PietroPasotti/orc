@@ -9,7 +9,6 @@ import pytest
 # Import after conftest has stubbed out dotenv
 from orc import invoke as iv
 
-
 # ---------------------------------------------------------------------------
 # _require_config
 # ---------------------------------------------------------------------------

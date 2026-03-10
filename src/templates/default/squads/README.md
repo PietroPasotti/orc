@@ -1,7 +1,9 @@
 # Squad profiles
 
 Drop `.yaml` files here to define or override squad configurations for this
-project.  Project-level profiles take precedence over the package defaults.
+project, or edit the default squad profile.  
+
+Project-defined profiles take precedence over orc defaults.
 
 ## Schema
 
