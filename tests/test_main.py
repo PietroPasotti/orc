@@ -268,7 +268,7 @@ class TestBlockedResumption:
 
         invocations: list[str] = []
         monkeypatch.setattr(
-            m,
+            _ctx,
             "build_agent_context",
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
@@ -337,7 +337,7 @@ class TestBlockedResumption:
 
             invocations: list[str] = []
             monkeypatch.setattr(
-                m,
+                _ctx,
                 "build_agent_context",
                 lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
             )
@@ -400,7 +400,7 @@ class TestBlockedResumption:
 
         invocations: list[str] = []
         monkeypatch.setattr(
-            m,
+            _ctx,
             "build_agent_context",
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
@@ -408,7 +408,7 @@ class TestBlockedResumption:
 
         wait_called: list[bool] = []
         monkeypatch.setattr(
-            m, "wait_for_human_reply", lambda msgs, **kw: wait_called.append(True) or ""
+            _ctx, "wait_for_human_reply", lambda msgs, **kw: wait_called.append(True) or ""
         )
 
         rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
@@ -861,7 +861,7 @@ class TestBootstrap:
     def test_output_reports_created_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(m.app, ["bootstrap"])
-        assert "Created" in result.output
+        assert "Bootstrapped" in result.output
         assert "justfile" in result.output
         assert "Next steps" in result.output
 

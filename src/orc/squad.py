@@ -67,7 +67,8 @@ from pathlib import Path
 import yaml
 
 # Package-bundled squads directory (fallback when project-level squad not found).
-_PACKAGE_SQUADS_DIR = Path(__file__).parent / "squads"
+# Lives inside the default template so there is a single source of truth.
+_PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
 
 # Kept for backward compatibility — points to the package bundled squads.
 SQUADS_DIR = _PACKAGE_SQUADS_DIR
