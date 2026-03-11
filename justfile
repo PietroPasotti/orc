@@ -19,21 +19,25 @@ fmt:
 
 # Create and push a new release tag, then poll the CI release pipeline.
 # Bump level: patch (default), minor, or major. Pass --nowait to skip polling.
+# Pass --update to force-update the current tag in place (re-triggers the release workflow).
 #   just release "fix: correct widget sizing"
 #   just release "feat: add export command" --minor
 #   just release "feat!: redesign API" --major
 #   just release "fix: typo" --nowait
+#   just release "fix: retry release" --update
 release message *flags:
     #!/usr/bin/env bash
     set -euo pipefail
 
     bump="patch"
     nowait=false
+    update=false
     for arg in {{ flags }}; do
         case "$arg" in
             --minor) bump="minor" ;;
             --major) bump="major" ;;
             --nowait) nowait=true ;;
+            --update) update=true ;;
             *) echo "Unknown argument: $arg" >&2; exit 1 ;;
         esac
     done
@@ -48,20 +52,31 @@ release message *flags:
         latest="v0.0.0"
     fi
 
-    IFS='.' read -r major minor patch <<< "${latest#v}"
+    if $update; then
+        if [[ "$latest" == "v0.0.0" ]]; then
+            echo "No existing tag to update." >&2; exit 1
+        fi
+        new_tag="$latest"
+        echo "Force-updating tag $new_tag"
+        git tag -fa "$new_tag" -m "{{ message }}"
+        git push --force origin "$new_tag"
+        echo "✓ Force-pushed $new_tag"
+    else
+        IFS='.' read -r major minor patch <<< "${latest#v}"
 
-    case "$bump" in
-        major) major=$((major + 1)); minor=0; patch=0 ;;
-        minor) minor=$((minor + 1)); patch=0 ;;
-        patch) patch=$((patch + 1)) ;;
-    esac
+        case "$bump" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+        esac
 
-    new_tag="v${major}.${minor}.${patch}"
-    echo "Tagging $latest → $new_tag"
+        new_tag="v${major}.${minor}.${patch}"
+        echo "Tagging $latest → $new_tag"
 
-    git tag -a "$new_tag" -m "{{ message }}"
-    git push origin "$new_tag"
-    echo "✓ Pushed $new_tag"
+        git tag -a "$new_tag" -m "{{ message }}"
+        git push origin "$new_tag"
+        echo "✓ Pushed $new_tag"
+    fi
 
     if $nowait; then
         echo "Skipping CI poll (--nowait)."
