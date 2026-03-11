@@ -52,5 +52,6 @@ class TestBoardCoverage:
     def test_active_task_name_returns_none_for_empty_board(self, tmp_path, monkeypatch):
         """Line 107: has_open_work returns False when board empty."""
         monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "board.yaml")
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         (tmp_path / "board.yaml").write_text("open: []\ndone: []\n")
         assert _board.has_open_work() is False

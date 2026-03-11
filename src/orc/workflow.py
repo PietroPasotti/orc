@@ -127,6 +127,12 @@ def determine_next_agent(messages: list[dict]) -> tuple[str | None, str]:
 
     agent, reason = _git._derive_state_from_git()
     logger.info("git-derived state", next_agent=agent, reason=reason)
+
+    if agent == "planner" and not _ctx._has_planner_work():
+        reason = "no vision docs, TODOs, or FIXMEs — nothing to plan"
+        logger.info("skipping planner — nothing to plan")
+        return None, reason
+
     return agent, reason
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 
@@ -30,6 +31,72 @@ def _read_adrs() -> str:
             continue
         parts.append(f"### {adr_file.name}\n\n{adr_file.read_text()}")
     return "\n\n---\n\n".join(parts) if parts else "_No ADRs found._"
+
+
+def _scan_todos(root: Path) -> list[dict]:
+    """Scan *root* for ``#TODO`` and ``#FIXME`` comments using ``git grep``.
+
+    Returns a list of ``{"file": str, "line": int, "tag": str, "text": str}``
+    dicts, one per matching line.  Returns an empty list when *root* is not a
+    git repository or when the command fails for any other reason.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "grep", "-n", "-I", "--no-color", "-E", r"#\s*(TODO|FIXME)"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return []
+
+    todos: list[dict] = []
+    for line in result.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        filepath, lineno_str, content = parts[0], parts[1], parts[2]
+        try:
+            lineno = int(lineno_str)
+        except ValueError:
+            continue
+        tag = "FIXME" if "FIXME" in content.upper() else "TODO"
+        todos.append({"file": filepath, "line": lineno, "tag": tag, "text": content.strip()})
+    return todos
+
+
+def _format_todos(todos: list[dict]) -> str:
+    """Format *todos* (from :func:`_scan_todos`) as a Markdown table."""
+    if not todos:
+        return "_No TODO or FIXME comments found in the codebase._"
+    rows = ["| File | Line | Tag | Comment |", "|------|------|-----|---------|"]
+    for t in todos:
+        rows.append(f"| `{t['file']}` | {t['line']} | `{t['tag']}` | {t['text']} |")
+    return "\n".join(rows)
+
+
+def _has_planner_work() -> bool:
+    """Return ``True`` if the planner has anything to do.
+
+    The planner has work when either:
+    - there are pending vision documents (present in ``AGENTS_DIR/vision/`` but
+      not yet tracked on the kanban board), **or**
+    - the codebase contains ``#TODO`` / ``#FIXME`` comments.
+    """
+    vision_dir = _cfg.AGENTS_DIR / "vision"
+    if vision_dir.is_dir():
+        board = _board._read_board()
+        all_task_stems = {
+            (t["name"] if isinstance(t, dict) else str(t))
+            for tasks in (board.get("open", []), board.get("done", []))
+            for t in tasks
+        }
+        for f in sorted(vision_dir.glob("*.md")):
+            if f.name.lower().startswith(".") or f.name.lower() == "readme.md":
+                continue
+            if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
+                return True
+    return bool(_scan_todos(_cfg.REPO_ROOT))
 
 
 def _parse_role_file(agent_name: str) -> str:
@@ -141,6 +208,11 @@ def build_agent_context(
 
     extra_section = f"## Current task\n\n{extra}\n\n" if extra else ""
 
+    todos_section = ""
+    if agent_name == "planner":
+        todos = _scan_todos(_cfg.REPO_ROOT)
+        todos_section = f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
+
     context = (
         f"{role}\n"
         f"{id_line}\n"
@@ -154,6 +226,7 @@ def build_agent_context(
         f"### Architecture Decision Records\n\n{adrs}\n\n"
         f"### Chat history (Telegram)\n\n{chat}\n\n"
         f"### Kanban board ({agents_rel}/work/)\n\n{plans}\n"
+        f"{todos_section}"
     )
     return resolved_model, context
 
