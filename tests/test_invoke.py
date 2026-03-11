@@ -5,6 +5,7 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import FakePopen
 
 # Import after conftest has stubbed out dotenv
 from orc import invoke as iv
@@ -172,3 +173,52 @@ class TestInvoke:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             iv.invoke("do the thing")
+
+
+# ---------------------------------------------------------------------------
+# spawn() coverage tests (from test_coverage.py)
+# ---------------------------------------------------------------------------
+
+
+class TestInvokeSpawn:
+    def test_spawn_copilot(self, tmp_path, monkeypatch):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        monkeypatch.setattr(iv, "_CLI", "copilot")
+        monkeypatch.setattr(iv, "_resolve_gh_token", lambda: "ghp_test")
+
+        fake_proc = FakePopen()
+        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+            proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="gpt-4", log_path=None)
+        assert proc is fake_proc
+        assert fh is None
+        Path(fake_proc._context_tmp).unlink(missing_ok=True)
+
+    def test_spawn_claude(self, tmp_path, monkeypatch):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        monkeypatch.setattr(iv, "_CLI", "claude")
+        monkeypatch.setattr(iv, "_resolve_anthropic_key", lambda: "key123")
+
+        fake_proc = FakePopen()
+        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+            proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="claude-3", log_path=None)
+        assert proc is fake_proc
+        Path(fake_proc._context_tmp).unlink(missing_ok=True)
+
+    def test_spawn_with_log_path(self, tmp_path, monkeypatch):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        monkeypatch.setattr(iv, "_CLI", "copilot")
+        monkeypatch.setattr(iv, "_resolve_gh_token", lambda: "ghp_test")
+
+        log_path = tmp_path / "agent.log"
+        fake_proc = FakePopen()
+        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+            proc, fh = iv.spawn("ctx", cwd=tmp_path, model="m", log_path=log_path)
+        assert fh is not None
+        fh.close()
+        Path(fake_proc._context_tmp).unlink(missing_ok=True)

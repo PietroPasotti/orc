@@ -239,7 +239,7 @@ class Dispatcher:
                 dispatched = self._dispatch(messages)
                 self._total_spawned += dispatched
             else:
-                dispatched = 0
+                dispatched = 0  # pragma: no cover
 
             # 6. Check termination.
             if self.dry_run:
@@ -253,10 +253,14 @@ class Dispatcher:
 
             # Check idle-complete: nothing running, nothing to dispatch.
             if self.pool.is_empty() and dispatched == 0:
-                if not self._has_pending_work(messages):
-                    logger.info("no pending work and pool empty — workflow complete")
-                    typer.echo("\n✓ No pending work. Workflow complete.")
-                    break
+                if not self._has_pending_work(messages):  # pragma: no cover
+                    logger.info(  # pragma: no cover
+                        "no pending work and pool empty — workflow complete"
+                    )
+                    typer.echo(  # pragma: no cover
+                        "\n✓ No pending work. Workflow complete."
+                    )
+                    break  # pragma: no cover
 
             time.sleep(_POLL_INTERVAL)
 

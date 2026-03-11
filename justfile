@@ -27,7 +27,7 @@ merge:
 
 # Run the test suite
 test:
-    uv run pytest tests/ -v --override-ini="addopts="
+    uv run pytest tests/ -v
 
 # Run tests with default options (includes coverage if configured)
 test-ci:

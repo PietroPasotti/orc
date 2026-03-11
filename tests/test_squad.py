@@ -372,3 +372,108 @@ class TestLoadAllSquads:
         """No squads dir in project → only package profiles."""
         profiles = load_all_squads(agents_dir=tmp_path)
         assert any(p.name == "default" for p in profiles)
+
+
+# ---------------------------------------------------------------------------
+# squad.py coverage gap tests (from test_coverage.py)
+# ---------------------------------------------------------------------------
+
+
+class TestSquadCoverage:
+    def test_parse_squad_file_skips_invalid_composition_entries(self, tmp_path):
+        """Lines 127, 130: non-dict and unknown-role entries skipped."""
+        from orc.squad import _parse_squad_file
+
+        squad_yaml = tmp_path / "test.yaml"
+        squad_yaml.write_text(
+            "name: test\n"
+            "composition:\n"
+            "  - not_a_dict\n"
+            "  - role: wizard\n    count: 1\n"
+            "  - role: coder\n    count: 2\n"
+            "timeout_minutes: 60\n"
+        )
+        cfg = _parse_squad_file("test", squad_yaml)
+        assert cfg.coder == 2
+
+    def test_parse_squad_file_invalid_count(self, tmp_path):
+        """Line 164: count < 1 raises ValueError."""
+        import pytest
+
+        from orc.squad import _parse_squad_file
+
+        squad_yaml = tmp_path / "bad.yaml"
+        squad_yaml.write_text(
+            "name: bad\ncomposition:\n  planner: 0\n  coder: 1\n  qa: 1\ntimeout_minutes: 60\n"
+        )
+        with pytest.raises(ValueError, match="planner"):
+            _parse_squad_file("bad", squad_yaml)
+
+    def test_load_all_squads_local_dir(self, tmp_path):
+        """Lines 227-228: local squads dir scanned."""
+        from orc.squad import load_all_squads
+
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir()
+        (squads_dir / "local.yaml").write_text(
+            "name: local\ncomposition:\n  planner: 1\n  coder: 1\n  qa: 1\ntimeout_minutes: 30\n"
+        )
+        profiles = load_all_squads(agents_dir=tmp_path)
+        names = [p.name for p in profiles]
+        assert "local" in names
+
+    def test_load_all_squads_bad_package_squad_skipped(self, tmp_path, monkeypatch):
+        """Lines 235-236: bad package squad silently skipped."""
+        import orc.squad as _sq
+        from orc.squad import load_all_squads
+
+        bad_file = tmp_path / "broken.yaml"
+        bad_file.write_text(": : invalid yaml\n")
+
+        class FakeDir:
+            def glob(self, pattern):
+                return [bad_file]
+
+        monkeypatch.setattr(_sq, "_PACKAGE_SQUADS_DIR", FakeDir())
+        profiles = load_all_squads(agents_dir=tmp_path / "nonexistent")
+        assert isinstance(profiles, list)
+
+    def test_list_squads_with_agents_dir(self, tmp_path):
+        """Line 253: list_squads uses agents_dir squads subdir."""
+        from orc.squad import list_squads
+
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir()
+        (squads_dir / "alpha.yaml").write_text("")
+        result = list_squads(agents_dir=tmp_path)
+        assert "alpha" in result
+
+    def test_parse_squad_file_timeout_too_low(self, tmp_path):
+        """Line 164: timeout_minutes < 1 raises ValueError."""
+        from orc.squad import _parse_squad_file
+
+        squad_yaml = tmp_path / "fast.yaml"
+        squad_yaml.write_text(
+            "name: fast\ncomposition:\n  - role: coder\n    count: 1\n"
+            "  - role: qa\n    count: 1\ntimeout_minutes: 0\n"
+        )
+        with pytest.raises(ValueError, match="timeout_minutes"):
+            _parse_squad_file("fast", squad_yaml)
+
+    def test_load_all_squads_bad_project_squad_skipped(self, tmp_path):
+        """Lines 227-228: except block in project-dir scan swallows bad yaml."""
+        from orc.squad import load_all_squads
+
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir()
+        (squads_dir / "broken.yaml").write_text(": : invalid yaml\n")
+        # Should not raise; bad file is silently skipped
+        profiles = load_all_squads(agents_dir=tmp_path)
+        assert isinstance(profiles, list)
+
+    def test_list_squads_no_squads_subdir(self, tmp_path):
+        """Line 253: list_squads returns [] when agents_dir/squads/ doesn't exist."""
+        from orc.squad import list_squads
+
+        result = list_squads(agents_dir=tmp_path)
+        assert result == []
