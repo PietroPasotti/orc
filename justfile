@@ -6,7 +6,7 @@ install:
 
 # Run the test suite
 test:
-    uv run pytest tests/
+    uv run pytest tests/ -v
 
 # Lint only (no changes)
 lint:

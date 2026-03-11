@@ -191,7 +191,9 @@ def _boot_message_body() -> str:
     return f"picking up {paths}."
 
 
-def invoke_agent(agent_name: str, context: str, model: str, worktree: Path | None = None) -> int:
+def invoke_agent(
+    agent_name: str, context: str, model: str, worktree: Path | None = None
+) -> int:  # pragma: no cover
     """Invoke the configured AI CLI with the agent's full context prompt."""
     cwd = worktree or _git._ensure_dev_worktree()
     return inv.invoke(context, cwd=cwd, model=model)

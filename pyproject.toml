@@ -26,6 +26,7 @@ dev = [
     "pre-commit>=4.0",
     "commitizen>=4.0",
     "hatch-vcs>=0.4",
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.hatch.version]
@@ -42,7 +43,15 @@ packages = ["src/orc", "src/templates"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ""
+addopts = "--cov=orc --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["orc"]
+omit = ["src/orc/_version.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
 
 [tool.ruff]
 src = ["src"]
