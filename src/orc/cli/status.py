@@ -47,6 +47,8 @@ def _pending_visions() -> list[str]:
     }
     result = []
     for f in sorted(vision_dir.glob("*.md")):
+        if f.name.lower().startswith("."):
+            continue
         if f.name.lower() == "readme.md":
             continue
         if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
@@ -102,13 +104,23 @@ def _status(squad: str = "default") -> None:
         coder_label = f"{squad_cfg.coder} coder{'s' if squad_cfg.coder != 1 else ''}"
         qa_label = f"{squad_cfg.qa} QA"
         typer.echo(
-            f"Squad  : {squad_cfg.name}"
+            f"Squad: {squad_cfg.name}"
             f"  (1 planner · {coder_label} · {qa_label} · {squad_cfg.timeout_minutes} min)"
         )
 
     # --- Hard block warning --------------------------------------------------
     if blocked_agent and blocked_state == "blocked":
         typer.echo(f"\n⛔ Hard block: {blocked_agent} is waiting for human intervention.")
+
+    # --- dev vs main ---------------------------------------------------------
+    ahead = _dev_ahead_of_main()
+    if ahead:
+        typer.echo(f"\ndev is {ahead} commit{'s' if ahead != 1 else ''} ahead of main")
+        for line in _dev_log_since_main():
+            typer.echo(f"  {line}")
+        typer.echo("\nRun `orc merge` to fast-forward main.")
+    else:
+        typer.echo("\nmain is up to date with dev.")
 
     # --- Per-agent status ----------------------------------------------------
     if squad_cfg:
@@ -180,16 +192,6 @@ def _status(squad: str = "default") -> None:
                 typer.echo(f"  • {name}  ({branch})  last: {last}")
             else:
                 typer.echo(f"  • {name}  (no branch yet)")
-
-    # --- dev vs main ---------------------------------------------------------
-    ahead = _dev_ahead_of_main()
-    if ahead:
-        typer.echo(f"\ndev is {ahead} commit{'s' if ahead != 1 else ''} ahead of main")
-        for line in _dev_log_since_main():
-            typer.echo(f"  {line}")
-        typer.echo("\nRun `orc merge` to fast-forward main.")
-    else:
-        typer.echo("\nmain is up to date with dev.")
 
     # --- Pending visions -----------------------------------------------------
     visions = _pending_visions()
