@@ -7,8 +7,9 @@
 # open     – tasks currently being worked on.
 # done     – completed tasks.
 
-counter: 1
+counter: 2
 
-open: []
+open:
+  - name: 0001-live-tui-status-view.md
 
 done: []
