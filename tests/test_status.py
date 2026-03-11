@@ -227,6 +227,7 @@ class TestStatusCoverage:
         vision_dir = tmp_path / "vision"
         vision_dir.mkdir()
         (vision_dir / "README.md").write_text("")
+        (vision_dir / ".hidden.md").write_text("")
         (vision_dir / "feature-a.md").write_text("")
         (vision_dir / "feature-b.md").write_text("")
         monkeypatch.setattr(_st._cfg, "AGENTS_DIR", tmp_path)
@@ -238,6 +239,7 @@ class TestStatusCoverage:
         result = _st._pending_visions()
         assert result == ["feature-b.md"]
         assert "README.md" not in result
+        assert ".hidden.md" not in result
 
     def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path):
         """Lines 65-73: feat/* branches with nonzero merge-base exit → unmerged."""
