@@ -163,6 +163,9 @@ def wait_for_human_reply(
     timeout: float = _BLOCKED_TIMEOUT,
 ) -> str:
     """Poll Telegram until a new human message appears after *messages_snapshot*."""
+    if not tg.is_configured():
+        logger.warning("Telegram not configured — cannot wait for human reply; treating as timeout")
+        raise TimeoutError("Telegram not configured; human reply not possible.")
     seen = frozenset((m.get("date", 0), m.get("text", "")) for m in messages_snapshot)
     delay = initial_delay
     deadline = time.monotonic() + timeout

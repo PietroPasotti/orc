@@ -4,10 +4,17 @@ Agents use this module to read and write messages instead of ``orc/chat.md``.
 The bot token and target chat ID are loaded from a ``.env`` file
 (auto-discovered from the current working directory upward).
 
-Required environment variables::
+Required environment variables (optional — Telegram is disabled when absent)::
 
     COLONY_TELEGRAM_TOKEN   – Bot token from @BotFather
     COLONY_TELEGRAM_CHAT_ID – Target chat/group/channel ID (numeric or @handle)
+
+When Telegram is not configured:
+
+* ``send_message`` writes only to the local log (no HTTP call).
+* ``get_messages`` returns only the local log (no incoming updates fetched).
+* Hard-blocked agents cannot be resolved via human reply; the dispatcher will
+  log a warning and exit rather than waiting indefinitely.
 
 Message format::
 
@@ -86,6 +93,11 @@ _MSG_RE = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)\s+\S+:\s+.*$")
 _AGENT_ID_RE = re.compile(r"^([a-z]+)-(\d+)$")
 
 
+def is_configured() -> bool:
+    """Return True if both Telegram env vars are present."""
+    return bool(_TOKEN and _CHAT_ID)
+
+
 def _require_config() -> None:
     """Raise a clear error if the bot token or chat ID is not configured."""
     if not _TOKEN:
@@ -147,12 +159,14 @@ def _get_telegram_updates(limit: int = 100) -> list[dict]:
 def send_message(text: str) -> dict:
     """Post *text* to the Telegram chat and record it in the local log.
 
-    The local log write happens first so the state machine always has the
-    message even if the Telegram call fails.
+    The local log write always happens so the local state machine has the
+    message even when Telegram is not configured or the API call fails.
+    When Telegram is not configured the function returns an empty dict.
     Raises ``httpx.HTTPStatusError`` on Telegram API errors.
     """
     _append_to_log(text)
-    _require_config()
+    if not is_configured():
+        return {}
     with httpx.Client(timeout=15, verify=_CA_BUNDLE) as client:
         resp = client.post(
             f"{_API_BASE}/sendMessage",
@@ -171,6 +185,8 @@ def get_messages(limit: int = 100) -> list[dict]:
     always sees events in the correct order.
     """
     local = _read_log()
+    if not is_configured():
+        return local
     try:
         remote = _get_telegram_updates(limit)
     except (OSError, Exception):

@@ -106,13 +106,8 @@ def validate_env() -> list[str]:
         )
         return errors
 
-    def check(var: str, hint: str) -> None:
-        val = os.environ.get(var, "").strip()
-        if not val or val in _PLACEHOLDERS:
-            errors.append(f"{var} is not set. {hint}")
-
-    check("COLONY_TELEGRAM_TOKEN", "Get a bot token from @BotFather on Telegram.")
-    check("COLONY_TELEGRAM_CHAT_ID", "Add the bot to a chat and get the numeric chat ID.")
+    # Telegram is optional — no validation here; orc works without it.
+    # (see src/orc/telegram.py for graceful-degradation behaviour)
 
     ai_cli = os.environ.get("COLONY_AI_CLI", "").strip().lower()
     if not ai_cli or ai_cli in _PLACEHOLDERS:

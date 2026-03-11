@@ -47,7 +47,11 @@ class TestWaitForHumanReply:
     def _human(self, text: str, ts: int) -> dict:
         return {"text": text, "date": ts, "from": {"username": "pietro", "first_name": "Pietro"}}
 
+    def _patch_configured(self, monkeypatch) -> None:
+        monkeypatch.setattr(tg, "is_configured", lambda: True)
+
     def test_returns_first_new_human_message(self, monkeypatch):
+        self._patch_configured(monkeypatch)
         snapshot = [make_msg("[coder-1](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
         human = self._human("Here is the clarification.", ts=2000)
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [human])
@@ -59,6 +63,7 @@ class TestWaitForHumanReply:
         assert result == "Here is the clarification."
 
     def test_skips_snapshot_messages(self, monkeypatch):
+        self._patch_configured(monkeypatch)
         old_human = self._human("old message", ts=500)
         snapshot = [old_human]
         new_human = self._human("new message", ts=600)
@@ -71,6 +76,7 @@ class TestWaitForHumanReply:
         assert result == "new message"
 
     def test_skips_agent_messages(self, monkeypatch):
+        self._patch_configured(monkeypatch)
         snapshot = [make_msg("[coder-1](blocked) 2026-03-09T11:00:00Z: Blocked.", ts=1000)]
         agent_msg = make_msg("[planner-1](ready) 2026-03-09T11:30:00Z: ADR updated.", ts=2000)
         human_msg = self._human("Please continue.", ts=3000)
@@ -92,6 +98,7 @@ class TestWaitForHumanReply:
         assert len(sleeps) == 2
 
     def test_exponential_backoff(self, monkeypatch):
+        self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         human = self._human("Done.", ts=9000)
         call_count = 0
@@ -113,6 +120,7 @@ class TestWaitForHumanReply:
         assert sleeps == [5.0, 10.0, 20.0]
 
     def test_backoff_capped_at_max_delay(self, monkeypatch):
+        self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         human = self._human("Done.", ts=9000)
         call_count = 0
@@ -136,6 +144,7 @@ class TestWaitForHumanReply:
     def test_raises_timeout_error(self, monkeypatch):
         import pytest
 
+        self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
         times = iter([0.0, 3601.0])
@@ -149,6 +158,7 @@ class TestWaitForHumanReply:
         """Sleep must not overshoot the deadline."""
         import pytest
 
+        self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
         times = iter([0.0, 9.0, 10.1])
@@ -160,6 +170,14 @@ class TestWaitForHumanReply:
             _ctx.wait_for_human_reply(snapshot, initial_delay=300.0, timeout=10.0)
 
         assert sleeps == [1.0]
+
+    def test_not_configured_raises_timeout_immediately(self, monkeypatch):
+        """Without Telegram, wait_for_human_reply raises TimeoutError immediately."""
+        import pytest
+
+        monkeypatch.setattr(tg, "is_configured", lambda: False)
+        with pytest.raises(TimeoutError, match="not configured"):
+            _ctx.wait_for_human_reply([], timeout=3600.0)
 
 
 # ---------------------------------------------------------------------------

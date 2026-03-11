@@ -49,7 +49,7 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "_require_config"),
+            patch.object(tg, "is_configured", return_value=True),
             patch("httpx.Client") as mock_client_cls,
         ):
             mock_client = MagicMock()
@@ -64,6 +64,20 @@ class TestLocalChatLog:
         assert len(lines) == 1
         assert lines[0]["text"] == "[planner-1](ready) 2026-03-09T10:00:00Z: Plan created."
 
+    def test_send_message_no_telegram_writes_log_only(self, tmp_path):
+        """When Telegram is not configured, send_message writes to local log only."""
+        log_file = tmp_path / "chat.log"
+        with (
+            patch.object(tg, "_LOG_FILE", log_file),
+            patch.object(tg, "is_configured", return_value=False),
+        ):
+            result = tg.send_message("[coder-1](ready) 2026-03-09T10:00:00Z: Done.")
+
+        assert result == {}
+        lines = [json.loads(ln) for ln in log_file.read_text().splitlines() if ln.strip()]
+        assert len(lines) == 1
+        assert lines[0]["text"] == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
+
     def test_get_messages_merges_log_and_telegram(self, tmp_path):
         log_file = tmp_path / "chat.log"
         bot_entry = {
@@ -77,6 +91,7 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
+            patch.object(tg, "is_configured", return_value=True),
             patch.object(tg, "_get_telegram_updates", return_value=[human_msg]),
         ):
             msgs = tg.get_messages()
@@ -84,6 +99,25 @@ class TestLocalChatLog:
         assert len(msgs) == 2
         assert msgs[0]["date"] == 1000
         assert msgs[1]["date"] == 2000
+
+    def test_get_messages_no_telegram_returns_log_only(self, tmp_path):
+        """When Telegram is not configured, get_messages returns local log only."""
+        log_file = tmp_path / "chat.log"
+        entry = {
+            "text": "[coder-1](ready) 2026-03-09T10:00:00Z: Done.",
+            "date": 1000,
+            "from": {"username": "bot", "first_name": "bot"},
+        }
+        log_file.write_text(json.dumps(entry) + "\n")
+
+        with (
+            patch.object(tg, "_LOG_FILE", log_file),
+            patch.object(tg, "is_configured", return_value=False),
+        ):
+            msgs = tg.get_messages()
+
+        assert len(msgs) == 1
+        assert msgs[0]["text"] == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
 
     def test_get_messages_deduplicates_by_text(self, tmp_path):
         log_file = tmp_path / "chat.log"
@@ -112,6 +146,7 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
+            patch.object(tg, "is_configured", return_value=True),
             patch.object(tg, "_get_telegram_updates", side_effect=Exception("no network")),
         ):
             msgs = tg.get_messages()
@@ -178,6 +213,16 @@ class TestTelegramCoverage:
     def test_make_agent_id_invalid_role_raises(self):
         with pytest.raises(ValueError, match="Unknown role"):
             tg.make_agent_id("wizard", 1)
+
+    def test_is_configured_true(self, monkeypatch):
+        monkeypatch.setattr(tg, "_TOKEN", "tok")
+        monkeypatch.setattr(tg, "_CHAT_ID", "123")
+        assert tg.is_configured() is True
+
+    def test_is_configured_false_no_token(self, monkeypatch):
+        monkeypatch.setattr(tg, "_TOKEN", None)
+        monkeypatch.setattr(tg, "_CHAT_ID", "123")
+        assert tg.is_configured() is False
 
     def test_parse_last_agent_message_returns_match(self):
         msgs = [

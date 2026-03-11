@@ -44,7 +44,7 @@ class TestConfigCoverage:
         monkeypatch.delenv("COLONY_AI_CLI", raising=False)
         monkeypatch.delenv("GH_TOKEN", raising=False)
         errors = _cfg.validate_env()
-        assert any("COLONY_TELEGRAM_TOKEN" in e for e in errors)
+        assert not any("COLONY_TELEGRAM_TOKEN" in e for e in errors), "Telegram is optional"
         assert any("COLONY_AI_CLI" in e for e in errors)
 
     def test_validate_env_unsupported_ai_cli(self, tmp_path, monkeypatch):
