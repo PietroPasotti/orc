@@ -609,26 +609,24 @@ class TestDispatcherCoverage:
 
 class TestDispatcherInternalCoverage:
     def test_has_pending_work_open_tasks_returns_true(self, tmp_path):
-        """_has_pending_work returns True when open tasks exist."""
+        """has_pending_work returns True when open tasks exist."""
         cb = _make_callbacks(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
         )
-        d = Dispatcher(_minimal_squad(), cb)
-        assert d._has_pending_work([]) is True
+        assert Dispatcher.has_pending_work(cb, []) is True
 
     def test_has_pending_work_blocked_returns_true(self, tmp_path):
-        """Lines 485-486: _has_pending_work returns True when blocked agent exists."""
+        """has_pending_work returns True when blocked agent exists."""
         cb = _make_callbacks(
             tmp_path,
             get_open_tasks=lambda: [],
         )
         cb.has_unresolved_block = lambda msgs: ("agent-42", "blocked")
-        d = Dispatcher(_minimal_squad(), cb)
-        assert d._has_pending_work([]) is True
+        assert Dispatcher.has_pending_work(cb, []) is True
 
     def test_has_pending_work_no_work_returns_false(self, tmp_path):
-        """Lines 485-486: _has_pending_work returns False when nothing pending."""
+        """has_pending_work returns False when nothing pending."""
         cb = _make_callbacks(
             tmp_path,
             get_open_tasks=lambda: [],
@@ -636,8 +634,7 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: [],
         )
         cb.has_unresolved_block = lambda msgs: (None, None)
-        d = Dispatcher(_minimal_squad(), cb)
-        assert d._has_pending_work([]) is False
+        assert Dispatcher.has_pending_work(cb, []) is False
 
     def test_kill_all_and_unassign(self, tmp_path):
         """Lines 493-496: _kill_all_and_unassign unassigns tasks and kills agents."""

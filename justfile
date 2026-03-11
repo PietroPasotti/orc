@@ -1,5 +1,9 @@
 mod orc '.orc/justfile'
 
+# List available recipes
+default:
+    @just --list
+
 # Install dependencies and git hooks
 install:
     uv sync --all-groups

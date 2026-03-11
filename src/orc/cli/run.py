@@ -106,12 +106,14 @@ def _run(
         on_agent_done=_on_agent_done if use_tui else None,
     )
 
+    if not _disp.Dispatcher.has_pending_work(callbacks, messages):
+        typer.echo("No pending work. Go write some vision!")
+        return
+
     try:
         dispatcher = _disp.Dispatcher(squad_cfg, callbacks, dry_run=dry_run)
         if use_tui and state is not None:
-            with _tui.live_context() as live:
-                live.update(_tui.render(state))
-
+            with _tui.live_context(_tui.render(state)) as live:
                 # Wrap dispatcher.run in a thread-free approach: we need to
                 # call live.update() periodically while run() executes.
                 # Since dispatcher.run() is synchronous, we hook into it by

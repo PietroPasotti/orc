@@ -295,7 +295,7 @@ class Dispatcher:
 
             # Check idle-complete: nothing running, nothing to dispatch.
             if not at_limit and self.pool.is_empty() and dispatched == 0:
-                if not self._has_pending_work(messages):
+                if not Dispatcher.has_pending_work(self.cb, messages):
                     logger.info("no pending work and pool empty — workflow complete")
                     typer.echo("\n✓ No pending work. Workflow complete.")
                     break
@@ -530,15 +530,19 @@ class Dispatcher:
     # Idle / done detection
     # ------------------------------------------------------------------
 
-    def _has_pending_work(self, messages: list[dict]) -> bool:
-        """Return True if there is any work that *could* be dispatched next cycle."""
-        open_tasks = self.cb.get_open_tasks()
-        if open_tasks:
+    @staticmethod
+    def has_pending_work(cb: DispatchCallbacks, messages: list[dict]) -> bool:
+        """Return True if there is any work that *could* be dispatched next cycle.
+
+        Exposed as a public static method so callers (e.g. ``orc run``) can
+        perform an early-exit check before entering the dispatch loop.
+        """
+        if cb.get_open_tasks():
             return True
-        if self.cb.get_pending_visions() or self.cb.get_pending_reviews():
+        if cb.get_pending_visions() or cb.get_pending_reviews():
             return True
         # Check if blocked: hard-blocked means work exists but is stalled.
-        blocked_agent, _ = self.cb.has_unresolved_block(messages)
+        blocked_agent, _ = cb.has_unresolved_block(messages)
         return blocked_agent is not None
 
     # ------------------------------------------------------------------

@@ -40,6 +40,9 @@ class TestRunBareRaise:
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
         monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(
+            _disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: True)
+        )
 
         def boom(*a, **kw):
             raise RuntimeError("crashed")
@@ -61,6 +64,7 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
     monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+    monkeypatch.setattr(_disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: True))
     if dispatcher_run is not None:
         monkeypatch.setattr(_disp.Dispatcher, "run", dispatcher_run)
     else:
@@ -85,7 +89,7 @@ class TestNoTuiFlag:
             def update(self, *a):
                 pass
 
-        monkeypatch.setattr(_tui_mod, "live_context", lambda **kw: FakeLive())
+        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: FakeLive())
         _patch_run_deps(monkeypatch, tmp_path)
 
         _run_mod._run(maxloops=1, no_tui=True)
@@ -110,7 +114,7 @@ class TestNoTuiFlag:
             def update(self, *a):
                 pass
 
-        monkeypatch.setattr(_tui_mod, "live_context", lambda **kw: FakeLive())
+        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: FakeLive())
         monkeypatch.setattr(
             sys,
             "stdout",
@@ -155,7 +159,7 @@ class TestTuiPath:
             captured_callbacks.append(callbacks)
             original_init(self, squad, callbacks, **kw)
 
-        monkeypatch.setattr(_tui_mod, "live_context", lambda **kw: live_mock)
+        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: live_mock)
         monkeypatch.setattr(
             sys,
             "stdout",
@@ -215,6 +219,25 @@ class TestTuiPath:
         monkeypatch.setattr(_run_mod, "_run", fake_run)
         runner.invoke(_main.app, ["run", "--no-tui"])
         assert called_with.get("no_tui") is True
+
+
+class TestEarlyExit:
+    def test_no_pending_work_skips_dispatcher(self, tmp_path, monkeypatch):
+        """_run() exits early without creating a Dispatcher when has_pending_work is False."""
+        _patch_run_deps(monkeypatch, tmp_path)
+        monkeypatch.setattr(
+            _disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: False)
+        )
+        dispatcher_run_called = []
+        monkeypatch.setattr(
+            _disp.Dispatcher, "run", lambda self, **kw: dispatcher_run_called.append(True)
+        )
+
+        _run_mod._run(maxloops=1, no_tui=True)
+
+        assert dispatcher_run_called == [], (
+            "dispatcher.run() must not be called when no pending work"
+        )
 
 
 class TestSafeDevAhead:

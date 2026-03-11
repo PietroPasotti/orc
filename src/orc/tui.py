@@ -123,6 +123,12 @@ def render(state: RunState) -> RenderableType:
     return table
 
 
-def live_context(refresh_per_second: int = 4) -> rich.live.Live:
-    """Return a pre-configured :class:`rich.live.Live` instance."""
-    return rich.live.Live(refresh_per_second=refresh_per_second)
+def live_context(
+    renderable: RenderableType | None = None,
+    refresh_per_second: int = 4,
+) -> rich.live.Live:
+    """Return a pre-configured :class:`rich.live.Live` instance.
+
+    Pass *renderable* to set the initial display and avoid a blank first frame.
+    """
+    return rich.live.Live(renderable, refresh_per_second=refresh_per_second)
