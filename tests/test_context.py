@@ -193,6 +193,7 @@ class TestWaitForHumanReply:
 class TestContextCoverage:
     def test_read_adrs_empty_dir(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
         result = _ctx._read_adrs()
         assert result == "_No ADRs found._"
 

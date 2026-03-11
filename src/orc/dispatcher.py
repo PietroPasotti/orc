@@ -146,6 +146,16 @@ class DispatchCallbacks:
     spawn_fn: Callable
     """``invoke.spawn(context, cwd, model, log_path) → (Popen, log_fh)``."""
 
+    # -- Pending-work queries --------------------------------------------
+
+    get_pending_visions: Callable[[], list[str]]
+    """Return vision .md filenames with no matching board task.
+    Used to decide whether a planner has anything to plan."""
+
+    get_pending_reviews: Callable[[], list[str]]
+    """Return feat/* branches not yet merged into dev.
+    Used to decide whether there is in-flight coding work to review."""
+
     # -- Optional lifecycle hooks ----------------------------------------
 
     on_agent_start: Callable[[AgentProcess], None] | None = None
@@ -281,14 +291,10 @@ class Dispatcher:
 
             # Check idle-complete: nothing running, nothing to dispatch.
             if not at_limit and self.pool.is_empty() and dispatched == 0:
-                if not self._has_pending_work(messages):  # pragma: no cover
-                    logger.info(  # pragma: no cover
-                        "no pending work and pool empty — workflow complete"
-                    )
-                    typer.echo(  # pragma: no cover
-                        "\n✓ No pending work. Workflow complete."
-                    )
-                    break  # pragma: no cover
+                if not self._has_pending_work(messages):
+                    logger.info("no pending work and pool empty — workflow complete")
+                    typer.echo("\n✓ No pending work. Workflow complete.")
+                    break
 
             time.sleep(_POLL_INTERVAL)
 
@@ -302,7 +308,10 @@ class Dispatcher:
         open_tasks = self.cb.get_open_tasks()
 
         if not open_tasks:
-            # No open tasks — dispatch planner if not already running.
+            # No open tasks — only dispatch planner if there is something
+            # for it to act on (unplanned vision docs or in-flight branches).
+            if not self.cb.get_pending_visions() and not self.cb.get_pending_reviews():
+                return 0
             if self.pool.count_by_role("planner") == 0:
                 dispatched += self._spawn_planner(messages)
             return dispatched
@@ -517,6 +526,8 @@ class Dispatcher:
         """Return True if there is any work that *could* be dispatched next cycle."""
         open_tasks = self.cb.get_open_tasks()
         if open_tasks:
+            return True
+        if self.cb.get_pending_visions() or self.cb.get_pending_reviews():
             return True
         # Check if blocked: hard-blocked means work exists but is stalled.
         blocked_agent, _ = self.cb.has_unresolved_block(messages)

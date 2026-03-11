@@ -100,6 +100,8 @@ def _run(
         boot_message_body=_ctx._boot_message_body,
         build_context=_wf._make_context_builder(squad_cfg),
         spawn_fn=inv.spawn,
+        get_pending_visions=_status_mod._pending_visions,
+        get_pending_reviews=_status_mod._pending_reviews,
         on_agent_start=_on_agent_start if use_tui else None,
         on_agent_done=_on_agent_done if use_tui else None,
     )

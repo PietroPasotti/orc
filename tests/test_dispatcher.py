@@ -65,6 +65,8 @@ def _make_callbacks(
     derive_task_state=None,
     spawn_fn=None,
     wait_for_human_reply=None,
+    get_pending_visions=None,
+    get_pending_reviews=None,
 ) -> _disp.DispatchCallbacks:
     """Return a fully-wired DispatchCallbacks for Dispatcher tests."""
     board_dir = tmp_path / ".orc" / "work"
@@ -91,6 +93,11 @@ def _make_callbacks(
         merge_feature=lambda task: None,
         wait_for_human_reply=wait_for_human_reply or (lambda msgs, **kw: "reply"),
         post_resolved=lambda a, s, r: None,
+        # Default to a non-empty pending visions list so that tests which
+        # exercise the "no open tasks → dispatch planner" path continue to
+        # work.  Tests that want truly-no-work behaviour must override this.
+        get_pending_visions=get_pending_visions or (lambda: ["placeholder.md"]),
+        get_pending_reviews=get_pending_reviews or (lambda: []),
     )
 
 
@@ -214,6 +221,12 @@ class TestBlockedResumption:
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
+        # The planner-1 case has an empty board.  A vision doc is required so
+        # the dispatcher has something for the planner to work on after the
+        # hard-block reply; without it the loop would exit with "no pending work".
+        (tmp_path / "vision").mkdir(exist_ok=True)
+        (tmp_path / "vision" / "feature-x.md").write_text("# Feature X\n")
+
         cases = [
             (
                 "planner-1",
@@ -304,6 +317,11 @@ class TestBlockedResumption:
         board.write_text("counter: 1\nopen: []\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+
+        # A vision doc gives the planner something to plan (otherwise no dispatch).
+        (tmp_path / "vision").mkdir(exist_ok=True)
+        (tmp_path / "vision" / "feature-x.md").write_text("# Feature X\n")
+
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -614,6 +632,8 @@ class TestDispatcherInternalCoverage:
         cb = _make_callbacks(
             tmp_path,
             get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
         )
         cb.has_unresolved_block = lambda msgs: (None, None)
         d = Dispatcher(_minimal_squad(), cb)

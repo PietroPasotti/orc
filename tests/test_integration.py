@@ -414,3 +414,44 @@ class TestFullWorkflowLoop:
 
         done_names = [(t["name"] if isinstance(t, dict) else str(t)) for t in board.get("done", [])]
         assert _TASK_NAME in done_names, f"{_TASK_NAME!r} not found in done list: {done_names}"
+
+
+class TestNoWorkExitsCleanly:
+    """Verify that ``orc run`` exits 0 with an informational message when there
+    is genuinely nothing to do: no vision docs, an empty board, and no open
+    feature branches."""
+
+    def test_exits_zero_with_info_message(
+        self,
+        orc_env,
+        mock_telegram,
+        monkeypatch,
+    ):
+        """Running ``orc run`` in a fully-idle project must exit 0 and print
+        a human-readable message instead of spawning any agents."""
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+
+        # Remove all vision docs so the project is genuinely idle: no unplanned
+        # vision docs, empty board, no open branches.
+        for f in (orc_env / ".orc" / "vision").glob("*.md"):
+            if f.name.lower() != "readme.md":
+                f.unlink()
+
+        # Guard: confirm the board really is empty before the run.
+        board = yaml.safe_load((orc_env / ".orc" / "work" / "board.yaml").read_text())
+        assert board["open"] == []
+
+        spawn_calls: list = []
+        monkeypatch.setattr(inv, "spawn", lambda *a, **kw: spawn_calls.append(a) or (None, None))
+
+        result = runner.invoke(m.app, ["run", "--maxloops", "0"], catch_exceptions=False)
+
+        assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}:\n{result.output}"
+        assert "No pending work" in result.output, (
+            f"Expected 'No pending work' in output:\n{result.output}"
+        )
+        assert spawn_calls == [], (
+            f"Expected no agents to be spawned, but got {len(spawn_calls)} spawn call(s)"
+        )
