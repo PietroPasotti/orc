@@ -34,6 +34,46 @@ def _dev_ahead_of_main() -> int:
         return 0
 
 
+def _pending_visions() -> list[str]:
+    """Return vision .md filenames (excl. README.md) with no matching board task."""
+    vision_dir = _cfg.AGENTS_DIR / "vision"
+    if not vision_dir.is_dir():
+        return []
+    board = _board._read_board()
+    all_task_stems = {
+        (t["name"] if isinstance(t, dict) else str(t))
+        for tasks in (board.get("open", []), board.get("done", []))
+        for t in tasks
+    }
+    result = []
+    for f in sorted(vision_dir.glob("*.md")):
+        if f.name.lower() == "readme.md":
+            continue
+        if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
+            result.append(f.name)
+    return result
+
+
+def _pending_reviews() -> list[str]:
+    """Return feat/* branches that exist locally but are not yet merged into dev."""
+    result = subprocess.run(
+        ["git", "branch", "--list", "feat/*"],
+        cwd=_cfg.REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    branches = [line.strip().lstrip("* ") for line in result.stdout.splitlines() if line.strip()]
+    unmerged = []
+    for branch in branches:
+        merged = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", branch, _cfg.WORK_DEV_BRANCH],
+            cwd=_cfg.REPO_ROOT,
+        )
+        if merged.returncode != 0:
+            unmerged.append(branch)
+    return unmerged
+
+
 def _dev_log_since_main() -> list[str]:
     """Return one-line summaries of commits on dev not yet in main."""
     result = subprocess.run(
@@ -150,6 +190,23 @@ def _status(squad: str = "default") -> None:
         typer.echo("\nRun `orc merge` to fast-forward main.")
     else:
         typer.echo("\nmain is up to date with dev.")
+
+    # --- Pending visions -----------------------------------------------------
+    visions = _pending_visions()
+    if visions:
+        shown = visions[:5]
+        typer.echo(f"\nPending visions ({len(shown)} of {len(visions)}):")
+        for v in shown:
+            typer.echo(f"  📄 {v}")
+
+    # --- Pending reviews (unmerged feat branches) ----------------------------
+    reviews = _pending_reviews()
+    if reviews:
+        shown_r = reviews[:5]
+        typer.echo(f"\nPending reviews ({len(shown_r)} of {len(reviews)}):")
+        for branch in shown_r:
+            last = _git._last_feature_commit_message(branch) or ""
+            typer.echo(f"  🔀 {branch}  last: {last}")
 
     # --- Last completed tasks (newest first, capped at 5) --------------------
     if done_tasks:

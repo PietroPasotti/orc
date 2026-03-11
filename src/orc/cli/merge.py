@@ -21,10 +21,21 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     """Rebase dev on top of main so every session starts with the latest instructions."""
     dev_worktree = _git._ensure_dev_worktree()
 
-    result = subprocess.run(["git", "rebase", "main"], cwd=dev_worktree)
+    result = subprocess.run(
+        ["git", "rebase", "main"], cwd=dev_worktree, capture_output=True, text=True
+    )
     if result.returncode == 0:
         typer.echo("✓ dev rebased on main.")
         return
+
+    if "unstaged changes" in result.stderr or "uncommitted changes" in result.stderr:
+        status_output = _git._conflict_status(dev_worktree)
+        typer.echo(
+            f"✗ Cannot rebase: the dev worktree has unstaged changes.\n\n"
+            f"{status_output}\n\n"
+            f"Please commit or stash these changes in the dev worktree, then retry `orc merge`."
+        )
+        raise typer.Exit(code=1)
 
     status_output = _git._conflict_status(dev_worktree)
     typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")

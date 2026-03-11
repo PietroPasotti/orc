@@ -27,7 +27,13 @@ from orc.cli.bootstrap import _bootstrap, _copy_file, _tree, _write_file  # noqa
 from orc.cli.merge import _merge, _rebase_dev_on_main  # noqa: F401
 from orc.cli.run import _run  # noqa: F401
 from orc.cli.squads import _squads  # noqa: F401
-from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main, _status  # noqa: F401
+from orc.cli.status import (  # noqa: F401
+    _dev_ahead_of_main,
+    _dev_log_since_main,
+    _pending_reviews,
+    _pending_visions,
+    _status,
+)
 from orc.cli.version import _version  # noqa: F401
 from orc.config import (  # noqa: F401
     _PACKAGE_DIR,
