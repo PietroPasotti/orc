@@ -17,15 +17,33 @@ fmt:
     uv run ruff check --fix src/ tests/
     uv run ruff format src/ tests/
 
-# Create and push a new release tag, then poll the CI release pipeline.
-# Bump level: patch (default), minor, or major. Pass nowait=true to skip polling.
-#   just release "fix: correct widget sizing"
-#   just release "feat: add export command" minor
-#   just release "feat!: redesign API" major
-#   just release "fix: typo" patch nowait=true
-release message bump="patch" nowait="false":
+# Create or force-update a release tag, then poll the CI release pipeline.
+#
+#   just release                          # interactive tag message, patch bump
+#   just release "fix: correct sizing"    # explicit message, patch bump
+#   just release "feat: export" --minor   # minor bump
+#   just release "feat!: new API" --major # major bump
+#   just release "fix: typo" --nowait     # skip CI poll
+#   just release --update                 # force-retag current version (re-triggers CI)
+#   just release "retry msg" --update     # force-retag with new message
+release *args:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    message=""
+    bump="patch"
+    nowait=false
+    update=false
+    for arg in {{ args }}; do
+        case "$arg" in
+            --update) update=true ;;
+            --minor)  bump="minor" ;;
+            --major)  bump="major" ;;
+            --nowait) nowait=true ;;
+            --*)      echo "Unknown flag: $arg (valid: --update --minor --major --nowait)" >&2; exit 1 ;;
+            *)        message="$arg" ;;
+        esac
+    done
 
     echo "Running tests before release…"
     just test
@@ -37,56 +55,43 @@ release message bump="patch" nowait="false":
         latest="v0.0.0"
     fi
 
-    IFS='.' read -r major minor patch <<< "${latest#v}"
+    if $update; then
+        if [[ "$latest" == "v0.0.0" ]]; then
+            echo "No existing release tag to update." >&2; exit 1
+        fi
+        new_tag="$latest"
+        echo "Force-updating tag $new_tag"
+        if [[ -n "$message" ]]; then
+            git tag -fa "$new_tag" -m "$message"
+        else
+            git tag -fa "$new_tag"
+        fi
+        git push --force origin "$new_tag"
+        echo "✓ Force-pushed $new_tag"
+    else
+        IFS='.' read -r major minor patch <<< "${latest#v}"
+        case "$bump" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+        esac
+        new_tag="v${major}.${minor}.${patch}"
+        echo "Tagging $latest → $new_tag"
+        if [[ -n "$message" ]]; then
+            git tag -a "$new_tag" -m "$message"
+        else
+            git tag -a "$new_tag"
+        fi
+        git push origin "$new_tag"
+        echo "✓ Pushed $new_tag"
+    fi
 
-    case "{{ bump }}" in
-        major) major=$((major + 1)); minor=0; patch=0 ;;
-        minor) minor=$((minor + 1)); patch=0 ;;
-        patch) patch=$((patch + 1)) ;;
-        *) echo "Unknown bump level: {{ bump }} (use patch, minor, or major)" >&2; exit 1 ;;
-    esac
-
-    new_tag="v${major}.${minor}.${patch}"
-    echo "Tagging $latest → $new_tag"
-    git tag -a "$new_tag" -m "{{ message }}"
-    git push origin "$new_tag"
-    echo "✓ Pushed $new_tag"
-
-    if [[ "{{ nowait }}" == "true" ]]; then
-        echo "Skipping CI poll (nowait=true)."
+    if $nowait; then
+        echo "Skipping CI poll (--nowait)."
         exit 0
     fi
 
     just _poll-release "$new_tag"
-
-# Force-update the current release tag to re-trigger the CI pipeline.
-#   just re-release "fix: retry release"
-#   just re-release "fix: retry release" nowait=true
-re-release message nowait="false":
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    echo "Running tests before release…"
-    just test
-    echo "✓ Tests passed"
-
-    latest=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-    if [[ -z "$latest" ]]; then
-        echo "No existing release tag found." >&2; exit 1
-    fi
-
-    echo "Force-updating tag $latest"
-    git tag -fa "$latest" -m "{{ message }}"
-    git push --force origin "$latest"
-    echo "✓ Force-pushed $latest"
-
-    if [[ "{{ nowait }}" == "true" ]]; then
-        echo "Skipping CI poll (nowait=true)."
-        exit 0
-    fi
-
-    just _poll-release "$latest"
-
 # (internal) Poll GitHub Actions for a release run on the given tag.
 _poll-release tag:
     #!/usr/bin/env bash
