@@ -6,6 +6,14 @@
 #
 # Then: just orc run, just orc status, just orc merge
 
+# TODO: add a `just logs [--path path] [--tail] [--agent all|orc|<agent-name>]` recipe to tail
+#  the relevant logs
+#  --agent all = merge orc and all agent logs (default)
+#  --agent orc = just the orchestrator logs
+#  --agent <agent-name> = just the logs for a specific agent (e.g. "agent-1", "qa-2")
+#  --path: optionally specify a custom log path (default: ~/.cache/orc)
+#  --tail: tail the logs instead of just printing the current contents
+
 repo_root := source_directory() / ".."
 
 # List available orc recipes

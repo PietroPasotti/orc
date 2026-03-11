@@ -25,6 +25,8 @@ import structlog
 
 _Format = Literal["console", "json"]
 
+# TODO: make the location of the logs folder configurable so the user can send all
+#  logs to e.g. ./orc if they want to.
 _CACHE_DIR = Path.home() / ".cache" / "orc"
 _DEFAULT_LOG_FILE = _CACHE_DIR / "orc.log"
 _DEFAULT_LEVEL = "INFO"

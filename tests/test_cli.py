@@ -46,7 +46,7 @@ class TestCliInitCoverage:
             "BOARD_FILE",
             "ROLES_DIR",
             "ENV_FILE",
-            "_worktree_sibling",
+            "WORKTREE_BASE",
         ):
             monkeypatch.setattr(_cfg, attr, getattr(_cfg, attr))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
@@ -63,7 +63,7 @@ class TestCliInitCoverage:
             "BOARD_FILE",
             "ROLES_DIR",
             "ENV_FILE",
-            "_worktree_sibling",
+            "WORKTREE_BASE",
         ):
             monkeypatch.setattr(_cfg, attr, getattr(_cfg, attr))
         orc_dir = tmp_path / ".orc"

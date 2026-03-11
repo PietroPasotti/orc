@@ -195,6 +195,7 @@ class TestLoadOrcConfig:
             "ROLES_DIR",
             "ENV_FILE",
             "DEV_WORKTREE",
+            "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
         )
         for k in _globals:
@@ -213,6 +214,7 @@ class TestLoadOrcConfig:
             "ROLES_DIR",
             "ENV_FILE",
             "DEV_WORKTREE",
+            "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
         )
         for k in _globals:
@@ -232,6 +234,7 @@ class TestLoadOrcConfig:
             "ROLES_DIR",
             "ENV_FILE",
             "DEV_WORKTREE",
+            "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
             "BRANCH_PREFIX",
         )
@@ -251,6 +254,7 @@ class TestLoadOrcConfig:
             "ROLES_DIR",
             "ENV_FILE",
             "DEV_WORKTREE",
+            "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
             "BRANCH_PREFIX",
         )
@@ -258,3 +262,70 @@ class TestLoadOrcConfig:
             monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
         _cfg._init_paths(agents_dir)
         assert _cfg.BRANCH_PREFIX == ""
+
+    def test_init_paths_sets_worktree_base_from_config(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        custom_base = tmp_path / "my-worktrees"
+        (agents_dir / "config.yaml").write_text(f"orc-worktree-base: {custom_base}\n")
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORKTREE_BASE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.WORKTREE_BASE == custom_base.resolve()
+
+    def test_init_paths_defaults_worktree_base_to_cache_orc(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORKTREE_BASE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.WORKTREE_BASE == Path.home() / ".cache" / "orc"
+
+    def test_init_paths_dev_worktree_under_worktree_base(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        custom_base = tmp_path / "wt"
+        (agents_dir / "config.yaml").write_text(
+            f"orc-worktree-base: {custom_base}\norc-dev-branch: staging\n"
+        )
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORKTREE_BASE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir, repo_root=tmp_path)
+        repo_name = tmp_path.name
+        assert _cfg.DEV_WORKTREE == custom_base.resolve() / repo_name / "staging"

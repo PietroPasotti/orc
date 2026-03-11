@@ -48,6 +48,7 @@ from orc.config import (  # noqa: F401
     ROLES_DIR,
     WORK_DEV_BRANCH,
     WORK_DIR,
+    WORKTREE_BASE,
     _find_config_dir,
     _init_paths,
     _load_orc_config,

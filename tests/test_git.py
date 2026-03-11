@@ -8,7 +8,7 @@ import yaml
 import orc.config as _cfg
 import orc.git as _git
 from orc.board import _active_task_name
-from orc.config import DEV_WORKTREE
+from orc.config import DEV_WORKTREE  # noqa: F401
 from orc.git import (
     _close_task_on_board,
     _derive_state_from_git,
@@ -245,10 +245,11 @@ class TestFeatureWorktree:
         monkeypatch.setattr(_cfg, "BRANCH_PREFIX", "")
         assert _feature_branch("0001-foo.md") == "feat/0001-foo"
 
-    def test_feature_worktree_path_is_sibling_of_dev(self):
+    def test_feature_worktree_path_under_worktree_base(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(_cfg, "WORKTREE_BASE", tmp_path / "wt")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path / "colony")
         wt = _feature_worktree_path("0003-resource-type-enum.md")
-        assert wt.parent == DEV_WORKTREE.parent
-        assert "feat-0003-resource-type-enum" in wt.name
+        assert wt == tmp_path / "wt" / "colony" / "0003-resource-type-enum"
 
     def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"

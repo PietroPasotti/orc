@@ -11,3 +11,11 @@ orc-dev-branch: dev
 #   "feat/<task>".  For example, setting this to "orc" produces branches
 #   like "orc/feat/0001-foo".  Leave empty (the default) for no prefix.
 # orc-branch-prefix: ""
+
+# orc-worktree-base: base directory for all git worktrees created by orc.
+#   Worktrees are placed at <base>/<repo-name>/<task-name>, e.g.
+#   ~/.cache/orc/colony/0001-foo.  The dev integration worktree lands at
+#   <base>/<repo-name>/<dev-branch>, e.g. ~/.cache/orc/colony/dev.
+#   Change this to /tmp if you prefer ephemeral worktrees, or to any
+#   other writable path.
+# orc-worktree-base: ~/.cache/orc

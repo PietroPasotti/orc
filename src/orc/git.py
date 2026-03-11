@@ -69,6 +69,7 @@ def _ensure_dev_worktree() -> Path:
         )
 
     if not _cfg.DEV_WORKTREE.exists():
+        _cfg.DEV_WORKTREE.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
         subprocess.run(
             ["git", "worktree", "add", str(_cfg.DEV_WORKTREE), _cfg.WORK_DEV_BRANCH],
@@ -117,9 +118,12 @@ def _feature_branch(task_name: str) -> str:
 
 
 def _feature_worktree_path(task_name: str) -> Path:
-    """Return the expected filesystem path of the feature worktree."""
-    slug = _feature_branch(task_name).replace("/", "-")
-    return _cfg.DEV_WORKTREE.parent / f"{_cfg.REPO_ROOT.name}-{slug}"
+    """Return the expected filesystem path of the feature worktree.
+
+    Worktrees are placed under ``WORKTREE_BASE / repo_name / task_stem``,
+    e.g. ``~/.cache/orc/colony/0001-foo`` for task ``0001-foo.md``.
+    """
+    return _cfg.WORKTREE_BASE / _cfg.REPO_ROOT.name / Path(task_name).stem
 
 
 def _ensure_feature_worktree(task_name: str) -> Path:
@@ -137,6 +141,7 @@ def _ensure_feature_worktree(task_name: str) -> Path:
         subprocess.run(["git", "branch", branch, _default_branch()], cwd=_cfg.REPO_ROOT, check=True)
 
     if not wt_path.exists():
+        wt_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
         subprocess.run(
             ["git", "worktree", "add", str(wt_path), branch],
