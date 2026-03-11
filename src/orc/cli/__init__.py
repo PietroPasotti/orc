@@ -84,4 +84,4 @@ def _check_env_or_exit() -> None:
 
 
 # Import command modules LAST to avoid circular imports
-from orc.cli import bootstrap, merge, run, squads, status, version  # noqa: E402, F401
+from orc.cli import bootstrap, logs, merge, run, squads, status, version  # noqa: E402, F401

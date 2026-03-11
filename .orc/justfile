@@ -12,6 +12,14 @@ repo_root := source_directory() / ".."
 default:
     @just --list --justfile {{source_file()}}
 
+# Print or tail orc log files.
+# Options:
+#   --path <dir>   Log directory (default: ~/.cache/orc)
+#   --agent <name> all | orc | <agent-name>  (default: all)
+#   --tail         Follow the log(s) with tail -f
+logs *args:
+    uv run orc --project-dir {{repo_root}} logs {{args}}
+
 # Run the next agent(s) in the workflow
 # Examples:
 #   just orc run                          # default squad, 1 invocation

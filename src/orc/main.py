@@ -24,6 +24,7 @@ from orc.cli import (
     app,  # noqa: F401
 )
 from orc.cli.bootstrap import _bootstrap, _copy_file, _tree, _write_file  # noqa: F401
+from orc.cli.logs import _logs  # noqa: F401
 from orc.cli.merge import _merge, _rebase_dev_on_main  # noqa: F401
 from orc.cli.run import _run  # noqa: F401
 from orc.cli.squads import _squads  # noqa: F401
