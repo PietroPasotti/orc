@@ -17,6 +17,20 @@ from orc.dispatcher import QA_PASSED as _QA_PASSED
 logger = structlog.get_logger(__name__)
 
 
+class MergeConflictError(Exception):
+    """Raised when ``git merge --no-ff`` stops with conflicts.
+
+    The merge is left in progress in *worktree* so that a coder agent can
+    resolve the conflict markers and run ``git merge --continue``.
+    """
+
+    def __init__(self, branch: str, worktree: Path, status_output: str) -> None:
+        self.branch = branch
+        self.worktree = worktree
+        self.status_output = status_output
+        super().__init__(f"merge conflict on {branch!r} in {worktree}")
+
+
 def _default_branch() -> str:
     """Return the repo's default branch name (e.g. 'main' or 'master')."""
     result = subprocess.run(
@@ -65,9 +79,41 @@ def _ensure_dev_worktree() -> Path:
     return _cfg.DEV_WORKTREE
 
 
+def _is_worktree_dirty(worktree: Path) -> bool:
+    """Return True if *worktree* has any uncommitted changes."""
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
+
+
+def _merge_in_progress(worktree: Path) -> bool:
+    """Return True if a merge is currently paused in *worktree*."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    git_dir = Path(result.stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = worktree / git_dir
+    return (git_dir / "MERGE_HEAD").exists()
+
+
 def _feature_branch(task_name: str) -> str:
-    """Return the feature branch name for *task_name*."""
-    return f"feat/{Path(task_name).stem}"
+    """Return the feature branch name for *task_name*.
+
+    When ``orc-branch-prefix`` is set, the branch is prefixed:
+    e.g. prefix ``"orc"`` → ``"orc/feat/0001-foo"``; no prefix → ``"feat/0001-foo"``.
+    """
+    branch = f"feat/{Path(task_name).stem}"
+    if _cfg.BRANCH_PREFIX:
+        return f"{_cfg.BRANCH_PREFIX}/{branch}"
+    return branch
 
 
 def _feature_worktree_path(task_name: str) -> Path:
@@ -137,10 +183,28 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
 
 
 def _merge_feature_into_dev(task_name: str) -> None:
-    """Merge the feature branch into dev, close the task in board.yaml, and clean up."""
+    """Merge the feature branch into dev, close the task in board.yaml, and clean up.
+
+    Before merging, if the dev worktree has uncommitted changes (e.g. from a
+    previously aborted merge), they are discarded with ``git reset --hard HEAD``
+    and a warning is logged.
+
+    If the merge produces conflicts the dev worktree is left in mid-merge state
+    and :class:`MergeConflictError` is raised so the caller can delegate conflict
+    resolution to a coder agent (which should run ``git merge --continue`` after
+    fixing the markers).
+    """
     branch = _feature_branch(task_name)
     wt_path = _feature_worktree_path(task_name)
     dev_wt = _ensure_dev_worktree()
+
+    if _is_worktree_dirty(dev_wt):
+        logger.warning(
+            "dev worktree is dirty before merge — resetting to HEAD",
+            worktree=str(dev_wt),
+            branch=branch,
+        )
+        subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=dev_wt, check=True)
 
     logger.info("merging feature into dev", feature_branch=branch, dev_branch=_cfg.WORK_DEV_BRANCH)
     subprocess.run(["git", "checkout", _cfg.WORK_DEV_BRANCH], cwd=dev_wt, check=True)
@@ -149,11 +213,8 @@ def _merge_feature_into_dev(task_name: str) -> None:
         cwd=dev_wt,
     )
     if merge_result.returncode != 0:
-        subprocess.run(["git", "merge", "--abort"], cwd=dev_wt)
-        raise subprocess.CalledProcessError(
-            merge_result.returncode,
-            merge_result.args,
-        )
+        status_output = _conflict_status(dev_wt)
+        raise MergeConflictError(branch, dev_wt, status_output)
 
     merge_sha = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],

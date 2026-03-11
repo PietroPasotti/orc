@@ -47,7 +47,7 @@ def _run(maxloops: int = 1, dry_run: bool = False, squad: str = "default") -> No
         unassign_task=_board.unassign_task,
         ensure_feature_worktree=_git._ensure_feature_worktree,
         ensure_dev_worktree=_git._ensure_dev_worktree,
-        merge_feature=_git._merge_feature_into_dev,
+        merge_feature=_wf._make_merge_feature_fn(squad_cfg),
         do_close_board=_wf._do_close_board,
         get_messages=tg.get_messages,
         has_unresolved_block=_wf._has_unresolved_block,

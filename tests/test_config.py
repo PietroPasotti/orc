@@ -219,3 +219,42 @@ class TestLoadOrcConfig:
             monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
         _cfg._init_paths(agents_dir)
         assert _cfg.WORK_DEV_BRANCH == "dev"
+
+    def test_init_paths_sets_branch_prefix_from_config(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        (agents_dir / "config.yaml").write_text("orc-branch-prefix: orc\n")
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.BRANCH_PREFIX == "orc"
+
+    def test_init_paths_defaults_branch_prefix_to_empty_string(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.BRANCH_PREFIX == ""

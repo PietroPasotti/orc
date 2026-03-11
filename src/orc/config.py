@@ -71,7 +71,7 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     where the config dir lives.
     """
     global AGENTS_DIR, WORK_DIR, BOARD_FILE, ROLES_DIR, REPO_ROOT, ENV_FILE
-    global DEV_WORKTREE, _worktree_sibling, WORK_DEV_BRANCH
+    global DEV_WORKTREE, _worktree_sibling, WORK_DEV_BRANCH, BRANCH_PREFIX
     AGENTS_DIR = agents_dir
     REPO_ROOT = (repo_root or agents_dir.parent).resolve()
     WORK_DIR = agents_dir / "work"
@@ -85,7 +85,9 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
         if os.access(REPO_ROOT.parent, os.W_OK)
         else Path("/tmp") / f"{REPO_ROOT.name}-dev"
     )
-    WORK_DEV_BRANCH = _load_orc_config(agents_dir).get("orc-dev-branch", "dev")
+    _orc_config = _load_orc_config(agents_dir)
+    WORK_DEV_BRANCH = _orc_config.get("orc-dev-branch", "dev")
+    BRANCH_PREFIX = _orc_config.get("orc-branch-prefix", "")
 
 
 # Initialise at import time (best-effort; commands re-validate at runtime).

@@ -236,6 +236,15 @@ class TestFeatureWorktree:
         assert _feature_branch("0003-resource-type-enum.md") == "feat/0003-resource-type-enum"
         assert _feature_branch("0001-foo.md") == "feat/0001-foo"
 
+    def test_feature_branch_naming_with_prefix(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "BRANCH_PREFIX", "orc")
+        assert _feature_branch("0001-foo.md") == "orc/feat/0001-foo"
+        assert _feature_branch("0003-resource-type-enum.md") == "orc/feat/0003-resource-type-enum"
+
+    def test_feature_branch_naming_empty_prefix_has_no_prefix(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "BRANCH_PREFIX", "")
+        assert _feature_branch("0001-foo.md") == "feat/0001-foo"
+
     def test_feature_worktree_path_is_sibling_of_dev(self):
         wt = _feature_worktree_path("0003-resource-type-enum.md")
         assert wt.parent == DEV_WORKTREE.parent
@@ -434,8 +443,8 @@ class TestGitCoverage:
         cmds_str = [" ".join(c) for c in runs]
         assert any("commit" in c for c in cmds_str)
 
-    def test_merge_feature_aborts_on_conflict(self, tmp_path, monkeypatch):
-        """When git merge fails, merge --abort is called and CalledProcessError is raised."""
+    def test_merge_feature_raises_merge_conflict_error_on_conflict(self, tmp_path, monkeypatch):
+        """When git merge fails, MergeConflictError is raised (no --abort) so coder can resolve."""
         import orc.config as _cfg
         import orc.git as _git
 
@@ -456,17 +465,96 @@ class TestGitCoverage:
             runs.append(cmd)
             r = MagicMock()
             r.args = cmd
-            r.returncode = 1 if "merge" in cmd and "--abort" not in cmd and "--no-ff" in cmd else 0
-            r.stdout = ""
+            r.returncode = 1 if "--no-ff" in cmd else 0
+            r.stdout = "UU src/conflict.py\n"
             return r
 
         import pytest
 
         with patch("orc.git.subprocess.run", fake_run):
-            with pytest.raises(subprocess.CalledProcessError):
+            with pytest.raises(_git.MergeConflictError) as exc_info:
                 _git._merge_feature_into_dev("0001-task.md")
 
+        assert exc_info.value.branch == "feat/0001-task"
+        assert exc_info.value.worktree == dev_wt
         cmds_str = [" ".join(c) for c in runs]
-        assert any("merge" in c and "--abort" in c for c in cmds_str), (
-            "expected git merge --abort to be called after conflict"
+        assert not any("--abort" in c for c in cmds_str), (
+            "git merge --abort must NOT be called; leave merge in progress for coder"
         )
+
+    def test_merge_feature_resets_dirty_dev_before_merge(self, tmp_path, monkeypatch):
+        """When dev worktree is dirty, git reset --hard HEAD is called before the merge."""
+        import orc.config as _cfg
+        import orc.git as _git
+
+        dev_wt = tmp_path / "dev"
+        dev_wt.mkdir()
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir()
+
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / "orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+        monkeypatch.setattr(_git, "_is_worktree_dirty", lambda p: True)
+
+        runs = []
+
+        def fake_run(cmd, **kw):
+            runs.append(cmd)
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "abc1234\n" if "--short" in cmd else ""
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            _git._merge_feature_into_dev("0001-task.md")
+
+        cmds_str = [" ".join(c) for c in runs]
+        assert any("reset" in c and "--hard" in c and "HEAD" in c for c in cmds_str), (
+            "expected git reset --hard HEAD when dev worktree is dirty"
+        )
+
+    def test_is_worktree_dirty_true(self, tmp_path):
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.stdout = " M src/foo.py\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            assert _git._is_worktree_dirty(tmp_path) is True
+
+    def test_is_worktree_dirty_false(self, tmp_path):
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.stdout = ""
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            assert _git._is_worktree_dirty(tmp_path) is False
+
+    def test_merge_in_progress_true(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "MERGE_HEAD").write_text("abc1234\n")
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.stdout = ".git\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            assert _git._merge_in_progress(tmp_path) is True
+
+    def test_merge_in_progress_false(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.stdout = ".git\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            assert _git._merge_in_progress(tmp_path) is False

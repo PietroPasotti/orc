@@ -23,7 +23,10 @@ Orc's work happens on a `dev` branch, so that you can keep working on `main` ind
 Any time control goes to the orchestrator, the orchestrator will rebase `dev` on `main`.
 Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate fixing any conflicts to an agent.
 
+If the dev worktree is dirty when a feature branch is being merged (e.g. from a previously interrupted run), orc automatically resets it to `HEAD` before retrying.  If the merge itself produces conflicts, a coder agent is spawned to resolve them before the run continues.
+
 > **Tip:** the integration branch name (`dev`) is configurable via `orc-dev-branch` in `.orc/config.yaml`.
+> **Tip:** all orc-owned feature branches can be namespaced with a prefix via `orc-branch-prefix` in `.orc/config.yaml` (e.g. `orc-branch-prefix: orc` produces branches like `orc/feat/0001-foo`).
 
 ## Installation
 
