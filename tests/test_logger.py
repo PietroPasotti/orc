@@ -27,3 +27,29 @@ class TestLoggerCoverage:
         monkeypatch.setenv("ORC_LOG_FILE", "")
         _log.setup()
         monkeypatch.delenv("ORC_LOG_FILE")
+
+    def test_setup_orc_log_dir(self, tmp_path, monkeypatch):
+        """ORC_LOG_DIR set, ORC_LOG_FILE unset → log file is $ORC_LOG_DIR/orc.log."""
+        monkeypatch.delenv("ORC_LOG_FILE", raising=False)
+        monkeypatch.setenv("ORC_LOG_DIR", str(tmp_path))
+        _log.setup()
+        assert (tmp_path / "orc.log").exists()
+
+    def test_setup_orc_log_file_takes_precedence_over_log_dir(self, tmp_path, monkeypatch):
+        """ORC_LOG_FILE overrides ORC_LOG_DIR when both are set."""
+        log_file = tmp_path / "explicit.log"
+        log_dir = tmp_path / "dir"
+        log_dir.mkdir()
+        monkeypatch.setenv("ORC_LOG_FILE", str(log_file))
+        monkeypatch.setenv("ORC_LOG_DIR", str(log_dir))
+        _log.setup()
+        assert log_file.exists()
+        assert not (log_dir / "orc.log").exists()
+
+    def test_setup_default_path_when_neither_set(self, monkeypatch):
+        """Neither ORC_LOG_FILE nor ORC_LOG_DIR → default path is used."""
+        monkeypatch.delenv("ORC_LOG_FILE", raising=False)
+        monkeypatch.delenv("ORC_LOG_DIR", raising=False)
+        # Just ensure setup() runs without error; default path creation is
+        # a side effect we don't want to assert on in unit tests.
+        _log.setup(log_file=None)

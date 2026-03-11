@@ -5,6 +5,7 @@ from unittest.mock import patch
 from conftest import make_msg
 
 import orc.config as _cfg
+import orc.context as _ctx
 import orc.git as _git
 import orc.telegram as tg
 from orc.workflow import (
@@ -172,6 +173,7 @@ class TestDetermineNextAgent:
 
     def test_git_routing_no_tasks(self, monkeypatch):
         self._git_patch(monkeypatch, "planner", "no open tasks on board")
+        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: True)
         agent, reason = determine_next_agent([])
         assert agent == "planner"
         assert "no open tasks" in reason
@@ -188,9 +190,18 @@ class TestDetermineNextAgent:
 
     def test_git_routing_merged(self, monkeypatch):
         self._git_patch(monkeypatch, "planner", "feature branch already merged into dev")
+        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: True)
         agent, reason = determine_next_agent([])
         assert agent == "planner"
         assert "merged" in reason
+
+    def test_planner_skipped_when_no_work(self, monkeypatch):
+        """Planner is skipped when there are no vision docs or TODOs/FIXMEs."""
+        self._git_patch(monkeypatch, "planner", "no open tasks on board")
+        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: False)
+        agent, reason = determine_next_agent([])
+        assert agent is None
+        assert "nothing to plan" in reason
 
     def test_block_overrides_git_state(self, monkeypatch):
         """Even if git says QA, a hard block should return None."""

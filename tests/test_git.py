@@ -262,10 +262,12 @@ class TestFeatureWorktree:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _active_task_name() is None
 
     def test_active_task_name_returns_none_when_no_board(self, monkeypatch, tmp_path):
         monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "missing.yaml")
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _active_task_name() is None
 
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):

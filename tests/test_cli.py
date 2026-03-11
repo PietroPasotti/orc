@@ -1,6 +1,7 @@
 """Tests for orc/cli/__init__.py."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -71,3 +72,59 @@ class TestCliInitCoverage:
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         result = runner.invoke(m.app, ["--project-dir", str(tmp_path), "version"])
         assert result.exit_code == 0
+
+
+class TestLogsCommand:
+    def test_logs_no_files_exits_nonzero(self, tmp_path):
+        result = runner.invoke(m.app, ["logs", "--path", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "No log files found" in result.output
+
+    def test_logs_agent_all_prints_existing_files(self, tmp_path):
+        (tmp_path / "orc.log").write_text("orchestrator log\n")
+        (tmp_path / "coder-1.log").write_text("coder log\n")
+        with patch("subprocess.run") as mock_run:
+            result = runner.invoke(m.app, ["logs", "--path", str(tmp_path)])
+        assert result.exit_code == 0
+        called_cmd = mock_run.call_args[0][0]
+        assert called_cmd[0] == "cat"
+        assert any("orc.log" in c for c in called_cmd)
+        assert any("coder-1.log" in c for c in called_cmd)
+
+    def test_logs_agent_orc_only(self, tmp_path):
+        (tmp_path / "orc.log").write_text("orc log\n")
+        with patch("subprocess.run") as mock_run:
+            result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--agent", "orc"])
+        assert result.exit_code == 0
+        called_cmd = mock_run.call_args[0][0]
+        assert any("orc.log" in c for c in called_cmd)
+
+    def test_logs_agent_named(self, tmp_path):
+        (tmp_path / "coder-1.log").write_text("coder log\n")
+        with patch("subprocess.run") as mock_run:
+            result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--agent", "coder-1"])
+        assert result.exit_code == 0
+        called_cmd = mock_run.call_args[0][0]
+        assert any("coder-1.log" in c for c in called_cmd)
+
+    def test_logs_tail_flag(self, tmp_path):
+        (tmp_path / "orc.log").write_text("log\n")
+        with patch("subprocess.run") as mock_run:
+            result = runner.invoke(
+                m.app, ["logs", "--path", str(tmp_path), "--agent", "orc", "--tail"]
+            )
+        assert result.exit_code == 0
+        called_cmd = mock_run.call_args[0][0]
+        assert called_cmd[0] == "tail"
+        assert "-f" in called_cmd
+
+    def test_logs_missing_agent_warns(self, tmp_path):
+        result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--agent", "nonexistent"])
+        assert result.exit_code != 0
+        assert "warning: log file not found" in result.output
+
+    def test_logs_all_nonexistent_dir(self, tmp_path):
+        nonexistent = tmp_path / "missing"
+        result = runner.invoke(m.app, ["logs", "--path", str(nonexistent)])
+        assert result.exit_code != 0
+        assert "No log files found" in result.output
