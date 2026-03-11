@@ -144,35 +144,46 @@ def _status(squad: str = "default") -> None:
         else:
             planner_note = "idle"
 
-        width = 12
         typer.echo("\nAgent status:")
 
         sym_p = _ctx._role_symbol("planner")
         sym_c = _ctx._role_symbol("coder")
         sym_q = _ctx._role_symbol("qa")
 
-        label_p = f"{sym_p} planner-1" if sym_p else "planner-1"
-        typer.echo(f"  {label_p:<{width}}  {planner_note}")
+        # Compute the longest agent-name string so we can ljust only the ASCII
+        # part.  Emoji code-point counts don't match terminal display widths
+        # (e.g. "🛠️" is 2 code points but 2 display columns, same as "📋"),
+        # so including the symbol in the ljust field breaks alignment.
+        all_names = (
+            ["planner-1"]
+            + [f"coder-{i}" for i in range(1, squad_cfg.coder + 1)]
+            + [f"qa-{i}" for i in range(1, squad_cfg.qa + 1)]
+        )
+        name_width = max(len(n) for n in all_names)
+
+        def _row(sym: str, name: str, note: str) -> str:
+            prefix = f"{sym} " if sym else ""
+            return f"  {prefix}{name:<{name_width}}  {note}"
+
+        typer.echo(_row(sym_p, "planner-1", planner_note))
 
         for i in range(1, squad_cfg.coder + 1):
             idx = i - 1
             if idx < len(coder_tasks):
-                name, _ = coder_tasks[idx]
-                note = f"ready to pick  {name}"
+                task_name, _ = coder_tasks[idx]
+                note = f"ready to pick  {task_name}"
             else:
                 note = "idle  (no work ready)"
-            label = f"{sym_c} coder-{i}" if sym_c else f"coder-{i}"
-            typer.echo(f"  {label:<{width}}  {note}")
+            typer.echo(_row(sym_c, f"coder-{i}", note))
 
         for i in range(1, squad_cfg.qa + 1):
             idx = i - 1
             if idx < len(qa_tasks):
-                name, branch = qa_tasks[idx]
+                task_name, branch = qa_tasks[idx]
                 note = f"ready to review  {branch}"
             else:
                 note = "idle"
-            label = f"{sym_q} qa-{i}" if sym_q else f"qa-{i}"
-            typer.echo(f"  {label:<{width}}  {note}")
+            typer.echo(_row(sym_q, f"qa-{i}", note))
 
         if merge_pending:
             typer.echo(f"\n  ⟳ Merge pending: {', '.join(merge_pending)}")
