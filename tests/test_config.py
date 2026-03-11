@@ -137,6 +137,25 @@ class TestConfigCoverage:
                 errors = _cfg.validate_env()
         assert any("GitHub" in e or "token" in e.lower() for e in errors)
 
+    def test_validate_env_apps_json_with_oauth_token(self, tmp_path, monkeypatch):
+        """Line 134: apps.json has a valid oauth_token → no GitHub error."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        monkeypatch.setattr(_cfg, "ENV_FILE", env_file)
+        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        fake_home = tmp_path / "home3"
+        fake_home.mkdir()
+        apps_dir = fake_home / ".config" / "github-copilot"
+        apps_dir.mkdir(parents=True)
+        (apps_dir / "apps.json").write_text('{"device": {"oauth_token": "ghu_abc123"}}')
+        with patch("orc.config.Path") as mock_path_cls:
+            real_path = Path
+            mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
+            mock_path_cls.home.return_value = fake_home
+            errors = _cfg.validate_env()
+        assert not any("GitHub" in e for e in errors)
+
     def test_validate_env_copilot_gh_token_ok(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
