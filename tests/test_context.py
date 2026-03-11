@@ -19,22 +19,26 @@ class TestBootMessageBody:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0002-foo.md\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md."
 
     def test_multiple_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md, work/0003-bar.md."
 
     def test_no_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen: []\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _ctx._boot_message_body() == "no open tasks on board."
 
     def test_missing_board(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "nonexistent.yaml")
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _ctx._boot_message_body() == "no open tasks on board."
 
 
@@ -275,6 +279,7 @@ class TestContextCoverage:
         monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
         monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
         monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -283,3 +288,22 @@ class TestContextCoverage:
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
         _, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
         assert "feature/0001-task" in ctx
+
+    def test_build_context_agents_dir_outside_repo_root(self, tmp_path, monkeypatch):
+        """Lines 86-87: AGENTS_DIR not under REPO_ROOT → falls back to dir name."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        agents_dir = tmp_path / "external-orc"
+        agents_dir.mkdir()
+        (agents_dir / "work").mkdir()
+        (agents_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        monkeypatch.setattr(_cfg, "ROLES_DIR", agents_dir / "roles")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
+        monkeypatch.setattr(_cfg, "REPO_ROOT", repo)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "WORK_DIR", agents_dir / "work")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", agents_dir / "work" / "board.yaml")
+        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: repo)
+        _, ctx = _ctx.build_agent_context("planner", [])
+        assert "external-orc/README.md" in ctx

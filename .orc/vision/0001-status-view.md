@@ -24,4 +24,4 @@ It should be a TUI that shows:
 - whether the dev branch is up to date with main
 - whether a telegram link is configured
 - which backend is being used (claude or copilot)
-- the current loop number vs. the user-provided maxloops
+- the current loop number vs. the user-provided maxloop

@@ -255,6 +255,7 @@ class TestFeatureWorktree:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n")
         monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         assert _active_task_name() == "0001-foo.md"
 
     def test_active_task_name_returns_none_when_empty(self, monkeypatch, tmp_path):

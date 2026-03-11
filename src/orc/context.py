@@ -81,6 +81,10 @@ def build_agent_context(
     role = _parse_role_file(agent_name)
 
     dev_worktree = _git._ensure_dev_worktree()
+    try:
+        agents_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+    except ValueError:
+        agents_rel = Path(_cfg.AGENTS_DIR.name)
     orc_readme_path = _cfg.AGENTS_DIR / "README.md"
     orc_readme = orc_readme_path.read_text() if orc_readme_path.exists() else ""
     readme_path = _cfg.REPO_ROOT / "README.md"
@@ -144,12 +148,12 @@ def build_agent_context(
         f"{extra_section}"
         "## Shared context\n\n"
         f"### Git workflow\n\n{git_info}\n\n"
-        f"### Orc workflow documentation (orc/README.md)\n\n{orc_readme}\n\n"
+        f"### Orc workflow documentation ({agents_rel}/README.md)\n\n{orc_readme}\n\n"
         f"### README\n\n{readme}\n\n"
         f"### CONTRIBUTING\n\n{contributing}\n\n"
         f"### Architecture Decision Records\n\n{adrs}\n\n"
         f"### Chat history (Telegram)\n\n{chat}\n\n"
-        f"### Kanban board (orc/work/)\n\n{plans}\n"
+        f"### Kanban board ({agents_rel}/work/)\n\n{plans}\n"
     )
     return resolved_model, context
 
