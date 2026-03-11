@@ -21,15 +21,12 @@ class TestMergeCommand:
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
 
-    def test_clean_rebase_merges_and_returns(self, monkeypatch, tmp_path):
-        """Clean rebase: _complete_merge is called, exit 0."""
+    def test_clean_rebase_default_shows_manual_instructions(self, monkeypatch, tmp_path):
+        """Default (no --auto): rebase succeeds, user is told to merge manually."""
         self._setup(monkeypatch, tmp_path)
-
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-        runs: list[list[str]] = []
 
         def fake_run(cmd, cwd=None, check=False, **kw):
-            runs.append(cmd)
             r = MagicMock()
             r.returncode = 0
             return r
@@ -40,10 +37,30 @@ class TestMergeCommand:
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
+        assert completed == []
+        assert "--auto" in result.output
+
+    def test_clean_rebase_auto_completes_merge(self, monkeypatch, tmp_path):
+        """With --auto: rebase succeeds and _complete_merge is called."""
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        completed: list[bool] = []
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
+
+        result = runner.invoke(m.app, ["merge", "--auto"])
+        assert result.exit_code == 0
         assert completed == [True]
+        assert "merged into main" in result.output
 
     def test_conflict_delegates_to_coder_then_completes(self, monkeypatch, tmp_path):
-        """On conflict the coder is invoked; after it finishes the merge completes."""
+        """On conflict the coder is invoked; with --auto the merge completes."""
         self._setup(monkeypatch, tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -71,7 +88,7 @@ class TestMergeCommand:
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
 
-        result = runner.invoke(m.app, ["merge"])
+        result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
         assert invocations == ["coder"]
         assert completed == [True]

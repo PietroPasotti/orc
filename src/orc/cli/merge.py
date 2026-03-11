@@ -75,20 +75,36 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
-def _merge() -> None:
+def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
     _rebase_dev_on_main(messages)
     dev_worktree = _git._ensure_dev_worktree()
-    _git._complete_merge(dev_worktree)
-    typer.echo("✓ dev merged into main.")
+
+    if auto:
+        _git._complete_merge(dev_worktree)
+        typer.echo("✓ dev merged into main.")
+    else:
+        typer.echo(
+            f"✓ dev is up-to-date with main and ready to merge.\n"
+            f"  Run the following to merge manually:\n\n"
+            f"    git -C {dev_worktree} checkout main\n"
+            f"    git -C {dev_worktree} merge --ff-only {_cfg.WORK_DEV_BRANCH}\n\n"
+            f"  Or re-run with --auto to let orc do it."
+        )
 
 
 @app.command()
-def merge() -> None:
-    """Rebase dev on top of main and fast-forward merge dev into main.
+def merge(
+    auto: bool = typer.Option(
+        False, "--auto", help="Actually merge dev into main (default: verify-only)."
+    ),
+) -> None:
+    """Rebase dev on top of main and verify it is ready to merge.
+
+    By default only the rebase is performed and the user is prompted to merge
+    manually.  Pass ``--auto`` to also fast-forward merge dev into main.
 
     If the rebase produces conflicts the coder agent is invoked to resolve them.
-    Once the agent exits the merge is completed automatically.
     """
-    return _merge()
+    return _merge(auto=auto)
