@@ -12,6 +12,7 @@ def _make_agent(tmp_path: Path, *, role: str = "coder", task: str = "0001-foo.md
     return AgentProcess(
         agent_id=f"{role}-1",
         role=role,
+        model="copilot",
         task_name=task,
         process=FakePopen(),
         worktree=tmp_path,
@@ -50,6 +51,7 @@ class TestPoolCoverage:
             AgentProcess(
                 agent_id="qa-1",
                 role="qa",
+                model="copilot",
                 task_name="t2",
                 process=FakePopen(),
                 worktree=tmp_path,
@@ -73,6 +75,7 @@ class TestPoolCoverage:
             AgentProcess(
                 agent_id="coder-1",
                 role="coder",
+                model="copilot",
                 task_name="t",
                 process=bad_proc,
                 worktree=tmp_path,
@@ -94,6 +97,7 @@ class TestPoolCoverage:
         agent = AgentProcess(
             agent_id="coder-1",
             role="coder",
+            model="copilot",
             task_name="t",
             process=FakePopen(),
             worktree=tmp_path,
@@ -111,6 +115,7 @@ class TestPoolCoverage:
         agent = AgentProcess(
             agent_id="coder-1",
             role="coder",
+            model="copilot",
             task_name="t",
             process=FakePopen(),
             worktree=tmp_path,

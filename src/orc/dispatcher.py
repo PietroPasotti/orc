@@ -146,6 +146,14 @@ class DispatchCallbacks:
     spawn_fn: Callable
     """``invoke.spawn(context, cwd, model, log_path) → (Popen, log_fh)``."""
 
+    # -- Optional lifecycle hooks ----------------------------------------
+
+    on_agent_start: Callable[[AgentProcess], None] | None = None
+    """Called immediately after a new agent is added to the pool."""
+
+    on_agent_done: Callable[[AgentProcess, int], None] | None = None
+    """Called immediately after a completed agent is removed from the pool."""
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher
@@ -180,6 +188,7 @@ class Dispatcher:
         self._id_counters: dict[str, int] = defaultdict(int)
         self._merge_queue: list[str] = []
         self._total_spawned = 0
+        self._loop_count: int = 0
         # Soft-block tracking: when a planner is dispatched to resolve one
         # we record (blocked_agent_id, blocked_state) so we can post [orc](resolved).
         self._resolving_soft_block: tuple[str, str] | None = None
@@ -191,6 +200,11 @@ class Dispatcher:
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
+
+    @property
+    def loop(self) -> int:
+        """Number of dispatch cycles completed so far."""
+        return self._loop_count
 
     def run(self, maxloops: int = 0) -> None:
         """Run the dispatch loop.
@@ -215,6 +229,7 @@ class Dispatcher:
 
     def _loop(self, maxloops: int) -> None:
         while True:
+            self._loop_count += 1
             messages = self.cb.get_messages()
 
             # 1. Poll for completed agents.
@@ -378,6 +393,7 @@ class Dispatcher:
         agent = AgentProcess(
             agent_id=agent_id,
             role=role,
+            model=model,
             task_name=task_name,
             process=process,
             worktree=worktree,
@@ -385,6 +401,8 @@ class Dispatcher:
             log_fh=log_fh,
         )
         self.pool.add(agent)
+        if self.cb.on_agent_start is not None:
+            self.cb.on_agent_start(agent)
 
         if task_name:
             self.cb.assign_task(task_name, agent_id)
@@ -407,6 +425,8 @@ class Dispatcher:
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
         _cleanup_context_tmp(agent.process)
+        if self.cb.on_agent_done is not None:
+            self.cb.on_agent_done(agent, rc)
 
         if rc != 0:
             logger.error(
