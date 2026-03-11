@@ -55,9 +55,11 @@ real `.env` files — the `conftest.py` stubs out `dotenv`, `httpx`, and
 
 ## Committing
 
-Use the interactive prompt to author a correctly-formatted commit:
+Always run `just test` before committing to make sure the full test suite
+passes. Only then author a correctly-formatted commit:
 
 ```bash
+just test          # must pass before committing
 just commit        # launches cz commit
 ```
 
