@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
 
+import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
@@ -25,6 +26,7 @@ class TestMergeCommand:
         """Default (no --auto): rebase succeeds, user is told to merge manually."""
         self._setup(monkeypatch, tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
 
         def fake_run(cmd, cwd=None, check=False, **kw):
             r = MagicMock()
@@ -39,6 +41,24 @@ class TestMergeCommand:
         assert result.exit_code == 0
         assert completed == []
         assert "--auto" in result.output
+
+    def test_nothing_to_merge_when_dev_even_with_main(self, monkeypatch, tmp_path):
+        """Default (no --auto): exits with 'nothing to merge' when dev has no new commits."""
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 0)
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        monkeypatch.setattr(m.subprocess, "run", fake_run)
+
+        result = runner.invoke(m.app, ["merge"])
+        assert result.exit_code == 0
+        assert "Nothing to merge" in result.output
+        assert "--auto" not in result.output
 
     def test_clean_rebase_auto_completes_merge(self, monkeypatch, tmp_path):
         """With --auto: rebase succeeds and _complete_merge is called."""

@@ -7,6 +7,7 @@ import subprocess
 import structlog
 import typer
 
+import orc.cli.status as _status
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
@@ -79,6 +80,9 @@ def _merge(auto: bool = False) -> None:
         else:
             typer.echo("Already up to date.")
     else:
+        if _status._dev_ahead_of_main() == 0:
+            typer.echo("Nothing to merge — dev has no commits ahead of main.")
+            return
         typer.echo(
             f"✓ dev is up-to-date with main and ready to merge.\n"
             f"  Run the following to merge manually:\n\n"
