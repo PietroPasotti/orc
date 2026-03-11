@@ -37,9 +37,20 @@ def _read_board() -> dict:
 
 
 def _write_board(board: dict) -> None:
-    """Persist *board* to the authoritative board.yaml path."""
+    """Persist *board* to the authoritative board.yaml path.
+
+    Uses an atomic write (temp file + ``rename``) so a crash during the write
+    never leaves board.yaml in a partially-written state.
+    """
     path = _dev_board_file()
-    path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
+    content = yaml.dump(board, default_flow_style=False, allow_unicode=True)
+    tmp = path.with_suffix(".yaml.tmp")
+    try:
+        tmp.write_text(content)
+        tmp.replace(path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def get_open_tasks() -> list[dict]:

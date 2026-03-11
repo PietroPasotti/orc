@@ -47,9 +47,10 @@ release *args:
         esac
     done
 
-    echo "Running tests before release…"
+    echo "Running QCs before release…"
+    just lint
     just test
-    echo "✓ Tests passed"
+    echo "✓ QCs passed"
 
     latest=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
     if [[ -z "$latest" ]]; then

@@ -35,13 +35,29 @@ so the state machine always sees the full history.
 
 import json
 import os
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 import certifi
 import httpx
 from dotenv import load_dotenv
+
+# Pure message parsing helpers — no side effects, no global state.
+# Re-exported here so callers can use ``from orc import telegram as tg``
+# and call ``tg.parse_agent_id`` / ``tg.KNOWN_ROLES`` etc. as before.
+from orc.telegram_messages import (  # noqa: F401
+    _AGENT_ID_RE,
+    _MSG_RE,
+    INFORMATIONAL_STATES,
+    KNOWN_AGENTS,
+    KNOWN_ROLES,
+    format_agent_message,
+    is_agent_message,
+    make_agent_id,
+    messages_to_text,
+    parse_agent_id,
+    parse_last_agent_message,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -72,25 +88,6 @@ def _get_log_file() -> Path:
 # Use certifi's bundled CA certs so we don't depend on system cert paths
 # (which may be absent inside containers).
 _CA_BUNDLE = certifi.where()
-
-# The set of valid agent *roles*.  Agent messages now use IDs of the form
-# ``{role}-{n}`` (e.g. ``coder-1``, ``qa-2``) rather than bare role names.
-KNOWN_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
-
-# Kept for backward compatibility — KNOWN_AGENTS is now an alias for KNOWN_ROLES.
-KNOWN_AGENTS = KNOWN_ROLES
-
-# States that are informational only – not used for state-machine transitions.
-# parse_last_agent_message skips over messages with these states so they
-# never stall the workflow (e.g. if an agent crashes after booting but before
-# posting a terminal state, the previous terminal state is still visible).
-INFORMATIONAL_STATES = {"boot"}
-
-# Matches: [name](state) 2026-03-01T10:00:00Z: message
-_MSG_RE = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)\s+\S+:\s+.*$")
-
-# Matches the agent-ID convention: ``{role}-{n}`` where n >= 1.
-_AGENT_ID_RE = re.compile(r"^([a-z]+)-(\d+)$")
 
 
 def is_configured() -> bool:
@@ -199,86 +196,3 @@ def get_messages(limit: int = 100) -> list[dict]:
 
     local.sort(key=lambda m: m.get("date", 0))
     return local
-
-
-# ---------------------------------------------------------------------------
-# Message parsing helpers
-# ---------------------------------------------------------------------------
-
-
-def parse_agent_id(agent_id: str) -> tuple[str, int] | tuple[None, None]:
-    """Parse an agent ID into ``(role, n)``.
-
-    Returns ``(None, None)`` for unrecognised formats.
-
-    Examples::
-
-        parse_agent_id("coder-1")    # → ("coder", 1)
-        parse_agent_id("qa-2")       # → ("qa", 2)
-        parse_agent_id("coder")      # → (None, None)  — old format
-        parse_agent_id("reviewer-1") # → (None, None)  — unknown role
-    """
-    m = _AGENT_ID_RE.match(agent_id)
-    if m and m.group(1) in KNOWN_ROLES:
-        return m.group(1), int(m.group(2))
-    return None, None
-
-
-def make_agent_id(role: str, n: int) -> str:
-    """Build an agent ID from *role* and *n*.
-
-    Examples::
-
-        make_agent_id("coder", 1)  # → "coder-1"
-        make_agent_id("qa", 3)     # → "qa-3"
-    """
-    if role not in KNOWN_ROLES:
-        raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(KNOWN_ROLES)}")
-    return f"{role}-{n}"
-
-
-def parse_last_agent_message(
-    messages: list[dict],
-) -> tuple[str, str] | tuple[None, None]:
-    """Scan *messages* from newest to oldest and return ``(agent_id, state)``.
-
-    Agent messages must use the ``{role}-{n}`` ID format (e.g. ``coder-1``).
-    Returns ``(None, None)`` when no known-agent message is found.
-    """
-    for msg in reversed(messages):
-        text = msg.get("text", "").strip()
-        m = _MSG_RE.match(text)
-        if m:
-            name, state = m.group(1), m.group(2)
-            role, _ = parse_agent_id(name)
-            if role is not None and state not in INFORMATIONAL_STATES:
-                return name, state
-    return None, None
-
-
-def is_agent_message(text: str) -> bool:
-    """Return True if *text* is a formatted message from a known agent."""
-    m = _MSG_RE.match(text.strip())
-    if not m:
-        return False
-    role, _ = parse_agent_id(m.group(1))
-    return role is not None
-
-
-def format_agent_message(agent_name: str, state: str, body: str) -> str:
-    """Build a properly formatted agent message string ready to send."""
-    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return f"[{agent_name}]({state}) {ts}: {body}"
-
-
-def messages_to_text(messages: list[dict]) -> str:
-    """Render *messages* as a plain-text chat log for inclusion in agent context."""
-    lines: list[str] = []
-    for msg in messages:
-        sender = msg.get("from", {})
-        name = sender.get("username") or sender.get("first_name", "unknown")
-        text = msg.get("text", "")
-        date = msg.get("date", 0)
-        ts = datetime.fromtimestamp(date, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        lines.append(f"[{ts}] {name}: {text}")
-    return "\n".join(lines) if lines else "_No messages yet._"

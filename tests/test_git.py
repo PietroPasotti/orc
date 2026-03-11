@@ -562,3 +562,71 @@ class TestGitCoverage:
 
         with patch("orc.git.subprocess.run", fake_run):
             assert _git._merge_in_progress(tmp_path) is False
+
+
+# ---------------------------------------------------------------------------
+# GitRunner
+# ---------------------------------------------------------------------------
+
+
+class TestGitRunner:
+    """Unit tests for the GitRunner helper class."""
+
+    def test_run_issues_git_command(self, tmp_path):
+        """GitRunner.run passes the right args to subprocess.run."""
+        fake = MagicMock(returncode=0, stdout="ok\n", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake) as mock_run:
+            runner = _git.GitRunner(tmp_path)
+            result = runner.run("status", "--short")
+        mock_run.assert_called_once_with(
+            ["git", "status", "--short"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result is fake
+
+    def test_branch_exists_true(self, tmp_path):
+        fake = MagicMock(returncode=0, stdout="  main\n", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.branch_exists("main") is True
+
+    def test_branch_exists_false(self, tmp_path):
+        fake = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.branch_exists("nonexistent") is False
+
+    def test_is_ancestor_true(self, tmp_path):
+        fake = MagicMock(returncode=0)
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.is_ancestor("abc123", "HEAD") is True
+
+    def test_is_ancestor_false(self, tmp_path):
+        fake = MagicMock(returncode=1)
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.is_ancestor("abc123", "HEAD") is False
+
+    def test_log_oneline(self, tmp_path):
+        fake = MagicMock(returncode=0, stdout="abc def commit one\nxyz ghi commit two\n", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            lines = runner.log_oneline("main..feat/foo")
+        assert len(lines) == 2
+        assert "commit one" in lines[0]
+
+    def test_log_oneline_empty(self, tmp_path):
+        fake = MagicMock(returncode=0, stdout="", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.log_oneline("main..feat/foo") == []
+
+    def test_short_head(self, tmp_path):
+        fake = MagicMock(returncode=0, stdout="abc1234\n", stderr="")
+        with patch("orc.git.subprocess.run", return_value=fake):
+            runner = _git.GitRunner(tmp_path)
+            assert runner.short_head() == "abc1234"

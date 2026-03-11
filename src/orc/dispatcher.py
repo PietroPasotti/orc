@@ -240,6 +240,10 @@ class Dispatcher:
     def _loop(self, maxloops: int) -> None:
         while True:
             self._loop_count += 1
+            import structlog.contextvars as _cv
+
+            _cv.clear_contextvars()
+            _cv.bind_contextvars(cycle=self._loop_count)
             messages = self.cb.get_messages()
 
             # 1. Poll for completed agents.
@@ -395,6 +399,10 @@ class Dispatcher:
 
         body = self.cb.boot_message_body()
         self.cb.post_boot_message(agent_id, body)
+
+        import structlog.contextvars as _cv
+
+        _cv.bind_contextvars(agent_id=agent_id)
 
         log_path = AGENT_LOG_DIR / f"{agent_id}.log"
         process, log_fh = self.cb.spawn_fn(context, worktree, model, log_path)

@@ -17,6 +17,78 @@ from orc.dispatcher import QA_PASSED as _QA_PASSED
 logger = structlog.get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# GitRunner — centralised subprocess helper
+# ---------------------------------------------------------------------------
+
+
+class GitRunner:
+    """Thin wrapper around ``subprocess.run`` for git commands.
+
+    Every method issues a ``git`` sub-command in :attr:`cwd` with consistent
+    defaults (``text=True``, ``capture_output=True`` unless told otherwise).
+    Module-level functions delegate to a :class:`GitRunner` so tests only need
+    to mock ``subprocess.run`` in one place.
+
+    Parameters
+    ----------
+    cwd:
+        Working directory for all git commands.
+    """
+
+    def __init__(self, cwd: Path) -> None:
+        self.cwd = cwd
+
+    def run(
+        self,
+        *args: str,
+        check: bool = False,
+        capture: bool = True,
+    ) -> subprocess.CompletedProcess:
+        """Run ``git <args>`` in :attr:`cwd`.
+
+        Parameters
+        ----------
+        *args:
+            Git sub-command and arguments (without the leading ``"git"``).
+        check:
+            If ``True``, raise :class:`subprocess.CalledProcessError` on
+            non-zero exit (passed straight through to ``subprocess.run``).
+        capture:
+            If ``True`` (default), capture stdout and stderr.  Set to
+            ``False`` for commands whose output must go to the terminal.
+        """
+        return subprocess.run(
+            ["git", *args],
+            cwd=self.cwd,
+            capture_output=capture,
+            text=True,
+            check=check,
+        )
+
+    def branch_exists(self, name: str) -> bool:
+        """Return ``True`` if local branch *name* exists."""
+        result = self.run("branch", "--list", name)
+        return bool(result.stdout.strip())
+
+    def is_ancestor(self, commit: str, ancestor_of: str) -> bool:
+        """Return ``True`` if *commit* is an ancestor of *ancestor_of*."""
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, ancestor_of],
+            cwd=self.cwd,
+        )
+        return result.returncode == 0
+
+    def log_oneline(self, range_spec: str) -> list[str]:
+        """Return ``git log --oneline <range_spec>`` lines."""
+        result = self.run("log", range_spec, "--oneline")
+        return [ln for ln in result.stdout.splitlines() if ln.strip()]
+
+    def short_head(self) -> str:
+        """Return the abbreviated SHA of HEAD."""
+        return self.run("rev-parse", "--short", "HEAD", check=True).stdout.strip()
+
+
 class MergeConflictError(Exception):
     """Raised when ``git merge --no-ff`` stops with conflicts.
 

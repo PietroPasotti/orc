@@ -55,3 +55,31 @@ class TestBoardCoverage:
         monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
         (tmp_path / "board.yaml").write_text("open: []\ndone: []\n")
         assert _board.has_open_work() is False
+
+    def test_write_board_atomic_cleans_up_on_error(self, tmp_path, monkeypatch):
+        """_write_board cleans up the .tmp file and re-raises on OSError."""
+
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "board.yaml")
+        (tmp_path / "board.yaml").write_text("open: []\ndone: []\n")
+
+        original_replace = _board.Path.replace
+
+        def failing_replace(self, target):
+            # Simulate a failure only for .tmp files
+            if self.suffix == ".tmp":
+                raise OSError("disk full")
+            return original_replace(self, target)
+
+        monkeypatch.setattr(_board.Path, "replace", failing_replace)
+
+        import pytest as _pytest
+
+        with _pytest.raises(OSError, match="disk full"):
+            _board._write_board({"open": [], "done": []})
+
+        # The .tmp file must have been cleaned up
+        tmp_file = tmp_path / "board.yaml.tmp"
+        assert not tmp_file.exists()
