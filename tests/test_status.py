@@ -221,3 +221,60 @@ class TestStatusCoverage:
         )
         result = runner.invoke(m.app, ["status"])
         assert "Merge pending" in result.output or result.exit_code == 0
+
+    def test_pending_visions_returns_unmatched_files(self, tmp_path, monkeypatch):
+        """Lines 42-54: vision dir exists with files; unmatched ones are returned."""
+        vision_dir = tmp_path / "vision"
+        vision_dir.mkdir()
+        (vision_dir / "README.md").write_text("")
+        (vision_dir / "feature-a.md").write_text("")
+        (vision_dir / "feature-b.md").write_text("")
+        monkeypatch.setattr(_st._cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(
+            _st._board,
+            "_read_board",
+            lambda: {"open": [{"name": "feature-a.md"}], "done": []},
+        )
+        result = _st._pending_visions()
+        assert result == ["feature-b.md"]
+        assert "README.md" not in result
+
+    def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path):
+        """Lines 65-73: feat/* branches with nonzero merge-base exit → unmerged."""
+        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
+
+        call_num = 0
+
+        def fake_run(cmd, **kw):
+            nonlocal call_num
+            r = MagicMock()
+            if "--list" in cmd:
+                r.stdout = "  feat/0001-foo\n  feat/0002-bar\n"
+            else:
+                call_num += 1
+                r.returncode = 1 if call_num == 1 else 0
+            return r
+
+        with patch("orc.cli.status.subprocess.run", fake_run):
+            result = _st._pending_reviews()
+        assert result == ["feat/0001-foo"]
+
+    def test_status_shows_pending_visions(self, tmp_path, monkeypatch):
+        """Lines 197-200: pending visions section printed when visions exist."""
+        self._setup(monkeypatch, ahead=0)
+        monkeypatch.setattr(_st, "_pending_visions", lambda: ["feature-x.md", "feature-y.md"])
+        monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
+        result = runner.invoke(m.app, ["status"])
+        assert "Pending visions" in result.output
+        assert "feature-x.md" in result.output
+
+    def test_status_shows_pending_reviews(self, tmp_path, monkeypatch):
+        """Lines 205-209: pending reviews section printed when unmerged branches exist."""
+        self._setup(monkeypatch, ahead=0)
+        monkeypatch.setattr(_st, "_pending_visions", lambda: [])
+        monkeypatch.setattr(_st, "_pending_reviews", lambda: ["feat/0001-foo"])
+        monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "fix: something")
+        result = runner.invoke(m.app, ["status"])
+        assert "Pending reviews" in result.output
+        assert "feat/0001-foo" in result.output
