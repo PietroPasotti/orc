@@ -144,11 +144,16 @@ def _merge_feature_into_dev(task_name: str) -> None:
 
     logger.info("merging feature into dev", feature_branch=branch, dev_branch=_cfg.WORK_DEV_BRANCH)
     subprocess.run(["git", "checkout", _cfg.WORK_DEV_BRANCH], cwd=dev_wt, check=True)
-    subprocess.run(
+    merge_result = subprocess.run(
         ["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} into {_cfg.WORK_DEV_BRANCH}"],
         cwd=dev_wt,
-        check=True,
     )
+    if merge_result.returncode != 0:
+        subprocess.run(["git", "merge", "--abort"], cwd=dev_wt)
+        raise subprocess.CalledProcessError(
+            merge_result.returncode,
+            merge_result.args,
+        )
 
     merge_sha = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],

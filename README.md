@@ -23,6 +23,8 @@ Orc's work happens on a `dev` branch, so that you can keep working on `main` ind
 Any time control goes to the orchestrator, the orchestrator will rebase `dev` on `main`.
 Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate fixing any conflicts to an agent.
 
+> **Tip:** the integration branch name (`dev`) is configurable via `orc-dev-branch` in `.orc/config.yaml`.
+
 ## Installation
 
 ```bash

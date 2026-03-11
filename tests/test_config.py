@@ -166,3 +166,56 @@ class TestConfigCoverage:
         monkeypatch.setenv("GH_TOKEN", "ghp_token")
         errors = _cfg.validate_env()
         assert not [e for e in errors if "GitHub" in e]
+
+
+class TestLoadOrcConfig:
+    def test_returns_empty_dict_when_no_config_file(self, tmp_path):
+        result = _cfg._load_orc_config(tmp_path)
+        assert result == {}
+
+    def test_reads_orc_dev_branch(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("orc-dev-branch: staging\n")
+        result = _cfg._load_orc_config(tmp_path)
+        assert result == {"orc-dev-branch": "staging"}
+
+    def test_returns_empty_dict_on_malformed_yaml(self, tmp_path):
+        (tmp_path / "config.yaml").write_text(": [\ninvalid yaml{{{")
+        result = _cfg._load_orc_config(tmp_path)
+        assert result == {}
+
+    def test_init_paths_sets_work_dev_branch_from_config(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        (agents_dir / "config.yaml").write_text("orc-dev-branch: my-dev\n")
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORK_DEV_BRANCH",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.WORK_DEV_BRANCH == "my-dev"
+
+    def test_init_paths_defaults_work_dev_branch_to_dev(self, tmp_path, monkeypatch):
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORK_DEV_BRANCH",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.WORK_DEV_BRANCH == "dev"

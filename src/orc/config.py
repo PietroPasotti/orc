@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import structlog
+import yaml
 from dotenv import load_dotenv
 
 logger = structlog.get_logger(__name__)
@@ -39,6 +40,21 @@ def _find_config_dir(base: Path | None = None) -> Path | None:
     return None
 
 
+def _load_orc_config(agents_dir: Path | None = None) -> dict:
+    """Load ``config.yaml`` from *agents_dir* (defaults to :data:`AGENTS_DIR`).
+
+    Returns an empty dict if the file is absent or unreadable.
+    """
+    config_file = (agents_dir or AGENTS_DIR) / "config.yaml"
+    if not config_file.exists():
+        return {}
+    try:
+        return yaml.safe_load(config_file.read_text()) or {}
+    except Exception:
+        logger.warning("failed to parse orc config.yaml", path=str(config_file))
+        return {}
+
+
 def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     """(Re)initialise all module-level path globals.
 
@@ -55,7 +71,7 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     where the config dir lives.
     """
     global AGENTS_DIR, WORK_DIR, BOARD_FILE, ROLES_DIR, REPO_ROOT, ENV_FILE
-    global DEV_WORKTREE, _worktree_sibling
+    global DEV_WORKTREE, _worktree_sibling, WORK_DEV_BRANCH
     AGENTS_DIR = agents_dir
     REPO_ROOT = (repo_root or agents_dir.parent).resolve()
     WORK_DIR = agents_dir / "work"
@@ -69,13 +85,12 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
         if os.access(REPO_ROOT.parent, os.W_OK)
         else Path("/tmp") / f"{REPO_ROOT.name}-dev"
     )
+    WORK_DEV_BRANCH = _load_orc_config(agents_dir).get("orc-dev-branch", "dev")
 
 
 # Initialise at import time (best-effort; commands re-validate at runtime).
 _found_at_import = _find_config_dir()
 _init_paths(_found_at_import if _found_at_import is not None else Path.cwd() / ".orc")
-
-WORK_DEV_BRANCH = "dev"
 
 
 def _load_placeholders() -> frozenset[str]:

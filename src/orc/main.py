@@ -50,6 +50,7 @@ from orc.config import (  # noqa: F401
     WORK_DIR,
     _find_config_dir,
     _init_paths,
+    _load_orc_config,
     _load_placeholders,
     validate_env,
 )

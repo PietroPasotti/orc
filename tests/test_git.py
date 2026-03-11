@@ -433,3 +433,40 @@ class TestGitCoverage:
 
         cmds_str = [" ".join(c) for c in runs]
         assert any("commit" in c for c in cmds_str)
+
+    def test_merge_feature_aborts_on_conflict(self, tmp_path, monkeypatch):
+        """When git merge fails, merge --abort is called and CalledProcessError is raised."""
+        import orc.config as _cfg
+        import orc.git as _git
+
+        dev_wt = tmp_path / "dev"
+        dev_wt.mkdir()
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir()
+
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / "orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+
+        runs = []
+
+        def fake_run(cmd, **kw):
+            runs.append(cmd)
+            r = MagicMock()
+            r.args = cmd
+            r.returncode = 1 if "merge" in cmd and "--abort" not in cmd and "--no-ff" in cmd else 0
+            r.stdout = ""
+            return r
+
+        import pytest
+
+        with patch("orc.git.subprocess.run", fake_run):
+            with pytest.raises(subprocess.CalledProcessError):
+                _git._merge_feature_into_dev("0001-task.md")
+
+        cmds_str = [" ".join(c) for c in runs]
+        assert any("merge" in c and "--abort" in c for c in cmds_str), (
+            "expected git merge --abort to be called after conflict"
+        )
