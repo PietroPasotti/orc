@@ -1,0 +1,13 @@
+# orc configuration
+#
+# orc-dev-branch: the name of the branch orc uses as its integration branch.
+#   All feature branches are merged here after QA passes, and `orc merge`
+#   fast-forwards this branch into main.  Change this if your project already
+#   uses a branch named "dev" for something else (e.g. "orc-dev" or "staging").
+orc-dev-branch: dev
+
+# orc-branch-prefix: an optional prefix for all orc-owned branches.
+#   When set, feature branches become "<prefix>/feat/<task>" instead of
+#   "feat/<task>".  For example, setting this to "orc" produces branches
+#   like "orc/feat/0001-foo".  Leave empty (the default) for no prefix.
+# orc-branch-prefix: ""

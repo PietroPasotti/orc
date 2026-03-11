@@ -609,6 +609,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "qorc" },
     { name = "ruff" },
 ]
 
@@ -629,6 +630,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "qorc", editable = "." },
     { name = "ruff", specifier = ">=0.9" },
 ]
 

@@ -1,3 +1,5 @@
+mod orc '.orc/justfile'
+
 # Install dependencies and git hooks
 install:
     uv sync --all-groups
