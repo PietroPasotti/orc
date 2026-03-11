@@ -312,10 +312,19 @@ class Dispatcher:
         open_tasks = self.cb.get_open_tasks()
 
         if not open_tasks:
-            # No open tasks — only dispatch planner if there is something
-            # for it to act on (unplanned vision docs or in-flight branches).
-            if not self.cb.get_pending_visions() and not self.cb.get_pending_reviews():
-                return 0
+            # No open tasks — queue any unmerged feat/* branches for merge
+            # and/or dispatch a planner for unplanned vision docs.
+            # _do_merge handles clean merges automatically; a coder is only
+            # spawned if there are conflicts.
+            pending_reviews = self.cb.get_pending_reviews()
+            for branch in pending_reviews:
+                # Convert branch name (feat/NNNN-foo) → task name (NNNN-foo.md).
+                task_name = branch.removeprefix("feat/") + ".md"
+                if task_name not in self._merge_queue:
+                    self._merge_queue.append(task_name)
+                    dispatched += 1
+            if not self.cb.get_pending_visions():
+                return dispatched
             if self.pool.count_by_role("planner") == 0:
                 dispatched += self._spawn_planner(messages)
             return dispatched

@@ -321,7 +321,7 @@ def _merge_feature_into_dev(task_name: str) -> None:
         )
 
     logger.info("deleting feature branch", branch=branch)
-    subprocess.run(["git", "branch", "-d", branch], cwd=_cfg.REPO_ROOT)
+    subprocess.run(["git", "branch", "-D", branch], cwd=_cfg.REPO_ROOT, check=True)
 
 
 def _feature_has_commits_ahead_of_main(branch: str) -> bool:

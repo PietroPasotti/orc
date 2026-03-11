@@ -41,8 +41,6 @@ def _run(
         maxloops=maxloops,
         dry_run=dry_run,
         squad=squad,
-        coders=squad_cfg.coder,
-        qa=squad_cfg.qa,
     )
     typer.echo("⟳ Syncing dev on main…")
     messages = tg.get_messages()

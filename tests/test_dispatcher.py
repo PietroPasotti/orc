@@ -636,6 +636,17 @@ class TestDispatcherInternalCoverage:
         cb.has_unresolved_block = lambda msgs: (None, None)
         assert Dispatcher.has_pending_work(cb, []) is False
 
+    def test_has_pending_work_pending_reviews_returns_true(self, tmp_path):
+        """has_pending_work returns True when unmerged feat/* branches exist."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: ["feat/0001-foo"],
+        )
+        cb.has_unresolved_block = lambda msgs: (None, None)
+        assert Dispatcher.has_pending_work(cb, []) is True
+
     def test_kill_all_and_unassign(self, tmp_path):
         """Lines 493-496: _kill_all_and_unassign unassigns tasks and kills agents."""
         unassigned = []
@@ -676,7 +687,7 @@ class TestDispatcherInternalCoverage:
         _disp._cleanup_context_tmp(FakeProc())  # should not raise
 
     def test_dispatch_returns_zero_when_nothing_to_do(self, tmp_path, monkeypatch):
-        """_dispatch returns 0 immediately when no tasks, visions, or reviews (line 318)."""
+        """_dispatch returns 0 immediately when no tasks or visions (line 318)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         cb = _make_callbacks(
             tmp_path,
@@ -687,6 +698,34 @@ class TestDispatcherInternalCoverage:
         d = Dispatcher(_minimal_squad(), cb)
         result = d._dispatch([])
         assert result == 0
+
+    def test_dispatch_queues_pending_reviews_for_merge(self, tmp_path, monkeypatch):
+        """_dispatch adds unmerged feat/* branches to the merge queue, not a planner."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: ["feat/0001-foo"],
+        )
+        d = Dispatcher(_minimal_squad(), cb)
+        result = d._dispatch([])
+        assert result == 1
+        assert "0001-foo.md" in d._merge_queue
+
+    def test_dispatch_deduplicates_pending_reviews(self, tmp_path, monkeypatch):
+        """_dispatch doesn't add the same branch twice to the merge queue."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: ["feat/0001-foo"],
+        )
+        d = Dispatcher(_minimal_squad(), cb)
+        d._dispatch([])
+        d._dispatch([])
+        assert d._merge_queue.count("0001-foo.md") == 1
 
     def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
         """run() logs workflow-complete and exits when nothing to dispatch (lines 299-301)."""

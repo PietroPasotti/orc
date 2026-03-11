@@ -321,7 +321,7 @@ class TestFeatureWorktree:
         cmds = [" ".join(c) for c in runs]
         assert any("merge" in c and "feat/0001-foo" in c for c in cmds), cmds
         assert any("worktree remove" in c for c in cmds), cmds
-        assert any("branch" in c and "-d" in c for c in cmds), cmds
+        assert any("branch" in c and "-D" in c for c in cmds), cmds
         updated = yaml.safe_load(board_yaml.read_text())
         assert updated["open"] == []
         assert any(t["name"] == "0001-foo.md" for t in updated.get("done", []))
