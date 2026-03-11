@@ -12,6 +12,8 @@ Configuration via environment variables (also settable in ``.env``):
     ORC_LOG_FORMAT  – ``console`` (human-readable) or ``json``.  Default: ``console``.
     ORC_LOG_FILE    – Path to the log file.  Default: ``~/.cache/orc/orc.log``.
                       Set to an empty string to disable file logging.
+    ORC_LOG_DIR     – Override the log folder.  Sets ``ORC_LOG_FILE`` to
+                      ``$ORC_LOG_DIR/orc.log`` when ``ORC_LOG_FILE`` is not set.
 """
 
 from __future__ import annotations
@@ -25,8 +27,6 @@ import structlog
 
 _Format = Literal["console", "json"]
 
-# TODO: make the location of the logs folder configurable so the user can send all
-#  logs to e.g. ./orc if they want to.
 _CACHE_DIR = Path.home() / ".cache" / "orc"
 _DEFAULT_LOG_FILE = _CACHE_DIR / "orc.log"
 _DEFAULT_LEVEL = "INFO"
@@ -51,13 +51,17 @@ def setup(
         log_format or os.environ.get("ORC_LOG_FORMAT", _DEFAULT_FORMAT)
     )
 
-    # Resolve log file: explicit arg > ORC_LOG_FILE env var > default path
+    # Resolve log file: explicit arg > ORC_LOG_FILE env var > ORC_LOG_DIR > default path
     if log_file is _UNSET:
         env_val = os.environ.get("ORC_LOG_FILE")
         if env_val is not None:
             resolved_log_file: Path | None = Path(env_val) if env_val else None
         else:
-            resolved_log_file = _DEFAULT_LOG_FILE
+            log_dir_val = os.environ.get("ORC_LOG_DIR")
+            if log_dir_val:
+                resolved_log_file = Path(log_dir_val) / "orc.log"
+            else:
+                resolved_log_file = _DEFAULT_LOG_FILE
     else:
         resolved_log_file = log_file  # type: ignore[assignment]
 

@@ -185,3 +185,4 @@ The orchestrator reads these messages to determine the next state.
 | `ORC_LOG_LEVEL` | No | Log level (default: `INFO`) |
 | `ORC_LOG_FORMAT` | No | `console` or `json` (default: `console`) |
 | `ORC_LOG_FILE` | No | Log file path (default: `~/.cache/orc/orc.log`) |
+| `ORC_LOG_DIR` | No | Override the log *folder*. Sets `ORC_LOG_FILE` to `$ORC_LOG_DIR/orc.log` when `ORC_LOG_FILE` is not set. |

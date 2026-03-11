@@ -1,14 +1,8 @@
-# orc kanban board
-#
-# counter  – next available task ID (integer; format as 4-digit zero-padded
-#            string when naming files, e.g. counter=3 → "0003-title.md").
-#            The planner increments this every time it creates a new task.
-#
-# open     – tasks currently being worked on.
-# done     – completed tasks.
-
-counter: 1
-
-open: []
-
-done: []
+counter: 3
+done:
+- commit-tag: 402c12b
+  name: 0001-live-tui-status-view.md
+  timestamp: '2026-03-11T12:29:46Z'
+open:
+- assigned_to: coder-2
+  name: 0002-logs-folder-and-just-logs-recipe.md

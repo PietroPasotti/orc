@@ -42,6 +42,9 @@ class AgentProcess:
     role: str
     """The agent's role: ``planner``, ``coder``, or ``qa``."""
 
+    model: str
+    """The AI model used by this agent (e.g. ``copilot``)."""
+
     task_name: str | None
     """Name of the board task this agent is working on, or ``None`` for the planner."""
 

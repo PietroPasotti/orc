@@ -598,6 +598,7 @@ dependencies = [
     { name = "httpx" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "structlog" },
     { name = "typer" },
 ]
@@ -619,6 +620,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "rich", specifier = ">=13" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "typer", specifier = ">=0.15" },
 ]
