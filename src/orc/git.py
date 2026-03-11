@@ -409,11 +409,21 @@ def _rebase_in_progress(worktree: Path) -> bool:
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
-def _complete_merge(worktree: Path) -> None:
-    """Fast-forward merge dev into main, then switch back to dev."""
+def _complete_merge(worktree: Path) -> bool:
+    """Fast-forward merge dev into main, then switch back to dev.
+
+    Returns True if a merge was performed, False if already up to date.
+    """
     subprocess.run(["git", "checkout", "main"], cwd=worktree, check=True)
-    subprocess.run(["git", "merge", "--ff-only", _cfg.WORK_DEV_BRANCH], cwd=worktree, check=True)
+    result = subprocess.run(
+        ["git", "merge", "--ff-only", _cfg.WORK_DEV_BRANCH],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     subprocess.run(["git", "checkout", _cfg.WORK_DEV_BRANCH], cwd=worktree, check=True)
+    return "Already up to date" not in result.stdout
 
 
 def _conflict_status(worktree: Path) -> str:

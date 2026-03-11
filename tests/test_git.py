@@ -368,7 +368,7 @@ class TestGitCoverage:
         assert result is False
 
     def test_complete_merge_calls_git(self, tmp_path, monkeypatch):
-        """Lines 249-251: _complete_merge runs checkout and merge."""
+        """_complete_merge runs checkout and merge, returns True when a merge occurred."""
         monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
         runs = []
 
@@ -376,13 +376,29 @@ class TestGitCoverage:
             runs.append(cmd)
             r = MagicMock()
             r.returncode = 0
+            r.stdout = "Updating abc..def\nFast-forward\n"
             return r
 
         with patch("orc.git.subprocess.run", fake_run):
-            _git._complete_merge(tmp_path)
+            result = _git._complete_merge(tmp_path)
         cmds = [" ".join(c) for c in runs]
         assert any("checkout" in c and "main" in c for c in cmds)
         assert any("merge" in c for c in cmds)
+        assert result is True
+
+    def test_complete_merge_returns_false_when_already_up_to_date(self, tmp_path, monkeypatch):
+        """_complete_merge returns False when git reports 'Already up to date.'"""
+        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "Already up to date.\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            result = _git._complete_merge(tmp_path)
+        assert result is False
 
     def test_conflict_status_returns_output(self, tmp_path):
         """Lines 256-262: _conflict_status returns git status output."""

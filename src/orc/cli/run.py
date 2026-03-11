@@ -111,26 +111,21 @@ def _run(
     try:
         dispatcher = _disp.Dispatcher(squad_cfg, callbacks, dry_run=dry_run)
         if use_tui and state is not None:
-            with _tui.live_context(_tui.render(state)) as live:
-                # Wrap dispatcher.run in a thread-free approach: we need to
-                # call live.update() periodically while run() executes.
-                # Since dispatcher.run() is synchronous, we hook into it by
-                # wrapping get_messages to refresh the display on each poll.
-                _orig_get_messages = callbacks.get_messages
+            # Wrap get_messages to keep state.current_loop and state.dev_ahead
+            # fresh; the Textual app reads from state on its own timer.
+            _orig_get_messages = callbacks.get_messages
 
-                def _refreshing_get_messages() -> list[dict]:
-                    assert state is not None
-                    state.current_loop = dispatcher.loop
-                    now = time.monotonic()
-                    if now - _last_dev_refresh[0] >= _DEV_AHEAD_REFRESH_INTERVAL:
-                        state.dev_ahead = _safe_dev_ahead()
-                        _last_dev_refresh[0] = now
-                    live.update(_tui.render(state))
-                    return _orig_get_messages()
+            def _updating_get_messages() -> list[dict]:
+                assert state is not None
+                state.current_loop = dispatcher.loop
+                now = time.monotonic()
+                if now - _last_dev_refresh[0] >= _DEV_AHEAD_REFRESH_INTERVAL:
+                    state.dev_ahead = _safe_dev_ahead()
+                    _last_dev_refresh[0] = now
+                return _orig_get_messages()
 
-                callbacks.get_messages = _refreshing_get_messages
-                dispatcher.run(maxloops=maxloops)
-                live.update(_tui.render(state))
+            callbacks.get_messages = _updating_get_messages
+            _tui.run_tui(state, lambda: dispatcher.run(maxloops=maxloops))
         else:
             dispatcher.run(maxloops=maxloops)
     except Exception:

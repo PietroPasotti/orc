@@ -73,27 +73,15 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
 
 class TestNoTuiFlag:
     def test_no_tui_disables_tui(self, tmp_path, monkeypatch):
-        """--no-tui causes no live_context call."""
+        """--no-tui causes no run_tui call."""
         import orc.tui as _tui_mod
 
-        live_called = []
-
-        class FakeLive:
-            def __enter__(self):
-                live_called.append(True)
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def update(self, *a):
-                pass
-
-        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: FakeLive())
+        tui_called = []
+        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
         _patch_run_deps(monkeypatch, tmp_path)
 
         _run_mod._run(maxloops=1, no_tui=True)
-        assert live_called == []
+        assert tui_called == []
 
     def test_non_tty_auto_disables_tui(self, tmp_path, monkeypatch):
         """Non-TTY stdout skips TUI even without --no-tui."""
@@ -101,20 +89,8 @@ class TestNoTuiFlag:
 
         import orc.tui as _tui_mod
 
-        live_called = []
-
-        class FakeLive:
-            def __enter__(self):
-                live_called.append(True)
-                return self
-
-            def __exit__(self, *a):
-                pass
-
-            def update(self, *a):
-                pass
-
-        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: FakeLive())
+        tui_called = []
+        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
         monkeypatch.setattr(
             sys,
             "stdout",
@@ -131,26 +107,22 @@ class TestNoTuiFlag:
         _patch_run_deps(monkeypatch, tmp_path)
 
         _run_mod._run(maxloops=1, no_tui=False)
-        assert live_called == []
+        assert tui_called == []
 
 
 class TestTuiPath:
-    def test_tui_path_calls_live_context_and_render(self, tmp_path, monkeypatch):
-        """TTY + no --no-tui → live_context() and render() are called, closures exercised."""
+    def test_tui_path_calls_run_tui_and_render(self, tmp_path, monkeypatch):
+        """TTY + no --no-tui → run_tui() is called and render() is exercised."""
         import sys
         from pathlib import Path
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from conftest import FakePopen
 
         import orc.tui as _tui_mod
         from orc.pool import AgentProcess
 
-        live_mock = MagicMock()
-        live_mock.__enter__ = MagicMock(return_value=live_mock)
-        live_mock.__exit__ = MagicMock(return_value=False)
-        live_mock.update = MagicMock()
-
+        tui_called = []
         captured_callbacks: list = []
 
         original_init = _disp.Dispatcher.__init__
@@ -159,7 +131,11 @@ class TestTuiPath:
             captured_callbacks.append(callbacks)
             original_init(self, squad, callbacks, **kw)
 
-        monkeypatch.setattr(_tui_mod, "live_context", lambda *a, **kw: live_mock)
+        def fake_run_tui(state, run_fn):
+            tui_called.append(True)
+            run_fn()  # execute dispatcher.run() synchronously in tests
+
+        monkeypatch.setattr(_tui_mod, "run_tui", fake_run_tui)
         monkeypatch.setattr(
             sys,
             "stdout",
@@ -177,11 +153,10 @@ class TestTuiPath:
         monkeypatch.setattr(_disp.Dispatcher, "__init__", capturing_init)
         _patch_run_deps(monkeypatch, tmp_path)
 
-        with patch.object(_tui_mod, "render", wraps=_tui_mod.render) as render_mock:
+        with patch.object(_tui_mod, "render", wraps=_tui_mod.render):
             _run_mod._run(maxloops=1, no_tui=False)
 
-        assert live_mock.update.called
-        assert render_mock.called
+        assert tui_called == [True]
 
         # Exercise the closures registered in callbacks.
         assert captured_callbacks
@@ -203,7 +178,7 @@ class TestTuiPath:
         # _on_agent_done
         cb.on_agent_done(fake_agent, 0)
 
-        # _refreshing_get_messages (the wrapped get_messages)
+        # _updating_get_messages (the wrapped get_messages)
         result = cb.get_messages()
         assert isinstance(result, list)
 

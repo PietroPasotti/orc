@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import io
+import threading
 from unittest.mock import patch
 
 import rich.console
-import rich.live
 import rich.panel
 
 from orc.tui import (
     AgentRow,
+    OrcApp,
     RunState,
     _agent_card,
     _column_panel,
     _elapsed,
-    live_context,
     render,
+    run_tui,
 )
 
 
@@ -311,11 +312,96 @@ class TestRenderMultipleAgents:
         assert "qa-1" in out
 
 
-class TestLiveContext:
-    def test_returns_live_instance(self):
-        lc = live_context()
-        assert isinstance(lc, rich.live.Live)
+class TestRunTui:
+    def test_run_tui_calls_run_fn(self):
+        """run_tui executes run_fn in a background thread."""
+        called = []
 
-    def test_custom_refresh_rate(self):
-        lc = live_context(refresh_per_second=2)
-        assert isinstance(lc, rich.live.Live)
+        def run_fn() -> None:
+            called.append(True)
+
+        with patch.object(OrcApp, "run", return_value=None):
+            run_tui(RunState(), run_fn)
+
+        assert called == [True]
+
+    def test_run_tui_reraises_exception(self):
+        """run_tui propagates exceptions raised by run_fn."""
+        import pytest
+
+        def boom() -> None:
+            raise RuntimeError("dispatch failed")
+
+        with patch.object(OrcApp, "run", return_value=None):
+            with pytest.raises(RuntimeError, match="dispatch failed"):
+                run_tui(RunState(), boom)
+
+    def test_orc_app_is_app_instance(self):
+        """OrcApp can be instantiated."""
+        from textual.app import App
+
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        assert isinstance(app, App)
+
+
+class TestOrcAppMethods:
+    """Unit-test OrcApp internals without a live event loop."""
+
+    def test_compose_yields_static(self):
+        """compose() yields a Static widget with the initial render."""
+        from textual.widgets import Static
+
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        widgets = list(app.compose())
+        assert len(widgets) == 1
+        assert isinstance(widgets[0], Static)
+        assert widgets[0].id == "display"
+
+    def test_on_mount_sets_interval(self):
+        """on_mount() calls set_interval."""
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        intervals: list = []
+        app.set_interval = lambda secs, fn: intervals.append((secs, fn))
+        app.on_mount()
+        assert len(intervals) == 1
+        assert intervals[0][0] == 0.25
+
+    def test_refresh_exits_when_worker_done(self):
+        """_refresh() calls self.exit() when the worker thread is no longer alive."""
+        t = threading.Thread(target=lambda: None)
+        t.start()
+        t.join()  # ensure it's dead
+
+        app = OrcApp(RunState(), t)
+        exited = []
+        app.exit = lambda: exited.append(True)
+
+        class FakeStatic:
+            def update(self, renderable: object) -> None:
+                pass
+
+        app.query_one = lambda selector, widget_type: FakeStatic()
+        app._refresh()
+        assert exited == [True]
+
+    def test_refresh_updates_display(self):
+        """_refresh() updates the Static widget with the current render."""
+        t = threading.Thread(target=lambda: None)
+        t.start()
+        t.join()
+
+        state = RunState(current_loop=5)
+        app = OrcApp(state, t)
+        app.exit = lambda: None
+        updates: list = []
+
+        class FakeStatic:
+            def update(self, renderable: object) -> None:
+                updates.append(renderable)
+
+        app.query_one = lambda selector, widget_type: FakeStatic()
+        app._refresh()
+        assert updates

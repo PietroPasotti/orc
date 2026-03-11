@@ -73,8 +73,11 @@ def _merge(auto: bool = False) -> None:
     dev_worktree = _git._ensure_dev_worktree()
 
     if auto:
-        _git._complete_merge(dev_worktree)
-        typer.echo("✓ dev merged into main.")
+        merged = _git._complete_merge(dev_worktree)
+        if merged:
+            typer.echo("✓ dev merged into main.")
+        else:
+            typer.echo("Already up to date.")
     else:
         typer.echo(
             f"✓ dev is up-to-date with main and ready to merge.\n"

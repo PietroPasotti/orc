@@ -52,12 +52,29 @@ class TestMergeCommand:
 
         monkeypatch.setattr(m.subprocess, "run", fake_run)
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True) or True)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
         assert completed == [True]
         assert "merged into main" in result.output
+
+    def test_already_up_to_date(self, monkeypatch, tmp_path):
+        """With --auto: prints 'Already up to date.' when nothing to merge."""
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: False)
+
+        result = runner.invoke(m.app, ["merge", "--auto"])
+        assert result.exit_code == 0
+        assert "Already up to date" in result.output
 
     def test_conflict_delegates_to_coder_then_completes(self, monkeypatch, tmp_path):
         """On conflict the coder is invoked; with --auto the merge completes."""
@@ -86,7 +103,7 @@ class TestMergeCommand:
         )
         monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True) or True)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -110,7 +127,7 @@ class TestMergeCommand:
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: None)
+        monkeypatch.setattr(_git, "_complete_merge", lambda wt: False)
 
         received_extra: list[str] = []
 

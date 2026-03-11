@@ -1,29 +1,30 @@
-"""Live TUI panel for `orc run`.
+"""Full-screen Textual TUI for `orc run`.
 
 Provides :class:`RunState`, :class:`AgentRow`, :func:`render`, and
-:func:`live_context` — the building blocks for a real-time Rich dashboard
+:func:`run_tui` — the building blocks for a real-time full-screen dashboard
 shown when ``orc run`` is invoked with a TTY.
 
 Usage::
 
     state = RunState(agents=[], dev_ahead=0, telegram_ok=True,
                      backend="copilot", current_loop=0, max_loops=1)
-    with live_context() as live:
-        live.update(render(state))
-        # ... mutate state ...
-        live.update(render(state))
+    run_tui(state, lambda: dispatcher.run(maxloops=1))
 """
 
 from __future__ import annotations
 
 import os
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-import rich.live
 import rich.panel
 import rich.table
 from rich.console import Group, RenderableType
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.widgets import Static
 
 
 @dataclass
@@ -170,12 +171,46 @@ def render(state: RunState) -> RenderableType:
     return wrapper
 
 
-def live_context(
-    renderable: RenderableType | None = None,
-    refresh_per_second: int = 4,
-) -> rich.live.Live:
-    """Return a pre-configured :class:`rich.live.Live` instance.
+class OrcApp(App[None]):
+    """Full-screen Textual dashboard for ``orc run``."""
 
-    Pass *renderable* to set the initial display and avoid a blank first frame.
+    BINDINGS = [Binding("q", "quit", "Quit")]
+
+    def __init__(self, state: RunState, worker: threading.Thread) -> None:
+        super().__init__()
+        self._state = state
+        self._worker = worker
+
+    def compose(self) -> ComposeResult:
+        yield Static(render(self._state), id="display")
+
+    def on_mount(self) -> None:
+        self.set_interval(0.25, self._refresh)
+
+    def _refresh(self) -> None:
+        self.query_one("#display", Static).update(render(self._state))
+        if not self._worker.is_alive():
+            self.exit()
+
+
+def run_tui(state: RunState, run_fn: Callable[[], None]) -> None:
+    """Run *run_fn* in a background thread while displaying the Textual TUI.
+
+    Blocks until *run_fn* completes (or the user presses ``q``).  Any
+    exception raised by *run_fn* is re-raised in the calling thread after
+    the TUI exits.
     """
-    return rich.live.Live(renderable, refresh_per_second=refresh_per_second)
+    exc_holder: list[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            run_fn()
+        except BaseException as exc:  # noqa: BLE001
+            exc_holder.append(exc)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    OrcApp(state, t).run()
+    t.join()
+    if exc_holder:
+        raise exc_holder[0]
