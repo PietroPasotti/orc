@@ -260,6 +260,24 @@ class TestStatusCoverage:
             result = _st._pending_reviews()
         assert result == ["feat/0001-foo"]
 
+    def test_pending_reviews_strips_worktree_plus_prefix(self, monkeypatch, tmp_path):
+        """Line 65: git branch prefixes worktree branches with '+'; must be stripped."""
+        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            if "--list" in cmd:
+                # '+' prefix = branch checked out in another worktree
+                r.stdout = "+ feat/0004-worktree\n  feat/0005-normal\n"
+            else:
+                r.returncode = 1  # both unmerged
+            return r
+
+        with patch("orc.cli.status.subprocess.run", fake_run):
+            result = _st._pending_reviews()
+        assert result == ["feat/0004-worktree", "feat/0005-normal"]
+
     def test_status_shows_pending_visions(self, tmp_path, monkeypatch):
         """Lines 197-200: pending visions section printed when visions exist."""
         self._setup(monkeypatch, ahead=0)

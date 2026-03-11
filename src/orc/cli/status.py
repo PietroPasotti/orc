@@ -62,7 +62,7 @@ def _pending_reviews() -> list[str]:
         capture_output=True,
         text=True,
     )
-    branches = [line.strip().lstrip("* ") for line in result.stdout.splitlines() if line.strip()]
+    branches = [line.strip().lstrip("+* ") for line in result.stdout.splitlines() if line.strip()]
     unmerged = []
     for branch in branches:
         merged = subprocess.run(
