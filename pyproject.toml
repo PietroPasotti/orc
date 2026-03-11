@@ -5,8 +5,25 @@ build-backend = "hatchling.build"
 [project]
 name = "qorc"
 dynamic = ["version"]
-description = "A standalone multi-agent orchestrator engine"
+description = "A standalone multi-agent orchestrator that turns high-level product visions into implementation code"
+readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.13"
+authors = [
+    { name = "Pietro Pasotti", email = "pietro.pasotti@canonical.com" },
+    { name = "orc", email = "223556219+Copilot@users.noreply.github.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
 dependencies = [
     "typer>=0.15",
     "httpx>=0.28",
