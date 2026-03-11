@@ -675,6 +675,34 @@ class TestDispatcherInternalCoverage:
 
         _disp._cleanup_context_tmp(FakeProc())  # should not raise
 
+    def test_dispatch_returns_zero_when_nothing_to_do(self, tmp_path, monkeypatch):
+        """_dispatch returns 0 immediately when no tasks, visions, or reviews (line 318)."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb)
+        result = d._dispatch([])
+        assert result == 0
+
+    def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
+        """run() logs workflow-complete and exits when nothing to dispatch (lines 299-301)."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        cb.has_unresolved_block = lambda msgs: (None, None)
+        d = Dispatcher(_minimal_squad(), cb)
+        d.run(maxloops=0)
+        out = capsys.readouterr().out
+        assert "Workflow complete" in out
+
 
 class TestDispatchCallbacksOptional:
     """Tests for the optional on_agent_start / on_agent_done hooks."""

@@ -16,11 +16,14 @@ Usage::
 
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass, field
 
 import rich.live
+import rich.panel
 import rich.table
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
 
 
 @dataclass
@@ -80,47 +83,91 @@ _ROLE_STYLE: dict[str, str] = {
 }
 
 
-def render(state: RunState) -> RenderableType:
-    """Build a :class:`rich.table.Table` from *state*.
+def _elapsed(started_at: float) -> str:
+    """Format seconds elapsed since *started_at* as ``"Xm Ys"``."""
+    seconds = int(time.monotonic() - started_at)
+    return f"{seconds // 60}m {seconds % 60}s"
 
-    The table has one row per agent in ``state.agents`` plus a footer row
-    showing global metadata.
-    """
-    table = rich.table.Table(
-        title="orc run",
-        show_header=True,
-        header_style="bold",
-        expand=True,
+
+def _agent_card(row: AgentRow) -> rich.panel.Panel:
+    """Render a single agent as a :class:`rich.panel.Panel`."""
+    worktree_base = os.path.basename(row.worktree) or row.worktree
+    body = (
+        f"status:  {row.status}\n"
+        f"task:    {row.task_name or '—'}\n"
+        f"wt:      {worktree_base}\n"
+        f"elapsed: {_elapsed(row.started_at)}"
     )
-    table.add_column("Agent", style="bold")
-    table.add_column("Role")
-    table.add_column("Model")
-    table.add_column("Status")
-    table.add_column("Task")
-    table.add_column("Worktree")
+    return rich.panel.Panel(body, title=row.agent_id)
 
-    for row in state.agents:
-        role_style = _ROLE_STYLE.get(row.role, "white")
-        table.add_row(
-            row.agent_id,
-            f"[{role_style}]{row.role}[/{role_style}]",
-            row.model,
-            row.status,
-            row.task_name or "—",
-            row.worktree,
-        )
 
+def _column_panel(role: str, rows: list[AgentRow]) -> rich.panel.Panel:
+    """Render a role column as a :class:`rich.panel.Panel`.
+
+    The title shows ``"{role}  [{model}]"`` where *model* is the shared model
+    across all rows, or ``"(mixed)"`` when rows use different models.
+    """
+    if rows:
+        models = {r.model for r in rows}
+        model_str = next(iter(models)) if len(models) == 1 else "(mixed)"
+    else:
+        model_str = ""
+
+    role_style = _ROLE_STYLE.get(role, "white")
+    title = f"[{role_style}]{role}[/{role_style}]"
+    if model_str:
+        title += rf"  \[{model_str}]"
+
+    if not rows:
+        body: RenderableType = "(idle)"
+    else:
+        body = Group(*[_agent_card(r) for r in rows])
+
+    return rich.panel.Panel(body, title=title)
+
+
+def render(state: RunState) -> RenderableType:
+    """Build a three-column Rich layout from *state*.
+
+    The layout has:
+    - A header row: loop counter, backend, dev-ahead, Telegram status.
+    - Three columns: Planner | Coder | QA.
+    """
     max_loops_str = str(state.max_loops) if state.max_loops > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
-    footer = (
+    header = (
         f"loop {state.current_loop}/{max_loops_str}  "
         f"dev+{state.dev_ahead}  "
         f"backend={state.backend}  "
         f"telegram={tg_str}"
     )
-    table.caption = footer
 
-    return table
+    planners = [r for r in state.agents if r.role == "planner"]
+    coders = [r for r in state.agents if r.role == "coder"]
+    qa_agents = [r for r in state.agents if r.role == "qa"]
+
+    outer = rich.table.Table.grid(expand=True)
+    outer.add_column(ratio=1)
+    outer.add_column(ratio=1)
+    outer.add_column(ratio=1)
+
+    columns_row = (
+        _column_panel("Planner", planners),
+        _column_panel("Coder", coders),
+        _column_panel("QA", qa_agents),
+    )
+
+    wrapper = rich.table.Table(
+        title=header,
+        show_header=False,
+        box=None,
+        expand=True,
+    )
+    wrapper.add_column()
+    wrapper.add_row(outer)
+    outer.add_row(*columns_row)
+
+    return wrapper
 
 
 def live_context(
