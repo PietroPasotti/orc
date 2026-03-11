@@ -33,8 +33,11 @@ Lifecycle
 
 Maxloops
 --------
-``maxloops`` counts **total agent invocations** across the squad.
-``maxloops=0`` means "run until no work remains or the workflow is hard-blocked".
+``maxloops`` counts **dispatch cycles**, not individual agent invocations.  One
+cycle may spawn a full squad's worth of agents (e.g. one coder + one QA running
+in parallel).  ``maxloops=1`` (the default) therefore runs one complete round
+before stopping; ``maxloops=0`` means "run until no work remains or the
+workflow is hard-blocked".
 """
 
 from __future__ import annotations
@@ -192,8 +195,11 @@ class Dispatcher:
     def run(self, maxloops: int = 0) -> None:
         """Run the dispatch loop.
 
-        *maxloops* — maximum total agent invocations; ``0`` = unlimited.
-        Stops when maxloops is reached **or** when the pool is empty and
+        *maxloops* — maximum number of dispatch cycles; ``0`` = unlimited.
+        One cycle may spawn a full squad (e.g. coder + QA in parallel).
+        When the limit is reached no new agents are dispatched, but any
+        agents already running are allowed to finish before the loop exits.
+        Stops after *maxloops* cycles **or** when the pool is empty and
         there is nothing left to dispatch (workflow complete).
         """
         try:
@@ -234,25 +240,32 @@ class Dispatcher:
                 self._handle_hard_block(blocked_agent, messages)
                 messages = self.cb.get_messages()
 
-            # 5. Dispatch new agents.
-            if not self.dry_run or self._total_spawned == 0:
-                dispatched = self._dispatch(messages)
-                self._total_spawned += dispatched
+            # 5. Dispatch new agents (skip when the cycle limit is already reached).
+            at_limit = maxloops > 0 and self._total_spawned >= maxloops
+            if not at_limit:
+                if not self.dry_run or self._total_spawned == 0:
+                    dispatched = self._dispatch(messages)
+                    self._total_spawned += dispatched
+                else:
+                    dispatched = 0  # pragma: no cover
             else:
-                dispatched = 0  # pragma: no cover
+                dispatched = 0
 
             # 6. Check termination.
             if self.dry_run:
                 logger.info("dry-run mode: printed one cycle, stopping")
                 break
 
-            if maxloops > 0 and self._total_spawned >= maxloops:
-                logger.info("reached maxloops, stopping", maxloops=maxloops)
+            # When the cycle limit is reached, keep polling until all running
+            # agents finish, then stop.  This avoids orphaning agents that were
+            # already in-flight when the limit was hit.
+            if at_limit and self.pool.is_empty():
+                logger.info("reached maxloops and pool drained, stopping", maxloops=maxloops)
                 typer.echo(f"\n↩ Reached --maxloops {maxloops}. Stopping.")
                 break
 
             # Check idle-complete: nothing running, nothing to dispatch.
-            if self.pool.is_empty() and dispatched == 0:
+            if not at_limit and self.pool.is_empty() and dispatched == 0:
                 if not self._has_pending_work(messages):  # pragma: no cover
                     logger.info(  # pragma: no cover
                         "no pending work and pool empty — workflow complete"

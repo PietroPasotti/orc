@@ -10,7 +10,7 @@
 
 ```
 orc run
-  └── planner                   – reads vision docs, creates tasks in orc/work/
+  └── planner                   – reads vision docs and #TODOs|#FIXMEs, creates tasks in orc/work/
         └── coder               – implements each task on a feature branch
               └── qa            – reviews the branch, commits qa(passed): or qa(failed):
                     └── orc     – merges the feature branch into dev, loops back to planner
@@ -18,6 +18,10 @@ orc run
 
 Inter-agent synchronization happens over git and interaction with the user is mediated by a telegram bot. 
 The orchestrator inspects the git tree status to determine the current state and decide which agent(s) to run next depending on the pool of available agents.
+
+Orc's work happens on a `dev` branch, so that you can keep working on `main` independently.
+Any time control goes to the orchestrator, the orchestrator will rebase `dev` on `main`.
+Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate fixing any conflicts to an agent.
 
 ## Installation
 
@@ -118,7 +122,7 @@ GH_TOKEN=...                   # for copilot backend
 ## Running
 
 ```bash
-# Run one agent loop (default)
+# Run one dispatch cycle (default) — may spawn a full squad in parallel
 orc run
 
 # Run until complete

@@ -10,6 +10,7 @@ from conftest import FakePopen, make_msg
 from typer.testing import CliRunner
 
 import orc.cli.merge as _merge_mod
+import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.dispatcher as _disp
@@ -182,7 +183,7 @@ class TestBlockedResumption:
 
         blocked = self._blocked_msgs("coder-1")
         msg_iter = iter([blocked, []])
-        monkeypatch.setattr(tg, "get_messages", lambda: next(msg_iter))
+        monkeypatch.setattr(tg, "get_messages", lambda: next(msg_iter, []))
 
         invocations: list[str] = []
         monkeypatch.setattr(
@@ -196,6 +197,7 @@ class TestBlockedResumption:
         monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        monkeypatch.setattr(_run_mod, "logger", MagicMock())
 
         rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
         assert rc.exit_code == 0
@@ -586,6 +588,15 @@ class TestDispatcherCoverage:
 
 
 class TestDispatcherInternalCoverage:
+    def test_has_pending_work_open_tasks_returns_true(self, tmp_path):
+        """_has_pending_work returns True when open tasks exist."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+        )
+        d = Dispatcher(_minimal_squad(), cb)
+        assert d._has_pending_work([]) is True
+
     def test_has_pending_work_blocked_returns_true(self, tmp_path):
         """Lines 485-486: _has_pending_work returns True when blocked agent exists."""
         cb = _make_callbacks(

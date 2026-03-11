@@ -73,8 +73,8 @@ def run(
         int,
         typer.Option(
             help=(
-                "Maximum agent invocations before stopping. "
-                "0 = run until the workflow completes or blocks."
+                "Maximum dispatch cycles before stopping (0 = run until complete). "
+                "One cycle may spawn a full squad of agents running in parallel."
             ),
         ),
     ] = 1,
@@ -90,5 +90,9 @@ def run(
         ),
     ] = "default",
 ) -> None:
-    """Run the next agent(s) in the workflow."""
+    """Run the next dispatch cycle(s) of the workflow.
+
+    One cycle may spawn a full squad of agents in parallel (e.g. a coder and a
+    QA agent running concurrently).  Use ``--maxloops 0`` to run until the
+    workflow completes or hard-blocks waiting for human input."""
     return _run(maxloops=maxloops, dry_run=dry_run, squad=squad)
