@@ -19,17 +19,17 @@ fmt:
 
 # Create and push a new release tag, then poll the CI release pipeline.
 # Bump level: patch (default), minor, or major. Pass --nowait to skip polling.
-#   just release            # v0.1.2 → v0.1.3
-#   just release --minor    # v0.1.2 → v0.2.0
-#   just release --major    # v0.1.2 → v1.0.0
-#   just release --nowait   # tag and push, don't poll CI
-release *args:
+#   just release "fix: correct widget sizing"
+#   just release "feat: add export command" --minor
+#   just release "feat!: redesign API" --major
+#   just release "fix: typo" --nowait
+release message *flags:
     #!/usr/bin/env bash
     set -euo pipefail
 
     bump="patch"
     nowait=false
-    for arg in {{ args }}; do
+    for arg in {{ flags }}; do
         case "$arg" in
             --minor) bump="minor" ;;
             --major) bump="major" ;;
@@ -55,7 +55,7 @@ release *args:
     new_tag="v${major}.${minor}.${patch}"
     echo "Tagging $latest → $new_tag"
 
-    git tag "$new_tag"
+    git tag -a "$new_tag" -m "{{ message }}"
     git push origin "$new_tag"
     echo "✓ Pushed $new_tag"
 
