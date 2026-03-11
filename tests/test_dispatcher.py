@@ -34,6 +34,7 @@ def _make_agent(tmp_path: Path, *, role: str = "coder", task: str = "0001-foo.md
     return AgentProcess(
         agent_id=f"{role}-1",
         role=role,
+        model="copilot",
         task_name=task,
         process=FakePopen(),
         worktree=tmp_path,
@@ -549,6 +550,7 @@ class TestDispatcherCoverage:
         agent = AgentProcess(
             agent_id="planner-1",
             role="planner",
+            model="copilot",
             task_name=None,
             process=FakePopen(),
             worktree=tmp_path,
@@ -655,3 +657,96 @@ class TestDispatcherInternalCoverage:
             pass
 
         _disp._cleanup_context_tmp(FakeProc())  # should not raise
+
+
+class TestDispatchCallbacksOptional:
+    """Tests for the optional on_agent_start / on_agent_done hooks."""
+
+    def test_on_agent_start_called_after_spawn(self, tmp_path):
+        """on_agent_start receives the AgentProcess just added to the pool."""
+        started = []
+
+        def _spawn(ctx, cwd, model, log):
+            return FakePopen(), None
+
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            spawn_fn=_spawn,
+        )
+        cb.on_agent_start = lambda agent: started.append(agent.agent_id)
+
+        d = Dispatcher(_minimal_squad(), cb)
+        d._spawn_agent("planner", "planner-1", None, [])
+        assert started == ["planner-1"]
+
+    def test_on_agent_done_called_after_completion(self, tmp_path):
+        """on_agent_done receives the completed agent and its exit code."""
+        done = []
+
+        cb = _make_callbacks(tmp_path)
+        cb.on_agent_done = lambda agent, rc: done.append((agent.agent_id, rc))
+
+        d = Dispatcher(_minimal_squad(), cb)
+        agent = _make_agent(tmp_path)
+        d.pool.add(agent)
+        d._handle_completion(agent, 0, [])
+        assert done == [("coder-1", 0)]
+
+    def test_on_agent_done_called_on_failure(self, tmp_path):
+        """on_agent_done is called even when the agent exits non-zero."""
+        done = []
+
+        cb = _make_callbacks(tmp_path)
+        cb.on_agent_done = lambda agent, rc: done.append((agent.agent_id, rc))
+
+        d = Dispatcher(_minimal_squad(), cb)
+        agent = _make_agent(tmp_path)
+        d.pool.add(agent)
+        d._handle_completion(agent, 1, [])
+        assert done == [("coder-1", 1)]
+
+    def test_on_agent_start_none_is_safe(self, tmp_path):
+        """on_agent_start=None (default) does not crash."""
+
+        def _spawn(ctx, cwd, model, log):
+            return FakePopen(), None
+
+        cb = _make_callbacks(tmp_path, spawn_fn=_spawn)
+        assert cb.on_agent_start is None
+
+        d = Dispatcher(_minimal_squad(), cb)
+        d._spawn_agent("planner", "planner-1", None, [])  # must not raise
+
+    def test_on_agent_done_none_is_safe(self, tmp_path):
+        """on_agent_done=None (default) does not crash."""
+        cb = _make_callbacks(tmp_path)
+        assert cb.on_agent_done is None
+
+        d = Dispatcher(_minimal_squad(), cb)
+        agent = _make_agent(tmp_path)
+        d.pool.add(agent)
+        d._handle_completion(agent, 0, [])  # must not raise
+
+
+class TestDispatcherLoopProperty:
+    def test_loop_starts_at_zero(self, tmp_path):
+        cb = _make_callbacks(tmp_path)
+        d = Dispatcher(_minimal_squad(), cb)
+        assert d.loop == 0
+
+    def test_loop_increments_each_cycle(self, tmp_path, monkeypatch):
+        """loop property reflects the number of _loop iterations run."""
+        import orc.dispatcher as _d
+
+        monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
+
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_messages=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb)
+        # Run one maxloops cycle (spawns planner then stops when pool drains).
+        d.run(maxloops=1)
+        assert d.loop >= 1
