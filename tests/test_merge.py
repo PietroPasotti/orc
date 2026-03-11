@@ -72,7 +72,7 @@ class TestMergeCommand:
             nonlocal call_count
             call_count += 1
             r = MagicMock()
-            r.returncode = 1 if cmd == ["git", "rebase", "main"] else 0
+            r.returncode = 1 if cmd == ["git", "rebase", "--autostash", "main"] else 0
             r.stdout = "UU src/conflict.py\n"
             return r
 
@@ -102,7 +102,7 @@ class TestMergeCommand:
 
         def fake_run(cmd, **kw):
             r = MagicMock()
-            r.returncode = 1 if cmd == ["git", "rebase", "main"] else 0
+            r.returncode = 1 if cmd == ["git", "rebase", "--autostash", "main"] else 0
             r.stdout = ""
             return r
 
@@ -134,7 +134,7 @@ class TestMergeCommand:
 
         def fake_run(cmd, **kw):
             r = MagicMock()
-            r.returncode = 1 if cmd == ["git", "rebase", "main"] else 0
+            r.returncode = 1 if cmd == ["git", "rebase", "--autostash", "main"] else 0
             r.stdout = ""
             return r
 
@@ -155,7 +155,7 @@ class TestMergeCommand:
 
         def fake_run(cmd, **kw):
             r = MagicMock()
-            r.returncode = 1 if cmd == ["git", "rebase", "main"] else 0
+            r.returncode = 1 if cmd == ["git", "rebase", "--autostash", "main"] else 0
             r.stdout = ""
             return r
 
@@ -167,27 +167,3 @@ class TestMergeCommand:
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1
-
-    def test_rebase_unstaged_changes_exits_one(self, monkeypatch, tmp_path):
-        """Lines 32-38: rebase fails with 'unstaged changes' → exit 1."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-
-        def fake_run(cmd, **kw):
-            r = MagicMock()
-            if cmd == ["git", "rebase", "main"]:
-                r.returncode = 1
-                r.stderr = "error: Cannot rebase: You have unstaged changes."
-                r.stdout = ""
-            else:
-                r.returncode = 0
-                r.stdout = ""
-                r.stderr = ""
-            return r
-
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "M src/foo.py")
-
-        result = runner.invoke(m.app, ["merge"])
-        assert result.exit_code == 1
-        assert "unstaged changes" in result.output
