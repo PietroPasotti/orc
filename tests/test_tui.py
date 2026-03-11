@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import io
+from unittest.mock import patch
 
 import rich.console
 import rich.live
+import rich.panel
 
-from orc.tui import AgentRow, RunState, live_context, render
+from orc.tui import (
+    AgentRow,
+    RunState,
+    _agent_card,
+    _column_panel,
+    _elapsed,
+    live_context,
+    render,
+)
 
 
 def _row(
@@ -38,114 +48,264 @@ def _render_to_str(state: RunState) -> str:
     return buf.getvalue()
 
 
+def _panel_to_str(panel: rich.panel.Panel) -> str:
+    buf = io.StringIO()
+    console = rich.console.Console(file=buf, width=80, highlight=False)
+    console.print(panel)
+    return buf.getvalue()
+
+
+class TestElapsed:
+    def test_zero_seconds(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            assert _elapsed(0.0) == "0m 0s"
+
+    def test_ninety_seconds(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 90.0
+            assert _elapsed(0.0) == "1m 30s"
+
+    def test_3661_seconds(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 3661.0
+            assert _elapsed(0.0) == "61m 1s"
+
+
+class TestAgentCard:
+    def test_title_is_agent_id(self):
+        row = _row(agent_id="planner-1")
+        card = _agent_card(row)
+        assert card.title == "planner-1"
+
+    def test_body_contains_status(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            card = _agent_card(_row(status="done"))
+        out = _panel_to_str(card)
+        assert "done" in out
+
+    def test_body_contains_task_name(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            card = _agent_card(_row(task_name="0002-bar.md"))
+        out = _panel_to_str(card)
+        assert "0002-bar.md" in out
+
+    def test_none_task_name_shows_dash(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            card = _agent_card(_row(task_name=None))
+        out = _panel_to_str(card)
+        assert "—" in out
+
+    def test_body_contains_worktree_basename(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            card = _agent_card(_row(worktree="/some/path/myworktree"))
+        out = _panel_to_str(card)
+        assert "myworktree" in out
+
+    def test_body_contains_elapsed(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 90.0
+            card = _agent_card(_row(started_at=0.0))
+        out = _panel_to_str(card)
+        assert "1m 30s" in out
+
+
+class TestColumnPanel:
+    def test_empty_rows_shows_idle(self):
+        panel = _column_panel("Coder", [])
+        out = _panel_to_str(panel)
+        assert "(idle)" in out
+
+    def test_single_row_title_includes_role_and_model(self):
+        panel = _column_panel("Coder", [_row(model="gpt-4")])
+        out = _panel_to_str(panel)
+        assert "Coder" in out
+        assert "gpt-4" in out
+
+    def test_same_model_shows_model_name(self):
+        rows = [_row(model="claude"), _row(agent_id="coder-2", model="claude")]
+        panel = _column_panel("Coder", rows)
+        out = _panel_to_str(panel)
+        assert "claude" in out
+        assert "(mixed)" not in out
+
+    def test_different_models_shows_mixed(self):
+        rows = [_row(model="gpt-4"), _row(agent_id="coder-2", model="claude")]
+        panel = _column_panel("Coder", rows)
+        out = _panel_to_str(panel)
+        assert "(mixed)" in out
+
+    def test_empty_title_has_no_model_string(self):
+        panel = _column_panel("Planner", [])
+        out = _panel_to_str(panel)
+        assert "Planner" in out
+
+
 class TestRenderZeroAgents:
     def test_renders_without_agents(self):
         state = RunState()
         out = _render_to_str(state)
-        assert "orc run" in out
+        assert "loop 0/∞" in out
 
-    def test_footer_contains_loop_info(self):
+    def test_all_three_columns_present(self):
+        state = RunState()
+        out = _render_to_str(state)
+        assert "Planner" in out
+        assert "Coder" in out
+        assert "QA" in out
+
+    def test_empty_columns_show_idle(self):
+        state = RunState()
+        out = _render_to_str(state)
+        assert "(idle)" in out
+
+    def test_header_contains_loop_info(self):
         state = RunState(current_loop=3, max_loops=10)
         out = _render_to_str(state)
-        assert "3" in out
-        assert "10" in out
+        assert "loop 3/10" in out
 
-    def test_footer_unlimited_loops(self):
+    def test_header_unlimited_loops(self):
         state = RunState(current_loop=1, max_loops=0)
         out = _render_to_str(state)
         assert "∞" in out
 
-    def test_footer_backend(self):
+    def test_header_backend(self):
         state = RunState(backend="openai")
         out = _render_to_str(state)
         assert "openai" in out
 
-    def test_footer_telegram_ok(self):
+    def test_header_telegram_ok(self):
         state = RunState(telegram_ok=True)
         out = _render_to_str(state)
         assert "✓" in out
 
-    def test_footer_telegram_not_ok(self):
+    def test_header_telegram_not_ok(self):
         state = RunState(telegram_ok=False)
         out = _render_to_str(state)
         assert "✗" in out
 
-    def test_footer_dev_ahead(self):
+    def test_header_dev_ahead(self):
         state = RunState(dev_ahead=5)
         out = _render_to_str(state)
-        assert "5" in out
+        assert "dev+5" in out
 
 
-class TestRenderOneAgent:
+class TestRenderWithAgents:
+    def test_one_planner_two_coders_one_qa(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(
+                agents=[
+                    _row(agent_id="planner-1", role="planner", task_name=None),
+                    _row(agent_id="coder-1", role="coder"),
+                    _row(agent_id="coder-2", role="coder"),
+                    _row(agent_id="qa-1", role="qa"),
+                ]
+            )
+            out = _render_to_str(state)
+        assert "planner-1" in out
+        assert "coder-1" in out
+        assert "coder-2" in out
+        assert "qa-1" in out
+        assert "Planner" in out
+        assert "Coder" in out
+        assert "QA" in out
+
     def test_renders_agent_id(self):
-        state = RunState(agents=[_row(agent_id="coder-1")])
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(agent_id="coder-1")])
+            out = _render_to_str(state)
         assert "coder-1" in out
 
     def test_renders_model(self):
-        state = RunState(agents=[_row(model="gpt-4")])
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(model="gpt-4")])
+            out = _render_to_str(state)
         assert "gpt-4" in out
 
     def test_renders_status(self):
-        state = RunState(agents=[_row(status="running")])
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(status="running")])
+            out = _render_to_str(state)
         assert "running" in out
 
     def test_renders_task_name(self):
-        state = RunState(agents=[_row(task_name="0002-bar.md")])
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(task_name="0002-bar.md")])
+            out = _render_to_str(state)
         assert "0002-bar.md" in out
 
     def test_none_task_name_renders_dash(self):
-        state = RunState(agents=[_row(task_name=None)])
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(task_name=None)])
+            out = _render_to_str(state)
         assert "—" in out
 
-    def test_renders_worktree(self):
-        state = RunState(agents=[_row(worktree="/wt/path")])
-        out = _render_to_str(state)
-        assert "/wt/path" in out
+    def test_renders_worktree_basename(self):
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(worktree="/wt/mypath")])
+            out = _render_to_str(state)
+        assert "mypath" in out
 
 
 class TestRenderRoles:
     def test_planner_role(self):
-        state = RunState(agents=[_row(role="planner", task_name=None)])
-        out = _render_to_str(state)
-        assert "planner" in out
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(role="planner", task_name=None)])
+            out = _render_to_str(state)
+        assert "Planner" in out
 
     def test_coder_role(self):
-        state = RunState(agents=[_row(role="coder")])
-        out = _render_to_str(state)
-        assert "coder" in out
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(role="coder")])
+            out = _render_to_str(state)
+        assert "Coder" in out
 
     def test_qa_role(self):
-        state = RunState(agents=[_row(role="qa")])
-        out = _render_to_str(state)
-        assert "qa" in out
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(agents=[_row(role="qa")])
+            out = _render_to_str(state)
+        assert "QA" in out
 
 
 class TestRenderMultipleAgents:
     def test_two_agents(self):
-        state = RunState(
-            agents=[
-                _row(agent_id="coder-1", role="coder"),
-                _row(agent_id="qa-1", role="qa"),
-            ]
-        )
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(
+                agents=[
+                    _row(agent_id="coder-1", role="coder"),
+                    _row(agent_id="qa-1", role="qa"),
+                ]
+            )
+            out = _render_to_str(state)
         assert "coder-1" in out
         assert "qa-1" in out
 
     def test_three_agents_different_roles(self):
-        state = RunState(
-            agents=[
-                _row(agent_id="planner-1", role="planner", task_name=None),
-                _row(agent_id="coder-1", role="coder"),
-                _row(agent_id="qa-1", role="qa"),
-            ]
-        )
-        out = _render_to_str(state)
+        with patch("orc.tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(
+                agents=[
+                    _row(agent_id="planner-1", role="planner", task_name=None),
+                    _row(agent_id="coder-1", role="coder"),
+                    _row(agent_id="qa-1", role="qa"),
+                ]
+            )
+            out = _render_to_str(state)
         assert "planner-1" in out
         assert "coder-1" in out
         assert "qa-1" in out
