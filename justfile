@@ -38,6 +38,10 @@ release message *flags:
         esac
     done
 
+    echo "Running tests before release…"
+    just test
+    echo "✓ Tests passed"
+
     latest=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
     if [[ -z "$latest" ]]; then
         echo "No existing vX.Y.Z tag found — defaulting to v0.0.0 as base." >&2
