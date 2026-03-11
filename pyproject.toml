@@ -28,7 +28,7 @@ dev = [
     "commitizen>=4.0",
     "hatch-vcs>=0.4",
     "pytest-cov>=7.0.0",
-    "qorc",
+    "qorc",  # orc developing orc!
 ]
 
 [tool.hatch.version]
