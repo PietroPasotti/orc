@@ -329,7 +329,7 @@ class TestStatusCoverage:
         launched: list[str] = []
         monkeypatch.setattr(_st_module, "_is_tty", lambda: True)
 
-        with patch("orc.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--squad", "default"])
 
         assert result.exit_code == 0

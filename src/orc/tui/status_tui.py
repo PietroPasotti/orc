@@ -9,7 +9,7 @@ Two tabs navigated with ← / →:
 
 Usage::
 
-    from orc.status_tui import run_status_tui
+    from orc.tui.status_tui import run_status_tui
     run_status_tui(squad="default")
 """
 
