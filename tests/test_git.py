@@ -363,7 +363,7 @@ class TestGitCoverage:
 
     def test_close_task_on_board_missing_board(self, tmp_path, monkeypatch):
         """Lines 142-148: board.yaml not found in dev worktree → warns and returns."""
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / "orc")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir()
@@ -449,13 +449,50 @@ class TestGitCoverage:
 
         # Set up minimal git-shaped directory structure
         dev_wt = tmp_path / "dev"
-        (dev_wt / "orc" / "work").mkdir(parents=True)
-        (dev_wt / "orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        (dev_wt / ".orc" / "work").mkdir(parents=True)
+        (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir()
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / "orc")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+
+        from unittest.mock import MagicMock
+
+        runs = []
+
+        def fake_run(cmd, **kw):
+            runs.append(cmd)
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "abc1234\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            _git._merge_feature_into_dev("0001-task.md")
+
+        cmds_str = [" ".join(c) for c in runs]
+        assert any("commit" in c for c in cmds_str)
+
+    def test_merge_feature_commits_board_agents_outside_root(self, tmp_path, monkeypatch):
+        """Lines 308-309: except ValueError when AGENTS_DIR is outside REPO_ROOT."""
+        import orc.config as _cfg
+        import orc.git as _git
+
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        dev_wt = tmp_path / "dev"
+        (dev_wt / ".orc" / "work").mkdir(parents=True)
+        (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir()
+
+        # AGENTS_DIR is outside REPO_ROOT → triggers except ValueError
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", repo_root)
         monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
@@ -487,7 +524,7 @@ class TestGitCoverage:
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir()
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / "orc")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
         monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
@@ -526,7 +563,7 @@ class TestGitCoverage:
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir()
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / "orc")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
         monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)

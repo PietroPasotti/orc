@@ -24,13 +24,13 @@ Example:
 Stage your feedback file(s) first, then run:
 
 ```bash
-git add orc/work/<task-file>.md   # or wherever you wrote your feedback
+git add .orc/work/<task-file>.md   # or wherever you wrote your feedback
 .orc/agent_tools/qa/reject_task.sh <agent-id> <task-code> "<message>"
 ```
 
 Example:
 ```bash
-git add orc/work/0003-foo.md
+git add .orc/work/0003-foo.md
 .orc/agent_tools/qa/reject_task.sh qa-2 0003 "missing tests for error paths; see task file"
 ```
 

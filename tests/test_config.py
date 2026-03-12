@@ -13,11 +13,16 @@ class TestConfigCoverage:
         assert result == tmp_path.resolve()
         monkeypatch.delenv("ORC_DIR")
 
-    def test_find_config_dir_finds_orc_subdir(self, tmp_path):
-        orc_dir = tmp_path / "orc"
+    def test_find_config_dir_finds_dot_orc_subdir(self, tmp_path):
+        orc_dir = tmp_path / ".orc"
         orc_dir.mkdir()
         result = _cfg._find_config_dir(base=tmp_path)
         assert result == orc_dir
+
+    def test_find_config_dir_returns_none_for_bare_orc(self, tmp_path):
+        (tmp_path / "orc").mkdir()
+        result = _cfg._find_config_dir(base=tmp_path)
+        assert result is None
 
     def test_validate_env_missing_env_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_cfg, "ENV_FILE", tmp_path / "nonexistent.env")

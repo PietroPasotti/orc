@@ -2,7 +2,7 @@
 
 ### 1. Find the active task
 
-Look in `orc/work/board.yaml` under the `open` list. Implement tasks one at
+Look in `.orc/work/board.yaml` under the `open` list. Implement tasks one at
 a time, starting with the lowest-numbered file. Read the task file fully before
 touching any code.
 

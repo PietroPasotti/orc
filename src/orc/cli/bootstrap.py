@@ -51,11 +51,12 @@ def _tree(dir_path: Path, prefix: str = ""):
             yield from _tree(path, prefix=prefix + extension)
 
 
-def _bootstrap(to: str = ".orc", force: bool = False) -> None:
+def _bootstrap(force: bool = False) -> None:
     import shutil
 
     _obs.setup()
     project_root = Path.cwd()
+    to = ".orc"
     target = (project_root / to).resolve()
 
     created: list[str] = []
@@ -116,13 +117,6 @@ Next steps
 
 @app.command()
 def bootstrap(
-    to: Annotated[
-        str,
-        typer.Option(
-            "--to",
-            help="Path (relative to CWD) for the orc configuration directory to create.",
-        ),
-    ] = ".orc",
     force: Annotated[
         bool,
         typer.Option("--force", help="Overwrite existing files."),
@@ -142,4 +136,4 @@ def bootstrap(
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)
     """
-    return _bootstrap(to=to, force=force)
+    return _bootstrap(force=force)

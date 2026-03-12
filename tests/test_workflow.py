@@ -224,11 +224,11 @@ class TestWorkflowCoverage:
 
         import orc.workflow as _wf
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / "orc")
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
 
         dev_wt = tmp_path / "dev"
-        orc_work = dev_wt / "orc" / "work"
+        orc_work = dev_wt / ".orc" / "work"
         orc_work.mkdir(parents=True)
         (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
 
@@ -248,10 +248,40 @@ class TestWorkflowCoverage:
         assert any("add" in c for c in cmds)
         assert any("commit" in c for c in cmds)
 
+    def test_do_close_board_crash_recovery_agents_outside_root(self, tmp_path, monkeypatch):
+        """Lines 81-82: ValueError except branch when AGENTS_DIR is outside REPO_ROOT."""
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as _patch
 
-# ---------------------------------------------------------------------------
-# _make_merge_feature_fn
-# ---------------------------------------------------------------------------
+        import orc.workflow as _wf
+
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        agents_dir = tmp_path / "other" / ".orc"
+        agents_dir.mkdir(parents=True)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
+        monkeypatch.setattr(_cfg, "REPO_ROOT", repo_root)
+
+        dev_wt = tmp_path / "dev"
+        orc_work = dev_wt / ".orc" / "work"
+        orc_work.mkdir(parents=True)
+        (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
+
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        runs: list[list] = []
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            runs.append(cmd)
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        with _patch("orc.workflow.subprocess.run", fake_run):
+            _wf._do_close_board("0001-foo.md")
+
+        cmds = [" ".join(c) for c in runs]
+        assert any("add" in c for c in cmds)
+        assert any("commit" in c for c in cmds)
 
 
 class TestMakeMergeFeatureFn:

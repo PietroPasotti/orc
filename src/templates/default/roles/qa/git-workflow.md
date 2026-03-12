@@ -30,10 +30,10 @@ git commit --allow-empty -m "qa(passed): <one-line summary>"
 ```
 
 **If failed** — one or more Critical or Major issues found:
-1. Append an issues section to the task `.md` file in `orc/work/` (see format below).
+1. Append an issues section to the task `.md` file in `.orc/work/` (see format below).
 2. Then commit that change:
 ```bash
-git add orc/work/NNNN-task-title.md
+git add .orc/work/NNNN-task-title.md
 git commit -m "qa(failed): <one-line summary of the blocking issue>"
 ```
 

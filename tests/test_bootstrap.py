@@ -95,12 +95,6 @@ class TestBootstrap:
         runner.invoke(m.app, ["bootstrap", "--force"])
         assert "orc run" in (tmp_path / ".orc" / "justfile").read_text()
 
-    def test_custom_orc_dir(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        runner.invoke(m.app, ["bootstrap", "--to", "agents"])
-        assert (tmp_path / "agents" / "roles" / "planner" / "_main.md").exists()
-        assert (tmp_path / "agents" / "work" / "board.yaml").exists()
-
     def test_output_reports_created_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(m.app, ["bootstrap"])

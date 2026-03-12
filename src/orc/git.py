@@ -303,9 +303,13 @@ def _merge_feature_into_dev(task_name: str) -> None:
     ).stdout.strip()
 
     _close_task_on_board(task_name, dev_wt, commit_tag=merge_sha)
-    board_path = dev_wt / "orc" / "work" / "board.yaml"
+    try:
+        config_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+    except ValueError:
+        config_rel = Path(_cfg.AGENTS_DIR.name)
+    board_path = dev_wt / config_rel / "work" / "board.yaml"
     if board_path.exists():
-        subprocess.run(["git", "add", "orc/work/"], cwd=dev_wt, check=True)
+        subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)
         subprocess.run(
             ["git", "commit", "-m", f"chore(orc): close task {Path(task_name).stem}"],
             cwd=dev_wt,

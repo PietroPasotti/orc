@@ -23,21 +23,16 @@ def _find_config_dir(base: Path | None = None) -> Path | None:
 
     Resolution order:
     1. ``ORC_DIR`` environment variable (absolute path, used as-is).
-    2. ``{base}/.orc/`` — new default name.
-    3. ``{base}/orc/`` — legacy name (backward compatibility).
+    2. ``{base}/.orc/`` — the canonical name.
 
     *base* defaults to ``Path.cwd()`` when omitted.
-    Returns the first existing directory, or ``None`` if none is found.
+    Returns the directory if it exists, or ``None`` otherwise.
     """
     env = os.environ.get("ORC_DIR", "").strip()
     if env:
         return Path(env).resolve()
-    search = (base or Path.cwd()).resolve()
-    for name in (".orc", "orc"):
-        candidate = search / name
-        if candidate.is_dir():
-            return candidate
-    return None
+    candidate = (base or Path.cwd()).resolve() / ".orc"
+    return candidate if candidate.is_dir() else None
 
 
 def _load_orc_config(agents_dir: Path | None = None) -> dict:
@@ -61,7 +56,7 @@ def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
     *repo_root* is the project root (where ``README.md`` and git live).
     When omitted it falls back to ``agents_dir.parent``, which is correct
     for the common case where the config dir sits directly inside the project
-    root (e.g. ``{project}/.orc/`` or ``{project}/orc/``).
+    root (e.g. ``{project}/.orc/``).
 
     Pass ``repo_root=Path.cwd()`` explicitly when the config dir is nested
     deeper (e.g. ``{project}/src/.orc/`` with ``--config-dir src``).

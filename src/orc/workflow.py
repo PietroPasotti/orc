@@ -76,9 +76,13 @@ def _do_close_board(task_name: str) -> None:
     logger.warning("crash recovery: closing board for merged branch", task=task_name)
     typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
     _git._close_task_on_board(task_name, dev_wt)
-    board_path = dev_wt / "orc" / "work" / "board.yaml"
+    try:
+        config_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+    except ValueError:
+        config_rel = Path(_cfg.AGENTS_DIR.name)
+    board_path = dev_wt / config_rel / "work" / "board.yaml"
     if board_path.exists():
-        subprocess.run(["git", "add", "orc/work/"], cwd=dev_wt, check=True)
+        subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)
         subprocess.run(
             [
                 "git",

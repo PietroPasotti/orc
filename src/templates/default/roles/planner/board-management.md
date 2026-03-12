@@ -1,12 +1,12 @@
 ## Manage the kanban board
 
-`orc/work/board.yaml` is the single source of truth for the backlog.
+`.orc/work/board.yaml` is the single source of truth for the backlog.
 
 **When creating a new task:**
 
 1. Read `board.yaml` and note the `counter` value (e.g. `3`).
 2. Format the task ID as a 4-digit zero-padded string: `f"{counter:04d}"` → `"0003"`.
-3. Create the task file at `orc/work/0003-short-title.md`.
+3. Create the task file at `.orc/work/0003-short-title.md`.
 4. Add the filename to the `open` list in `board.yaml`.
 5. Increment `counter` by 1 and write it back.
 

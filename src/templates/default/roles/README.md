@@ -49,7 +49,7 @@ The directory format takes precedence when both exist for the same role.
 If a role definition is absent, the bundled default is used unchanged.
 
 To select the AI model for each role, set it in the squad profile
-(`orc/squads/*.yaml`) rather than in the role file.
+(`.orc/squads/*.yaml`) rather than in the role file.
 
 Feel free to customize the role prompts, but keep in mind that the orchestrator
 relies on certain conventions (e.g. commit message formats, file paths) to

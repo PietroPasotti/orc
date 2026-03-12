@@ -25,7 +25,7 @@ def _app_entry(
             "--config-dir",
             help=(
                 "Base directory to search for the orc configuration folder. "
-                "orc looks for <config-dir>/.orc/ then <config-dir>/orc/. "
+                "orc looks for <config-dir>/.orc/ or use ORC_DIR env var. "
                 "Defaults to the current working directory."
             ),
             show_default=False,
@@ -53,7 +53,7 @@ def _app_entry(
         if found is None:
             typer.echo(
                 f"✗ No orc config directory found in '{config_dir}'.\n"
-                f"  Expected '{config_dir}/.orc/' or '{config_dir}/orc/'.\n"
+                f"  Expected '{config_dir}/.orc/'.\n"
                 "  Run 'orc bootstrap' to create one.",
                 err=True,
             )
@@ -69,7 +69,7 @@ def _check_env_or_exit() -> None:
     if not _cfg.AGENTS_DIR.is_dir():
         typer.echo(
             f"✗ orc configuration directory not found.\n"
-            f"  Searched: {_cfg.AGENTS_DIR.parent}/.orc/  and  {_cfg.AGENTS_DIR.parent}/orc/\n"
+            f"  Searched: {_cfg.AGENTS_DIR.parent}/.orc/\n"
             "  Run 'orc bootstrap' to create one, or pass --config-dir <base> to "
             "point to an existing configuration.",
             err=True,
