@@ -13,6 +13,7 @@ import typer
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
+from orc.git.conflict import ConflictResolutionFailed, ConflictResolver
 from orc.messaging import telegram as tg
 from orc.squad import SquadConfig
 
@@ -145,62 +146,20 @@ def _make_merge_feature_fn(squad_cfg: SquadConfig) -> Callable[[str], None]:
     :func:`orc.git._merge_feature_into_dev`.
 
     When the merge stops with conflicts (:class:`~orc.git.MergeConflictError`),
-    a coder agent is spawned to resolve the conflict markers and complete the
-    merge with ``git merge --continue``.  If the coder fails or exits without
-    finishing the merge, a :class:`typer.Exit` is raised.
+    a :class:`~orc.git.conflict.ConflictResolver` is used to delegate the
+    conflict resolution to a coder agent.  If resolution fails,
+    :class:`~typer.Exit` is raised.
     """
 
     def _merge(task_name: str) -> None:
         try:
             _git._merge_feature_into_dev(task_name)
         except _git.MergeConflictError as exc:
-            branch = exc.branch
-            dev_wt = exc.worktree
-            status_output = exc.status_output
-
-            typer.echo(
-                f"⚠ Merge conflict on {branch!r}:\n{status_output}\nDelegating to coder agent…"
-            )
-
-            conflict_extra = (
-                f"## Feature merge conflict — your task\n\n"
-                f"A `git merge --no-ff {branch}` into `{_cfg.WORK_DEV_BRANCH}` was attempted "
-                f"and stopped with conflicts.  The merge is currently paused in the dev "
-                f"worktree at `{dev_wt}`.\n\n"
-                f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
-                "**What you must do:**\n"
-                "1. Open each conflicting file, resolve the conflict markers "
-                "(`<<<<<<<`, `=======`, `>>>>>>>`).\n"
-                "2. `git add <resolved-file>` for each resolved file.\n"
-                "3. `git merge --continue` to complete the merge.\n"
-                "4. Do NOT `git merge --abort`. Finish the merge.\n"
-                "5. Exit when the merge is complete.\n"
-            )
-
             messages = tg.get_messages()
-            coder_model = squad_cfg.model("coder")
-            model, context = _ctx.build_agent_context(
-                "coder",
-                messages,
-                extra=conflict_extra,
-                worktree=dev_wt,
-                model=coder_model,
-            )
-            rc = _ctx.invoke_agent("coder", context, model)
-
-            if rc != 0:
-                logger.error("coder agent failed to resolve merge conflict", exit_code=rc)
-                typer.echo(f"✗ Coder agent exited with code {rc} while resolving merge conflict.")
-                raise typer.Exit(code=rc)
-
-            if _git._merge_in_progress(dev_wt):
-                logger.error("merge still in progress after coder exited", branch=branch)
-                typer.echo(
-                    "✗ Merge still in progress after agent exit.  Manual intervention needed."
-                )
-                raise typer.Exit(code=1)
-
-            logger.info("merge conflict resolved by coder agent", branch=branch)
-            typer.echo(f"✓ Merge conflict on {branch!r} resolved by coder agent.")
+            resolver = ConflictResolver(squad_cfg=squad_cfg, messages=messages)
+            try:
+                resolver.resolve_merge_conflict(exc.branch, exc.worktree, exc.status_output)
+            except ConflictResolutionFailed as e:
+                raise typer.Exit(code=e.code) from e
 
     return _merge
