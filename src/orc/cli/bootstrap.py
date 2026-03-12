@@ -100,7 +100,7 @@ def _bootstrap(to: str = ".orc", force: bool = False) -> None:
         f"""
 Next steps
 ──────────
-1. Edit {to}/roles/*.md  — customise agent instructions for your project.
+1. Edit {to}/roles/*/  — customise agent instructions for your project.
 2. Add vision docs to {to}/vision/  — describe what you want to build.
 3. Copy .env.example → .env and fill in your credentials.
 4. Add to your root justfile:
@@ -136,7 +136,7 @@ def bootstrap(
     After bootstrapping:
 
     \\b
-    1. Edit .orc/roles/*.md to customise the agent instructions for your project.
+    1. Edit .orc/roles/*/ to customise the agent instructions for your project.
     2. Add vision documents to .orc/vision/.
     3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
     4. Copy .env.example to .env and fill in your credentials.
