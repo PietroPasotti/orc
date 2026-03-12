@@ -212,22 +212,22 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     @property
-    def loop(self) -> int:
-        """Number of dispatch cycles completed so far."""
-        return self._loop_count
+    def total_agent_calls(self) -> int:
+        """Total number of agent sessions spawned so far."""
+        return self._total_spawned
 
-    def run(self, maxloops: int = 0) -> None:
+    def run(self, maxcalls: int = 0) -> None:
         """Run the dispatch loop.
 
-        *maxloops* — maximum number of dispatch cycles; ``0`` = unlimited.
-        One cycle may spawn a full squad (e.g. coder + QA in parallel).
+        *maxcalls* — maximum total agent invocations; ``0`` = unlimited.
+        Multiple agents may be spawned in parallel within a single cycle.
         When the limit is reached no new agents are dispatched, but any
         agents already running are allowed to finish before the loop exits.
-        Stops after *maxloops* cycles **or** when the pool is empty and
+        Stops after *maxcalls* agent calls **or** when the pool is empty and
         there is nothing left to dispatch (workflow complete).
         """
         try:
-            self._loop(maxloops)
+            self._loop(maxcalls)
         except _ShutdownSignal:
             logger.info("dispatcher shutting down (signal received)")
             self._kill_all_and_unassign()
@@ -237,7 +237,7 @@ class Dispatcher:
     # Internal loop
     # ------------------------------------------------------------------
 
-    def _loop(self, maxloops: int) -> None:
+    def _loop(self, maxcalls: int) -> None:
         while True:
             self._loop_count += 1
             import structlog.contextvars as _cv
@@ -269,8 +269,8 @@ class Dispatcher:
                 self._handle_hard_block(blocked_agent, messages)
                 messages = self.cb.get_messages()
 
-            # 5. Dispatch new agents (skip when the cycle limit is already reached).
-            at_limit = maxloops > 0 and self._total_spawned >= maxloops
+            # 5. Dispatch new agents (skip when the call limit is already reached).
+            at_limit = maxcalls > 0 and self._total_spawned >= maxcalls
             if not at_limit:
                 if not self.dry_run or self._total_spawned == 0:
                     dispatched = self._dispatch(messages)
@@ -285,12 +285,12 @@ class Dispatcher:
                 logger.info("dry-run mode: printed one cycle, stopping")
                 break
 
-            # When the cycle limit is reached, keep polling until all running
+            # When the call limit is reached, keep polling until all running
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
             if at_limit and self.pool.is_empty():
-                logger.info("reached maxloops and pool drained, stopping", maxloops=maxloops)
-                typer.echo(f"\n↩ Reached --maxloops {maxloops}. Stopping.")
+                logger.info("reached maxcalls and pool drained, stopping", maxcalls=maxcalls)
+                typer.echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.")
                 break
 
             # Check idle-complete: nothing running, nothing to dispatch.

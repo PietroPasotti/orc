@@ -69,11 +69,11 @@ class RunState:
     backend: str = "copilot"
     """AI backend identifier (``COLONY_AI_CLI`` env var)."""
 
-    current_loop: int = 0
-    """Dispatch cycles completed so far."""
+    current_calls: int = 0
+    """Agent sessions invoked so far."""
 
-    max_loops: int = 0
-    """Configured ``--maxloops`` value (0 = unlimited)."""
+    max_calls: int = 0
+    """Configured ``--maxcalls`` value (0 = unlimited)."""
 
 
 # Role → display colour mapping.
@@ -134,10 +134,10 @@ def render(state: RunState) -> RenderableType:
     - A header row: loop counter, backend, dev-ahead, Telegram status.
     - Three columns: Planner | Coder | QA.
     """
-    max_loops_str = str(state.max_loops) if state.max_loops > 0 else "∞"
+    max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
     header = (
-        f"loop {state.current_loop}/{max_loops_str}  "
+        f"calls {state.current_calls}/{max_calls_str}  "
         f"dev+{state.dev_ahead}  "
         f"backend={state.backend}  "
         f"telegram={tg_str}"

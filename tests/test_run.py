@@ -52,7 +52,7 @@ class TestRunBareRaise:
 
         with _patch.object(_run_mod.logger, "exception"):
             with pytest.raises(RuntimeError, match="crashed"):
-                _run_mod._run(maxloops=1)
+                _run_mod._run(maxcalls=1)
 
 
 def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
@@ -80,7 +80,7 @@ class TestNoTuiFlag:
         monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
         _patch_run_deps(monkeypatch, tmp_path)
 
-        _run_mod._run(maxloops=1, no_tui=True)
+        _run_mod._run(maxcalls=1, no_tui=True)
         assert tui_called == []
 
     def test_non_tty_auto_disables_tui(self, tmp_path, monkeypatch):
@@ -106,7 +106,7 @@ class TestNoTuiFlag:
         )
         _patch_run_deps(monkeypatch, tmp_path)
 
-        _run_mod._run(maxloops=1, no_tui=False)
+        _run_mod._run(maxcalls=1, no_tui=False)
         assert tui_called == []
 
 
@@ -154,7 +154,7 @@ class TestTuiPath:
         _patch_run_deps(monkeypatch, tmp_path)
 
         with patch.object(_tui_mod, "render", wraps=_tui_mod.render):
-            _run_mod._run(maxloops=1, no_tui=False)
+            _run_mod._run(maxcalls=1, no_tui=False)
 
         assert tui_called == [True]
 
@@ -208,7 +208,7 @@ class TestEarlyExit:
             _disp.Dispatcher, "run", lambda self, **kw: dispatcher_run_called.append(True)
         )
 
-        _run_mod._run(maxloops=1, no_tui=True)
+        _run_mod._run(maxcalls=1, no_tui=True)
 
         assert dispatcher_run_called == [], (
             "dispatcher.run() must not be called when no pending work"

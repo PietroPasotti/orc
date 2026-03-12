@@ -367,7 +367,7 @@ class TestFullWorkflowLoop:
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
 
-        result = runner.invoke(m.app, ["run", "--maxloops", "4"], catch_exceptions=False)
+        result = runner.invoke(m.app, ["run", "--maxcalls", "4"], catch_exceptions=False)
 
         assert result.exit_code == 0, f"orc run exited non-zero:\n{result.output}"
 
@@ -446,7 +446,7 @@ class TestNoWorkExitsCleanly:
         spawn_calls: list = []
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: spawn_calls.append(a) or (None, None))
 
-        result = runner.invoke(m.app, ["run", "--maxloops", "0"], catch_exceptions=False)
+        result = runner.invoke(m.app, ["run", "--maxcalls", "0"], catch_exceptions=False)
 
         assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}:\n{result.output}"
         assert "No pending work" in result.output, (

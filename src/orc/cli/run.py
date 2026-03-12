@@ -31,14 +31,14 @@ _DEV_AHEAD_REFRESH_INTERVAL = 30.0  # seconds between git queries
 
 
 def _run(
-    maxloops: int = 1, dry_run: bool = False, squad: str = "default", no_tui: bool = False
+    maxcalls: int = 1, dry_run: bool = False, squad: str = "default", no_tui: bool = False
 ) -> None:
     _check_env_or_exit()
 
     squad_cfg = load_squad(squad, agents_dir=_cfg.AGENTS_DIR)
     logger.info(
         "orc run starting",
-        maxloops=maxloops,
+        maxcalls=maxcalls,
         dry_run=dry_run,
         squad=squad,
     )
@@ -57,8 +57,8 @@ def _run(
             dev_ahead=_safe_dev_ahead(),
             telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
             backend=os.environ.get("COLONY_AI_CLI", "copilot"),
-            current_loop=0,
-            max_loops=maxloops,
+            current_calls=0,
+            max_calls=maxcalls,
         )
 
     _last_dev_refresh: list[float] = [0.0]
@@ -117,7 +117,7 @@ def _run(
 
             def _updating_get_messages() -> list[dict]:
                 assert state is not None
-                state.current_loop = dispatcher.loop
+                state.current_calls = dispatcher.total_agent_calls
                 now = time.monotonic()
                 if now - _last_dev_refresh[0] >= _DEV_AHEAD_REFRESH_INTERVAL:
                     state.dev_ahead = _safe_dev_ahead()
@@ -125,9 +125,9 @@ def _run(
                 return _orig_get_messages()
 
             callbacks.get_messages = _updating_get_messages
-            _tui.run_tui(state, lambda: dispatcher.run(maxloops=maxloops))
+            _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))
         else:
-            dispatcher.run(maxloops=maxloops)
+            dispatcher.run(maxcalls=maxcalls)
     except Exception:
         logger.exception("orc run loop crashed")
         raise
@@ -143,12 +143,12 @@ def _safe_dev_ahead() -> int:
 
 @app.command()
 def run(
-    maxloops: Annotated[
+    maxcalls: Annotated[
         int,
         typer.Option(
             help=(
-                "Maximum dispatch cycles before stopping (0 = run until complete). "
-                "One cycle may spawn a full squad of agents running in parallel."
+                "Maximum agent sessions to invoke before stopping (0 = run until complete). "
+                "Multiple agents may be spawned in parallel within a single dispatch cycle."
             ),
         ),
     ] = 1,
@@ -168,9 +168,9 @@ def run(
         typer.Option("--no-tui", help="Disable the live TUI panel (use plain log output)."),
     ] = False,
 ) -> None:
-    """Run the next dispatch cycle(s) of the workflow.
+    """Run the workflow, invoking agents as needed.
 
-    One cycle may spawn a full squad of agents in parallel (e.g. a coder and a
-    QA agent running concurrently).  Use ``--maxloops 0`` to run until the
-    workflow completes or hard-blocks waiting for human input."""
-    return _run(maxloops=maxloops, dry_run=dry_run, squad=squad, no_tui=no_tui)
+    Multiple agents may be spawned in parallel within a single dispatch cycle.
+    Use ``--maxcalls 0`` to run until the workflow completes or hard-blocks
+    waiting for human input."""
+    return _run(maxcalls=maxcalls, dry_run=dry_run, squad=squad, no_tui=no_tui)

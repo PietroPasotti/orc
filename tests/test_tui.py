@@ -150,7 +150,7 @@ class TestRenderZeroAgents:
     def test_renders_without_agents(self):
         state = RunState()
         out = _render_to_str(state)
-        assert "loop 0/∞" in out
+        assert "calls 0/∞" in out
 
     def test_all_three_columns_present(self):
         state = RunState()
@@ -165,12 +165,12 @@ class TestRenderZeroAgents:
         assert "(idle)" in out
 
     def test_header_contains_loop_info(self):
-        state = RunState(current_loop=3, max_loops=10)
+        state = RunState(current_calls=3, max_calls=10)
         out = _render_to_str(state)
-        assert "loop 3/10" in out
+        assert "calls 3/10" in out
 
     def test_header_unlimited_loops(self):
-        state = RunState(current_loop=1, max_loops=0)
+        state = RunState(current_calls=1, max_calls=0)
         out = _render_to_str(state)
         assert "∞" in out
 
@@ -393,7 +393,7 @@ class TestOrcAppMethods:
         t.start()
         t.join()
 
-        state = RunState(current_loop=5)
+        state = RunState(current_calls=5)
         app = OrcApp(state, t)
         app.exit = lambda: None
         updates: list = []

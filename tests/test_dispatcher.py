@@ -133,7 +133,7 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
-        result = runner.invoke(m.app, ["run", "--maxloops", "1"])
+        result = runner.invoke(m.app, ["run", "--maxcalls", "1"])
         assert result.exit_code == 0
         assert len(sent) == 1
         assert "(boot)" in sent[0]
@@ -160,7 +160,7 @@ class TestBootMessageSentBeforeInvoke:
 
         monkeypatch.setattr(inv, "spawn", fake_spawn)
 
-        runner.invoke(m.app, ["run", "--maxloops", "1"])
+        runner.invoke(m.app, ["run", "--maxcalls", "1"])
         assert call_order == ["send", "invoke"]
 
 
@@ -207,7 +207,7 @@ class TestBlockedResumption:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         monkeypatch.setattr(_run_mod, "logger", MagicMock())
 
-        rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
+        rc = runner.invoke(m.app, ["run", "--maxcalls", "1"])
         assert rc.exit_code == 0
         assert invocations == ["coder"]
 
@@ -275,7 +275,7 @@ class TestBlockedResumption:
                 lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
             )
 
-            runner.invoke(m.app, ["run", "--maxloops", "1"])
+            runner.invoke(m.app, ["run", "--maxcalls", "1"])
             expected_role = agent_id.split("-")[0]
             assert invocations == [expected_role], (
                 f"Expected {expected_role} to be dispatched for {agent_id} block"
@@ -305,7 +305,7 @@ class TestBlockedResumption:
 
         monkeypatch.setattr(_ctx, "wait_for_human_reply", _timeout)
 
-        rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
+        rc = runner.invoke(m.app, ["run", "--maxcalls", "1"])
         assert rc.exit_code == 1
         assert len(sent) == 1
         assert "(blocked)" in sent[0]
@@ -349,7 +349,7 @@ class TestBlockedResumption:
             _ctx, "wait_for_human_reply", lambda msgs, **kw: wait_called.append(True) or ""
         )
 
-        rc = runner.invoke(m.app, ["run", "--maxloops", "1"])
+        rc = runner.invoke(m.app, ["run", "--maxcalls", "1"])
         _ = rc
         assert not wait_called
         assert invocations == ["planner"]
@@ -369,7 +369,7 @@ class TestDispatcherCoverage:
         cb = _make_callbacks(tmp_path)
         d = Dispatcher(_minimal_squad(), cb)
 
-        def boom(maxloops):
+        def boom(maxcalls):
             raise _disp._ShutdownSignal(2)
 
         d._loop = boom
@@ -481,7 +481,7 @@ class TestDispatcherCoverage:
 
         d.cb.has_unresolved_block = fake_has_unresolved_block
         d._handle_hard_block = MagicMock()
-        d._loop(maxloops=0)
+        d._loop(maxcalls=0)
 
         d._handle_hard_block.assert_called_once()
 
@@ -521,14 +521,14 @@ class TestDispatcherCoverage:
         )
         cb = _make_callbacks(tmp_path, spawn_fn=spawn_fn)
         d = Dispatcher(squad, cb)
-        d.run(maxloops=2)
+        d.run(maxcalls=2)
 
     def test_loop_dry_run_stops_after_one_cycle(self, tmp_path, monkeypatch):
         """Dry-run breaks after first dispatch."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         cb = _make_callbacks(tmp_path)
         d = Dispatcher(_minimal_squad(), cb, dry_run=True)
-        d.run(maxloops=0)
+        d.run(maxcalls=0)
         assert d._total_spawned == 1
 
     def test_handle_hard_block_posts_resolved(self, tmp_path):
@@ -598,7 +598,7 @@ class TestDispatcherCoverage:
         cb.merge_feature = lambda t: merged.append(t)
         d = Dispatcher(_minimal_squad(), cb)
         d._merge_queue.append("0001-foo.md")
-        d.run(maxloops=1)
+        d.run(maxcalls=1)
         assert "0001-foo.md" in merged
 
 
@@ -738,7 +738,7 @@ class TestDispatcherInternalCoverage:
         )
         cb.has_unresolved_block = lambda msgs: (None, None)
         d = Dispatcher(_minimal_squad(), cb)
-        d.run(maxloops=0)
+        d.run(maxcalls=0)
         out = capsys.readouterr().out
         assert "Workflow complete" in out
 
@@ -817,7 +817,7 @@ class TestDispatcherLoopProperty:
     def test_loop_starts_at_zero(self, tmp_path):
         cb = _make_callbacks(tmp_path)
         d = Dispatcher(_minimal_squad(), cb)
-        assert d.loop == 0
+        assert d.total_agent_calls == 0
 
     def test_loop_increments_each_cycle(self, tmp_path, monkeypatch):
         """loop property reflects the number of _loop iterations run."""
@@ -831,6 +831,6 @@ class TestDispatcherLoopProperty:
             get_messages=lambda: [],
         )
         d = Dispatcher(_minimal_squad(), cb)
-        # Run one maxloops cycle (spawns planner then stops when pool drains).
-        d.run(maxloops=1)
-        assert d.loop >= 1
+        # Run one maxcalls cycle (spawns planner then stops when pool drains).
+        d.run(maxcalls=1)
+        assert d.total_agent_calls >= 1
