@@ -335,3 +335,49 @@ class TestLoadOrcConfig:
             monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
         _cfg._init_paths(agents_dir, repo_root=tmp_path)
         assert _cfg.DEV_WORKTREE == custom_base.resolve() / "staging"
+
+    def test_init_paths_log_dir_defaults_to_orc_logs(self, tmp_path, monkeypatch):
+        """LOG_DIR defaults to .orc/logs/ when orc-log-dir is not in config."""
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORKTREE_BASE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+            "LOG_DIR",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.LOG_DIR == (agents_dir / "logs").resolve()
+
+    def test_init_paths_log_dir_from_config(self, tmp_path, monkeypatch):
+        """LOG_DIR is set from orc-log-dir in config.yaml."""
+        agents_dir = tmp_path / ".orc"
+        agents_dir.mkdir()
+        custom_log_dir = tmp_path / "my-logs"
+        (agents_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
+        _globals = (
+            "AGENTS_DIR",
+            "REPO_ROOT",
+            "WORK_DIR",
+            "BOARD_FILE",
+            "ROLES_DIR",
+            "ENV_FILE",
+            "DEV_WORKTREE",
+            "WORKTREE_BASE",
+            "WORK_DEV_BRANCH",
+            "BRANCH_PREFIX",
+            "LOG_DIR",
+        )
+        for k in _globals:
+            monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
+        _cfg._init_paths(agents_dir)
+        assert _cfg.LOG_DIR == custom_log_dir.resolve()

@@ -18,7 +18,7 @@ _DEFAULT_LOG_DIR = _cfg.LOG_DIR
 def _logs(
     path: Annotated[
         Path | None,
-        typer.Option("--path", help="Log directory (default: ~/.cache/orc)."),
+        typer.Option("--path", help="Log directory (default: .orc/logs)."),
     ] = None,
     agent: Annotated[
         str,

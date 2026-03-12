@@ -52,7 +52,8 @@ from pathlib import Path
 import structlog
 import typer
 
-from orc.engine.pool import AGENT_LOG_DIR, AgentPool, AgentProcess
+import orc.config as _cfg
+from orc.engine.pool import AgentPool, AgentProcess
 from orc.messaging import telegram as tg
 from orc.squad import SquadConfig
 
@@ -418,7 +419,7 @@ class Dispatcher:
 
         _cv.bind_contextvars(agent_id=agent_id)
 
-        log_path = AGENT_LOG_DIR / f"{agent_id}.log"
+        log_path = _cfg.LOG_DIR / "agents" / f"{agent_id}.log"
         spawn_result = self.cb.spawn_fn(context, worktree, model, log_path)
 
         agent = AgentProcess(

@@ -164,7 +164,7 @@ These are the supported variables, their defaults, and what they do:
 | `ORC_DIR` | `.orc/` or `orc/` in CWD | Optional | Override the path to the orc configuration directory. Useful when the config lives outside the project root. |
 | `ORC_LOG_LEVEL` | `INFO` | Optional | Minimum log level. Standard values: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `ORC_LOG_FORMAT` | `console` | Optional | Log output format. `console` for human-readable output, `json` for structured logs. |
-| `ORC_LOG_FILE` | `~/.cache/orc/orc.log` | Optional | Path to the orchestrator log file. Set to an empty string to disable file logging. |
+| `ORC_LOG_FILE` | `.orc/logs/orc.log` | Optional | Path to the orchestrator log file. Set to an empty string to disable file logging. |
 | `ORC_LOG_DIR` | — | Optional | Override the log directory. Sets the log file to `$ORC_LOG_DIR/orc.log` when `ORC_LOG_FILE` is not set. |
 
 ### Config file
@@ -175,4 +175,4 @@ These are the supported variables, their defaults, and what they do:
 |---|---|---|
 | `orc-dev-branch` | `dev` | Integration branch name. Feature branches are merged here after QA passes; `orc merge` fast-forwards it into `main`. |
 | `orc-branch-prefix` | _(empty)_ | Optional prefix for all orc-owned branches. E.g. `orc` produces `orc/feat/0001-foo` instead of `feat/0001-foo`. |
-| `orc-worktree-base` | `~/.cache/orc` | Base directory for git worktrees. Worktrees are placed at `<base>/<repo>/<task>`. |
+| `orc-worktree-base` | `.orc/worktrees` | Base directory for git worktrees. Worktrees are placed at `<base>/<task>`, e.g. `.orc/worktrees/0001-foo`. |

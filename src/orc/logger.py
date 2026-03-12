@@ -10,7 +10,12 @@ Configuration via environment variables (also settable in ``.env``):
 
     ORC_LOG_LEVEL   – Minimum log level.  Default: ``INFO``.
     ORC_LOG_FORMAT  – ``console`` (human-readable) or ``json``.  Default: ``console``.
-    ORC_LOG_FILE    – Path to the log file.  Default: ``~/.cache/orc/orc.log``.
+    ORC_LOG_FILE    – Path to the log file.  When running via the CLI the
+                      default is ``.orc/logs/orc.log`` (derived from
+                      ``orc-log-dir`` in ``config.yaml``).  When
+                      ``ORC_LOG_FILE`` and ``ORC_LOG_DIR`` are both unset and
+                      no ``default_log_file`` is supplied, falls back to
+                      ``~/.cache/orc/orc.log``.
                       Set to an empty string to disable file logging.
     ORC_LOG_DIR     – Override the log folder.  Sets ``ORC_LOG_FILE`` to
                       ``$ORC_LOG_DIR/orc.log`` when ``ORC_LOG_FILE`` is not set.

@@ -11,10 +11,12 @@ helpers on top of a ``dict[agent_id → AgentProcess]``.
 
 Log layout::
 
-    ~/.cache/orc/agents/{agent_id}.log
+    .orc/logs/agents/{agent_id}.log
 
 One file per agent invocation; truncated (not appended) at each spawn so the
-log always contains only the most recent run.
+log always contains only the most recent run.  The base directory comes from
+:data:`orc.config.LOG_DIR` so it respects ``orc-log-dir`` in ``config.yaml``
+and the ``ORC_LOG_DIR`` environment variable.
 """
 
 from __future__ import annotations
@@ -28,8 +30,6 @@ from typing import IO
 import structlog
 
 logger = structlog.get_logger(__name__)
-
-AGENT_LOG_DIR: Path = Path.home() / ".cache" / "orc" / "agents"
 
 
 @dataclass

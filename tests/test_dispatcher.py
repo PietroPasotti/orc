@@ -422,6 +422,23 @@ class TestDispatcherCoverage:
         with pytest.raises(ValueError, match="No worktree"):
             d._spawn_agent("coder", "coder-1", None, [])
 
+    def test_spawn_agent_log_path_is_under_log_dir_agents(self, tmp_path, monkeypatch):
+        """Agent log path is LOG_DIR/agents/{agent_id}.log."""
+        log_dir = tmp_path / "logs"
+        monkeypatch.setattr(_cfg, "LOG_DIR", log_dir)
+
+        captured: dict = {}
+
+        def _spawn(ctx, cwd, model, log):
+            captured["log_path"] = log
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        cb = _make_callbacks(tmp_path, spawn_fn=_spawn)
+        d = Dispatcher(_minimal_squad(), cb)
+        d._spawn_agent("planner", "planner-1", None, [])
+
+        assert captured["log_path"] == log_dir / "agents" / "planner-1.log"
+
     def test_spawn_agent_dry_run_prints(self, tmp_path, capsys):
         cb = _make_callbacks(tmp_path)
         d = Dispatcher(_minimal_squad(), cb, dry_run=True)
