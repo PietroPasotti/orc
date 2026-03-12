@@ -46,7 +46,7 @@ import orc.config as _cfg
 import orc.dispatcher as _disp
 import orc.invoke as inv
 import orc.main as m
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 
 runner = CliRunner()
 

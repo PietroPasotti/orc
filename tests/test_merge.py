@@ -9,7 +9,7 @@ import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
 import orc.main as m
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 
 runner = CliRunner()
 

@@ -9,8 +9,8 @@ import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.dispatcher as _disp
 import orc.git as _git
+import orc.messaging.telegram as tg
 import orc.squad as _sq
-import orc.telegram as tg
 from orc.squad import SquadConfig
 
 runner = CliRunner()

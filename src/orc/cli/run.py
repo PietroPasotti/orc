@@ -19,9 +19,9 @@ import orc.git as _git
 import orc.workflow as _wf
 from orc import dispatcher as _disp
 from orc import invoke as inv
-from orc import telegram as tg
 from orc import tui as _tui
 from orc.cli import _check_env_or_exit, app
+from orc.messaging import telegram as tg
 from orc.pool import AgentProcess
 from orc.squad import load_squad
 

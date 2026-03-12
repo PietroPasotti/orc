@@ -11,8 +11,8 @@ import orc.cli.status as _status
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
-from orc import telegram as tg
 from orc.cli import _check_env_or_exit, app
+from orc.messaging import telegram as tg
 from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)

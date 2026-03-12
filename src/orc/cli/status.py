@@ -14,8 +14,8 @@ import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
 import orc.workflow as _wf
-from orc import telegram as tg
 from orc.cli import app
+from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
 logger = structlog.get_logger(__name__)

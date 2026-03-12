@@ -7,7 +7,7 @@ from conftest import make_msg
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.git as _git
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 from orc.workflow import (
     _ORC_RESOLVED_RE,
     _has_unresolved_block,

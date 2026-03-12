@@ -45,7 +45,7 @@ from dotenv import load_dotenv
 # Pure message parsing helpers — no side effects, no global state.
 # Re-exported here so callers can use ``from orc import telegram as tg``
 # and call ``tg.parse_agent_id`` / ``tg.KNOWN_ROLES`` etc. as before.
-from orc.telegram_messages import (  # noqa: F401
+from orc.messaging.messages import (  # noqa: F401
     _AGENT_ID_RE,
     _MSG_RE,
     INFORMATIONAL_STATES,

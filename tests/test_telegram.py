@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_msg
 
-from orc import telegram as tg
+from orc.messaging import telegram as tg
 
 # ---------------------------------------------------------------------------
 # Local chat.log – read/write and get_messages merging

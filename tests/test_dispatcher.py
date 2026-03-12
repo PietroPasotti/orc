@@ -17,7 +17,7 @@ import orc.dispatcher as _disp
 import orc.git as _git
 import orc.invoke as inv
 import orc.main as m
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 from orc.dispatcher import CLOSE_BOARD, QA_PASSED, Dispatcher
 from orc.pool import AgentProcess
 from orc.squad import SquadConfig

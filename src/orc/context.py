@@ -13,7 +13,7 @@ import orc.board as _board
 import orc.config as _cfg
 import orc.git as _git
 from orc import invoke as inv
-from orc import telegram as tg
+from orc.messaging import telegram as tg
 
 logger = structlog.get_logger(__name__)
 
