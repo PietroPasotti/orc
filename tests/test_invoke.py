@@ -8,7 +8,7 @@ import pytest
 from conftest import FakePopen
 
 # Import after conftest has stubbed out dotenv
-from orc import invoke as iv
+from orc.ai import invoke as iv
 
 # ---------------------------------------------------------------------------
 # _require_config
@@ -189,7 +189,7 @@ class TestInvokeSpawn:
         monkeypatch.setattr(iv, "_resolve_gh_token", lambda: "ghp_test")
 
         fake_proc = FakePopen()
-        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="gpt-4", log_path=None)
         assert proc is fake_proc
         assert fh is None
@@ -203,7 +203,7 @@ class TestInvokeSpawn:
         monkeypatch.setattr(iv, "_resolve_anthropic_key", lambda: "key123")
 
         fake_proc = FakePopen()
-        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="claude-3", log_path=None)
         assert proc is fake_proc
         Path(fake_proc._context_tmp).unlink(missing_ok=True)
@@ -217,7 +217,7 @@ class TestInvokeSpawn:
 
         log_path = tmp_path / "agent.log"
         fake_proc = FakePopen()
-        with patch("orc.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx", cwd=tmp_path, model="m", log_path=log_path)
         assert fh is not None
         fh.close()

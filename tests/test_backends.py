@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orc.backends import (
+from orc.ai.backends import (
     SUPPORTED_BACKENDS,
     AIBackend,
     ClaudeBackend,
