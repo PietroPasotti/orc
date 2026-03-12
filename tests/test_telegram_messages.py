@@ -6,7 +6,6 @@ import pytest
 
 from orc.messaging.messages import (
     INFORMATIONAL_STATES,
-    KNOWN_AGENTS,
     KNOWN_ROLES,
     format_agent_message,
     is_agent_message,
@@ -22,9 +21,6 @@ class TestKnownRoles:
         assert "planner" in KNOWN_ROLES
         assert "coder" in KNOWN_ROLES
         assert "qa" in KNOWN_ROLES
-
-    def test_known_agents_is_alias(self):
-        assert KNOWN_AGENTS is KNOWN_ROLES
 
     def test_informational_states_contains_boot(self):
         assert "boot" in INFORMATIONAL_STATES

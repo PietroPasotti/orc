@@ -66,7 +66,7 @@ def _run(
     def _on_agent_start(agent: AgentProcess) -> None:
         assert state is not None
         state.agents.append(
-            _tui.AgentRow(
+            _tui.AgentData(
                 agent_id=agent.agent_id,
                 role=agent.role,
                 model=agent.model,

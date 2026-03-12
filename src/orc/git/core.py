@@ -417,13 +417,6 @@ def _classify_last_commit(last_msg: str | None) -> LastCommit:
             return LastCommit.QA_OTHER
         if action == "done":
             return LastCommit.CODER_DONE
-        # Unknown action — fall through to legacy matching.
-
-    # Legacy format: qa(passed): / qa(…) — kept for backward compatibility.
-    if last_msg.startswith("qa(passed)"):
-        return LastCommit.QA_PASSED
-    if last_msg.startswith("qa("):
-        return LastCommit.QA_OTHER
 
     return LastCommit.CODER_WORK
 
@@ -480,12 +473,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     elif last_commit == LastCommit.CODER_DONE:
         reason = f"coder finished {branch!r}, awaiting review"
     elif last_commit == LastCommit.QA_OTHER:
-        # Preserve "rejected" keyword when the structured exit action is "reject".
-        parsed = _parse_exit_scope(last_msg or "")
-        if parsed is not None and parsed[1] == "reject":
-            reason = f"qa rejected {branch!r}: {last_msg!r}"
-        else:
-            reason = f"qa reviewed {branch!r} with issues: {last_msg!r}"
+        reason = f"qa rejected {branch!r}: {last_msg!r}"
     else:
         reason = f"coder has uncommitted work on {branch!r} — not yet signalled done"
 

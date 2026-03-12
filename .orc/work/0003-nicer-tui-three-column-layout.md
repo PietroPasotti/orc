@@ -7,7 +7,7 @@ flat table with a richer layout that groups agents by role into three columns.
 This implements the vision in `.orc/vision/0001-nicer-tui.md`.
 
 Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
-`rich.live.Live`; keep `RunState` / `AgentRow` as the data model).
+`rich.live.Live`; keep `RunState` / `AgentData` as the data model).
 
 ## Scope
 
@@ -28,7 +28,7 @@ Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
      `"(mixed)"`.
 - Update `tests/test_tui.py` to cover the new layout (header bar content,
   3-column structure, per-card fields, mixed-model case, empty columns).
-- Keep existing `AgentRow` and `RunState` dataclasses **unchanged** —
+- Keep existing `AgentData` and `RunState` dataclasses **unchanged** —
   the change is purely in rendering.
 - Keep `live_context()` unchanged.
 
@@ -47,12 +47,12 @@ Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
   b. Add a helper `_elapsed(started_at: float) -> str` that formats seconds
      into `"Xm Ys"`.
 
-  c. Add a helper `_agent_card(row: AgentRow) -> rich.panel.Panel` that
+  c. Add a helper `_agent_card(row: AgentData) -> rich.panel.Panel` that
      renders one agent's data as a `Panel`:
      - Title: `row.agent_id`
      - Body lines: status, task (or `—`), worktree basename, elapsed time.
 
-  d. Add a helper `_column_panel(role: str, rows: list[AgentRow]) -> Panel`
+  d. Add a helper `_column_panel(role: str, rows: list[AgentData]) -> Panel`
      that:
      - Determines the model string: the shared model if all rows have the
        same model, otherwise `"(mixed)"`.

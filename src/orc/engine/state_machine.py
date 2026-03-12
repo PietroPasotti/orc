@@ -45,7 +45,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from pathlib import Path  # noqa: F401 — kept for public API compatibility
 
 # ---------------------------------------------------------------------------
 # Formal model — WorldState, route(), successors()
@@ -64,8 +63,8 @@ class LastCommit(Enum):
     NONE = "none"  # branch has no commits, or no readable message
     CODER_WORK = "coder_work"  # ordinary coder commit (feat/fix/refactor/…)
     CODER_DONE = "coder_done"  # structured exit: chore(<id>.done.<code>): …
-    QA_PASSED = "qa_passed"  # structured exit approve, or legacy "qa(passed):"
-    QA_OTHER = "qa_other"  # structured exit reject, or legacy "qa(" (not passed)
+    QA_PASSED = "qa_passed"  # structured exit: chore(<id>.approve.<code>): …
+    QA_OTHER = "qa_other"  # structured exit: chore(<id>.reject.<code>): …
 
 
 class BlockState(Enum):

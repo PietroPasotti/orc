@@ -1,6 +1,6 @@
 """Full-screen Textual TUI for `orc run`.
 
-Provides :class:`RunState`, :class:`AgentRow`, :func:`render`, and
+Provides :class:`RunState`, :class:`AgentData`, :func:`render`, and
 :func:`run_tui` — the building blocks for a real-time full-screen dashboard
 shown when ``orc run`` is invoked with a TTY.
 
@@ -28,8 +28,22 @@ from textual.widgets import Static
 
 
 @dataclass
-class AgentRow:
-    """A single row in the TUI agent table."""
+class OrcData:
+    """Data for the Orc card in the TUI panel."""
+
+    agent_id: str
+    """Unique agent identifier, e.g. ``coder-1``."""
+
+    status: str
+    """Current status string, e.g. ``running``."""
+
+    task: str | None
+    """What the orc is currently doing."""
+
+
+@dataclass
+class AgentData:
+    """Data for the agent card in the TUI panel."""
 
     agent_id: str
     """Unique agent identifier, e.g. ``coder-1``."""
@@ -57,8 +71,11 @@ class AgentRow:
 class RunState:
     """Global state displayed in the TUI panel."""
 
-    agents: list[AgentRow] = field(default_factory=list)
+    agents: list[AgentData] = field(default_factory=list)
     """Live agent rows."""
+
+    orc: OrcData | None = None
+    """Orchestrator status, or ``None`` when not yet active."""
 
     dev_ahead: int = 0
     """Commits dev is ahead of main."""
@@ -90,7 +107,7 @@ def _elapsed(started_at: float) -> str:
     return f"{seconds // 60}m {seconds % 60}s"
 
 
-def _agent_card(row: AgentRow) -> rich.panel.Panel:
+def _agent_card(row: AgentData) -> rich.panel.Panel:
     """Render a single agent as a :class:`rich.panel.Panel`."""
     worktree_base = os.path.basename(row.worktree) or row.worktree
     body = (
@@ -102,7 +119,13 @@ def _agent_card(row: AgentRow) -> rich.panel.Panel:
     return rich.panel.Panel(body, title=row.agent_id)
 
 
-def _column_panel(role: str, rows: list[AgentRow]) -> rich.panel.Panel:
+def _orc_card(data: OrcData) -> rich.panel.Panel:
+    """Render a single orc as a :class:`rich.panel.Panel`."""
+    body = f"status:  {data.status}\ntask:    {data.task or '—'}\n"
+    return rich.panel.Panel(body, title=data.agent_id)
+
+
+def _column_panel(role: str, rows: list[AgentData]) -> rich.panel.Panel:
     """Render a role column as a :class:`rich.panel.Panel`.
 
     The title shows ``"{role}  [{model}]"`` where *model* is the shared model
@@ -128,11 +151,13 @@ def _column_panel(role: str, rows: list[AgentRow]) -> rich.panel.Panel:
 
 
 def render(state: RunState) -> RenderableType:
-    """Build a three-column Rich layout from *state*.
+    """Build a grid Rich layout from *state*.
 
     The layout has:
-    - A header row: loop counter, backend, dev-ahead, Telegram status.
-    - Three columns: Planner | Coder | QA.
+    - A header row: agent call counter, backend, dev-ahead, Telegram status.
+    - A body with a vertical split
+        - Top section: orchestrator status
+        - Bottom section has three columns: Planner | Coder | QA.
     """
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
@@ -147,12 +172,11 @@ def render(state: RunState) -> RenderableType:
     coders = [r for r in state.agents if r.role == "coder"]
     qa_agents = [r for r in state.agents if r.role == "qa"]
 
-    outer = rich.table.Table.grid(expand=True)
-    outer.add_column(ratio=1)
-    outer.add_column(ratio=1)
-    outer.add_column(ratio=1)
-
-    columns_row = (
+    workers_grid = rich.table.Table.grid(expand=True)
+    workers_grid.add_column(ratio=1)
+    workers_grid.add_column(ratio=1)
+    workers_grid.add_column(ratio=1)
+    workers_grid.add_row(
         _column_panel("Planner", planners),
         _column_panel("Coder", coders),
         _column_panel("QA", qa_agents),
@@ -165,8 +189,9 @@ def render(state: RunState) -> RenderableType:
         expand=True,
     )
     wrapper.add_column()
-    wrapper.add_row(outer)
-    outer.add_row(*columns_row)
+    if state.orc is not None:
+        wrapper.add_row(_orc_card(state.orc))
+    wrapper.add_row(workers_grid)
 
     return wrapper
 

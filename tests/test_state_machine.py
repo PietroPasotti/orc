@@ -235,7 +235,6 @@ class TestRouteMatchesImplementation:
     def _last_commit_from_msg(self, msg: str | None) -> LastCommit:
         if msg is None:
             return LastCommit.NONE
-        # New structured exit-commit format.
         from orc.git.core import _parse_exit_scope
 
         parsed = _parse_exit_scope(msg)
@@ -247,11 +246,6 @@ class TestRouteMatchesImplementation:
                 return LastCommit.QA_OTHER
             if action == "done":
                 return LastCommit.CODER_DONE
-        # Legacy format.
-        if msg.startswith("qa(passed)"):
-            return LastCommit.QA_PASSED
-        if msg.startswith("qa("):
-            return LastCommit.QA_OTHER
         return LastCommit.CODER_WORK
 
     @pytest.mark.parametrize(
@@ -262,9 +256,7 @@ class TestRouteMatchesImplementation:
             (True, False, False, None),
             (True, False, True, None),
             (True, True, False, "feat: add thing"),
-            (True, True, False, "qa(passed): all good"),
-            (True, True, False, "qa(failed): coverage low"),
-            # New structured exit-commit format.
+            # Structured exit-commit format.
             (True, True, False, "chore(coder-1.done.0001): implementation complete"),
             (True, True, False, "chore(qa-1.approve.0001): all checks green"),
             (True, True, False, "chore(qa-2.reject.0001): missing error-path tests"),

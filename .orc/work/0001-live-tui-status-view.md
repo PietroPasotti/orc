@@ -12,7 +12,7 @@ Architecture is defined in `docs/adr/0001-live-tui-for-orc-run.md`.
 ## Scope
 
 **In scope:**
-- New `src/orc/tui.py` module (`RunState`, `AgentRow`, `render()`,
+- New `src/orc/tui.py` module (`RunState`, `AgentData`, `render()`,
   `live_context()`)
 - `AgentProcess.model` field (new field; update all constructors)
 - `DispatchCallbacks.on_agent_start` / `on_agent_done` optional callbacks
@@ -32,9 +32,9 @@ Architecture is defined in `docs/adr/0001-live-tui-for-orc-run.md`.
          Run `uv sync` to update the lock file.
 
 - [ ] 2. Create `src/orc/tui.py` with:
-         - `AgentRow` dataclass (fields: `agent_id`, `role`, `model`,
+         - `AgentData` dataclass (fields: `agent_id`, `role`, `model`,
            `status`, `task_name`, `worktree`, `started_at`)
-         - `RunState` dataclass (fields: `agents: list[AgentRow]`,
+         - `RunState` dataclass (fields: `agents: list[AgentData]`,
            `dev_ahead: int`, `telegram_ok: bool`, `backend: str`,
            `current_loop: int`, `max_loops: int`)
          - `render(state: RunState) -> RenderableType` — builds a
@@ -79,7 +79,7 @@ Architecture is defined in `docs/adr/0001-live-tui-for-orc-run.md`.
            as before.
 
 - [ ] 6. Write `tests/test_tui.py`:
-         - Test `render()` with zero, one, and multiple `AgentRow`s.
+         - Test `render()` with zero, one, and multiple `AgentData`s.
          - Test `render()` with each role (`planner`, `coder`, `qa`).
          - Test that `render()` reflects `RunState.current_loop`,
            `max_loops`, `backend`, `telegram_ok`, `dev_ahead`.

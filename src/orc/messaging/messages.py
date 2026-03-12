@@ -8,7 +8,6 @@ message parsing.
 Public symbols (all re-exported from :mod:`orc.messaging.telegram`):
 
 * :data:`KNOWN_ROLES` — frozenset of valid agent role names
-* :data:`KNOWN_AGENTS` — alias for ``KNOWN_ROLES``
 * :data:`INFORMATIONAL_STATES` — states that do not drive state-machine transitions
 * :func:`parse_agent_id` — ``"{role}-{n}"`` → ``(role, n)``
 * :func:`make_agent_id` — ``(role, n)`` → ``"{role}-{n}"``
@@ -30,9 +29,6 @@ from datetime import UTC, datetime
 # The set of valid agent *roles*.  Agent messages use IDs of the form
 # ``{role}-{n}`` (e.g. ``coder-1``, ``qa-2``).
 KNOWN_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
-
-# Backwards-compatibility alias.
-KNOWN_AGENTS = KNOWN_ROLES
 
 # States that are informational only — not used for state-machine transitions.
 # ``parse_last_agent_message`` skips messages with these states so a boot

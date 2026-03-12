@@ -46,7 +46,7 @@ all data the TUI needs:
 
 ```python
 @dataclass
-class AgentRow:
+class AgentData:
     agent_id: str        # e.g. "coder-1"
     role: str            # "planner" | "coder" | "qa"
     model: str           # e.g. "claude-sonnet-4.6" or "copilot"
@@ -57,7 +57,7 @@ class AgentRow:
 
 @dataclass
 class RunState:
-    agents: list[AgentRow]
+    agents: list[AgentData]
     dev_ahead: int            # commits dev is ahead of main
     telegram_ok: bool
     backend: str              # "copilot" | "claude"

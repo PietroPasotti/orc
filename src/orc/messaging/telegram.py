@@ -50,7 +50,6 @@ from orc.messaging.messages import (  # noqa: F401
     _AGENT_ID_RE,
     _MSG_RE,
     INFORMATIONAL_STATES,
-    KNOWN_AGENTS,
     KNOWN_ROLES,
     format_agent_message,
     is_agent_message,

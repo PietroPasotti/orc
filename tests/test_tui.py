@@ -10,12 +10,14 @@ import rich.console
 import rich.panel
 
 from orc.tui.run_tui import (
-    AgentRow,
+    AgentData,
     OrcApp,
+    OrcData,
     RunState,
     _agent_card,
     _column_panel,
     _elapsed,
+    _orc_card,
     render,
     run_tui,
 )
@@ -30,8 +32,8 @@ def _row(
     task_name: str | None = "0001-foo.md",
     worktree: str = "/tmp/wt",
     started_at: float = 0.0,
-) -> AgentRow:
-    return AgentRow(
+) -> AgentData:
+    return AgentData(
         agent_id=agent_id,
         role=role,
         model=model,
@@ -115,7 +117,27 @@ class TestAgentCard:
         assert "1m 30s" in out
 
 
-class TestColumnPanel:
+class TestOrcCard:
+    def test_title_is_agent_id(self):
+        data = OrcData(agent_id="orc-0", status="running", task="planning")
+        card = _orc_card(data)
+        assert card.title == "orc-0"
+
+    def test_body_contains_status(self):
+        data = OrcData(agent_id="orc-0", status="waiting", task=None)
+        out = _panel_to_str(_orc_card(data))
+        assert "waiting" in out
+
+    def test_body_contains_task(self):
+        data = OrcData(agent_id="orc-0", status="running", task="dispatching")
+        out = _panel_to_str(_orc_card(data))
+        assert "dispatching" in out
+
+    def test_none_task_shows_dash(self):
+        data = OrcData(agent_id="orc-0", status="idle", task=None)
+        out = _panel_to_str(_orc_card(data))
+        assert "—" in out
+
     def test_empty_rows_shows_idle(self):
         panel = _column_panel("Coder", [])
         out = _panel_to_str(panel)
@@ -194,8 +216,17 @@ class TestRenderZeroAgents:
         out = _render_to_str(state)
         assert "dev+5" in out
 
+    def test_orc_card_shown_when_present(self):
+        state = RunState(orc=OrcData(agent_id="orc-0", status="running", task="orchestrating"))
+        out = _render_to_str(state)
+        assert "orc-0" in out
+        assert "orchestrating" in out
 
-class TestRenderWithAgents:
+    def test_orc_card_absent_when_none(self):
+        state = RunState(orc=None)
+        out = _render_to_str(state)
+        assert "orc-0" not in out
+
     def test_one_planner_two_coders_one_qa(self):
         with patch("orc.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0

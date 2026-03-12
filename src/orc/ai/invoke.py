@@ -19,9 +19,6 @@ load_dotenv()  # auto-discovers .env from CWD upward
 
 _CLI = os.environ.get("COLONY_AI_CLI", "copilot").strip().lower()
 
-# Alias kept for backwards compatibility; prefer patching CopilotBackend.APPS_JSON directly.
-_COPILOT_APPS_JSON = CopilotBackend.APPS_JSON
-
 
 def _require_config() -> None:
     """Raise :class:`OSError` if ``_CLI`` names an unsupported backend."""

@@ -10,24 +10,6 @@ from orc.squad import _DEFAULT_MODEL, SquadConfig, list_squads, load_all_squads,
 # Helpers
 # ---------------------------------------------------------------------------
 
-_LEGACY_YAML = textwrap.dedent("""\
-    planner: 1
-    coder: 1
-    qa: 1
-    timeout_minutes: 120
-""")
-
-_LEGACY_COMPOSITION_YAML = textwrap.dedent("""\
-    name: default
-    description: |
-      Default squad: one agent of each type.
-    composition:
-      planner: 1
-      coder: 1
-      qa: 1
-    timeout_minutes: 120
-""")
-
 _NEW_YAML = textwrap.dedent("""\
     name: default
     description: |
@@ -45,32 +27,19 @@ _NEW_YAML = textwrap.dedent("""\
     timeout_minutes: 120
 """)
 
+_MINIMAL_YAML = textwrap.dedent("""\
+    composition:
+      - role: planner
+        count: 1
+      - role: coder
+        count: 1
+      - role: qa
+        count: 1
+    timeout_minutes: 120
+""")
+
 
 class TestLoadSquad:
-    def test_load_legacy_schema(self, tmp_path):
-        """Old flat schema (no composition: block) is still accepted."""
-        squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
-        (squads_dir / "default.yaml").write_text(_LEGACY_YAML)
-        cfg = load_squad("default", agents_dir=tmp_path)
-        assert cfg.planner == 1
-        assert cfg.coder == 1
-        assert cfg.qa == 1
-        assert cfg.timeout_minutes == 120
-
-    def test_load_legacy_composition_schema(self, tmp_path):
-        """Legacy dict composition schema (composition: {role: count}) is accepted."""
-        squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
-        (squads_dir / "default.yaml").write_text(_LEGACY_COMPOSITION_YAML)
-        cfg = load_squad("default", agents_dir=tmp_path)
-        assert cfg.planner == 1
-        assert cfg.coder == 1
-        assert cfg.qa == 1
-        assert cfg.timeout_minutes == 120
-        assert cfg.name == "default"
-        assert "one agent" in cfg.description
-
     def test_load_new_list_schema(self, tmp_path):
         """New list format with name/count/model per role is parsed correctly."""
         squads_dir = tmp_path / "squads"
@@ -145,9 +114,25 @@ class TestLoadSquad:
         """When the YAML has no name: key the file stem is used."""
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir()
-        (squads_dir / "mypro.yaml").write_text(_LEGACY_YAML)
+        (squads_dir / "mypro.yaml").write_text(_MINIMAL_YAML)
         cfg = load_squad("mypro", agents_dir=tmp_path)
         assert cfg.name == "mypro"
+
+    def test_dict_composition_raises(self, tmp_path):
+        """Dict-format composition (legacy) raises ValueError."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir()
+        (squads_dir / "bad.yaml").write_text(
+            textwrap.dedent("""\
+                composition:
+                  planner: 1
+                  coder: 1
+                  qa: 1
+                timeout_minutes: 120
+            """)
+        )
+        with pytest.raises(ValueError, match="must be a list"):
+            load_squad("bad", agents_dir=tmp_path)
 
     def test_missing_file_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
@@ -226,9 +211,12 @@ class TestLoadSquad:
         (squads_dir / "default.yaml").write_text(
             textwrap.dedent("""\
                 composition:
-                  planner: 1
-                  coder: 3
-                  qa: 2
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 3
+                  - role: qa
+                    count: 2
                 timeout_minutes: 60
             """)
         )
@@ -295,8 +283,8 @@ class TestListSquads:
     def test_lists_yaml_files(self, tmp_path):
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir()
-        (squads_dir / "default.yaml").write_text(_LEGACY_YAML)
-        (squads_dir / "broad.yaml").write_text(_LEGACY_YAML)
+        (squads_dir / "default.yaml").write_text(_MINIMAL_YAML)
+        (squads_dir / "broad.yaml").write_text(_MINIMAL_YAML)
         names = list_squads(agents_dir=tmp_path)
         assert sorted(names) == ["broad", "default"]
 
@@ -397,26 +385,46 @@ class TestSquadCoverage:
         assert cfg.coder == 2
 
     def test_parse_squad_file_invalid_count(self, tmp_path):
-        """Line 164: count < 1 raises ValueError."""
+        """count < 1 raises ValueError."""
         import pytest
 
         from orc.squad import _parse_squad_file
 
         squad_yaml = tmp_path / "bad.yaml"
         squad_yaml.write_text(
-            "name: bad\ncomposition:\n  planner: 0\n  coder: 1\n  qa: 1\ntimeout_minutes: 60\n"
+            textwrap.dedent("""\
+                name: bad
+                composition:
+                  - role: planner
+                    count: 0
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                timeout_minutes: 60
+            """)
         )
         with pytest.raises(ValueError, match="planner"):
             _parse_squad_file("bad", squad_yaml)
 
     def test_load_all_squads_local_dir(self, tmp_path):
-        """Lines 227-228: local squads dir scanned."""
+        """Local squads dir is scanned."""
         from orc.squad import load_all_squads
 
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir()
         (squads_dir / "local.yaml").write_text(
-            "name: local\ncomposition:\n  planner: 1\n  coder: 1\n  qa: 1\ntimeout_minutes: 30\n"
+            textwrap.dedent("""\
+                name: local
+                composition:
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                timeout_minutes: 30
+            """)
         )
         profiles = load_all_squads(agents_dir=tmp_path)
         names = [p.name for p in profiles]

@@ -233,8 +233,8 @@ def _coder_handler():
 def _qa_handler():
     """Return a callable that simulates a QA agent committing a passed verdict.
 
-    *cwd* is the feature worktree.  A ``qa(passed):`` commit is required so
-    the orchestrator recognises the QA verdict and triggers a merge.
+    *cwd* is the feature worktree.  A structured ``chore(qa-1.approve.<code>):``
+    commit is required so the orchestrator recognises the QA verdict and triggers a merge.
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
@@ -243,7 +243,7 @@ def _qa_handler():
 
         subprocess.run(["git", "add", "qa_review.txt"], cwd=cwd, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-m", "qa(passed): feature-x reviewed, all tests pass"],
+            ["git", "commit", "-m", "chore(qa-1.approve.0001): feature-x reviewed, all tests pass"],
             cwd=cwd,
             check=True,
             capture_output=True,
@@ -284,7 +284,8 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
     Script (in order):
       1. planner-1 — writes a task to the board and commits it to dev.
       2. coder-1   — creates a feature commit on the feature branch.
-      3. qa-1      — commits a ``qa(passed):`` verdict on the feature branch.
+      3. qa-1      — commits a structured ``chore(qa-1.approve.0001):`` verdict
+         on the feature branch.
       4. planner-2 — posts a ready message (loop-back to design, no new tasks).
 
     Each step returns a :class:`~conftest.FakePopen` that reports immediate

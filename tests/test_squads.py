@@ -22,7 +22,10 @@ class TestSquadsCommand:
         squads_dir.mkdir()
         (squads_dir / "test.yaml").write_text(
             "name: test\ndescription: A test squad.\n"
-            "composition:\n  planner: 1\n  coder: 2\n  qa: 1\n"
+            "composition:\n"
+            "  - role: planner\n    count: 1\n"
+            "  - role: coder\n    count: 2\n"
+            "  - role: qa\n    count: 1\n"
             "timeout_minutes: 120\n"
         )
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)

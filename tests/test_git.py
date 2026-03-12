@@ -112,46 +112,6 @@ class TestDeriveStateFromGit:
         assert agent == "coder"
         assert "not yet signalled done" in reason
 
-    def test_qa_passed_commit_returns_qa_passed_sentinel(self, monkeypatch):
-        """qa(passed): commit → _QA_PASSED sentinel."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=True,
-            last_commit_msg="qa(passed): no issues found",
-        )
-        from orc.engine.dispatcher import QA_PASSED
-
-        agent, reason = _derive_state_from_git()
-        assert agent == QA_PASSED
-        assert "ready to merge" in reason
-
-    def test_qa_failed_commit_returns_coder(self, monkeypatch):
-        """qa(failed): commit → route back to coder."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=True,
-            last_commit_msg="qa(failed): missing endpoint",
-        )
-        agent, reason = _derive_state_from_git()
-        assert agent == "coder"
-        assert "issues" in reason
-
-    def test_qa_blocked_commit_returns_coder(self, monkeypatch):
-        """Any qa( prefix other than passed → route to coder."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=True,
-            last_commit_msg="qa(blocked): cannot review without spec",
-        )
-        agent, reason = _derive_state_from_git()
-        assert agent == "coder"
-
     def test_no_last_commit_message_returns_coder(self, monkeypatch):
         """No commit message (e.g. git error) → treat as coder still working, route to coder."""
         self._patch(
@@ -720,9 +680,6 @@ class TestParseExitScope:
         result = _git._parse_exit_scope("chore(qa-1.reject.0007): missing error-path tests")
         assert result == ("qa-1", "reject", "0007")
 
-    def test_returns_none_for_legacy_qa_passed(self):
-        assert _git._parse_exit_scope("qa(passed): no issues found") is None
-
     def test_returns_none_for_conventional_commit(self):
         assert _git._parse_exit_scope("feat: add ResourceType enum") is None
 
@@ -775,8 +732,7 @@ class TestDeriveTaskStateExitCommits:
         assert "rejected" in reason
 
     def test_unknown_action_falls_through_to_coder(self, monkeypatch):
-        """A structured exit commit with an unknown action falls through to legacy matching,
-        then to the default 'coder' dispatch (still working)."""
+        """A structured exit commit with an unknown action routes to coder (still working)."""
         self._patch(monkeypatch, last_commit_msg="chore(coder-1.unknown.0002): weird action")
         agent, _ = _git._derive_task_state("0002-foo.md")
         assert agent == "coder"

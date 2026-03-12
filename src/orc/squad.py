@@ -16,7 +16,7 @@ Usage::
 
     all_squads = load_all_squads(agents_dir=orc_dir)   # list[SquadConfig]
 
-Profile format (current)::
+Profile format::
 
     name: default
     description: |
@@ -32,22 +32,6 @@ Profile format (current)::
         count: 2
         model: claude-sonnet-4.6
     timeout_minutes: 120  # watchdog: kill stuck agents after this many minutes
-
-Legacy dict composition format (still accepted for backward compatibility)::
-
-    name: default
-    composition:
-      planner: 1        # must always be 1 — planning is serialised
-      coder: 4          # up to 4 parallel coders
-      qa: 2             # up to 2 parallel QA reviewers
-    timeout_minutes: 120
-
-Legacy flat format (still accepted for backward compatibility)::
-
-    planner: 1
-    coder: 4
-    qa: 2
-    timeout_minutes: 120
 
 Constraints
 -----------
@@ -69,9 +53,6 @@ import yaml
 # Package-bundled squads directory (fallback when project-level squad not found).
 # Lives inside the default template so there is a single source of truth.
 _PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
-
-# Kept for backward compatibility — points to the package bundled squads.
-SQUADS_DIR = _PACKAGE_SQUADS_DIR
 
 _VALID_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
 _DEFAULT_TIMEOUT_MINUTES = 120
@@ -109,41 +90,32 @@ class SquadConfig:
 def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
     """Parse and validate a squad YAML file at *path*.
 
-    Accepts three schemas in order of preference:
-    1. New list format: ``composition:`` is a list of ``{name, count, model}`` dicts.
-    2. Legacy dict format: ``composition:`` is a mapping of ``role: count``.
-    3. Legacy flat format: role counts appear at the top level.
+    Expects ``composition:`` to be a list of ``{role, count, model}`` dicts.
     """
     raw = yaml.safe_load(path.read_text()) or {}
 
-    composition = raw.get("composition") or {}
+    composition = raw.get("composition") or []
     models: dict[str, str] = {}
 
-    if isinstance(composition, list):
-        # New format: list of {name, count, model}
-        counts: dict[str, int] = {}
-        for entry in composition:
-            if not isinstance(entry, dict):
-                continue
-            role = str(entry.get("role", ""))
-            if role not in _VALID_ROLES:
-                continue
-            counts[role] = int(entry.get("count", 1))
-            if "model" in entry and entry["model"]:
-                models[role] = str(entry["model"]).strip()
-        planner = counts.get("planner", 1)
-        coder = counts.get("coder", 1)
-        qa = counts.get("qa", 1)
-    elif composition:
-        # Legacy dict format: composition: {planner: 1, coder: 4, qa: 2}
-        planner = int(composition.get("planner", 1))
-        coder = int(composition.get("coder", 1))
-        qa = int(composition.get("qa", 1))
-    else:
-        # Legacy flat format: top-level role keys
-        planner = int(raw.get("planner", 1))
-        coder = int(raw.get("coder", 1))
-        qa = int(raw.get("qa", 1))
+    if not isinstance(composition, list):
+        raise ValueError(
+            f"Squad profile {file_name!r}: 'composition' must be a list of"
+            " {{role, count, model}} entries."
+        )
+
+    counts: dict[str, int] = {}
+    for entry in composition:
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role", ""))
+        if role not in _VALID_ROLES:
+            continue
+        counts[role] = int(entry.get("count", 1))
+        if "model" in entry and entry["model"]:
+            models[role] = str(entry["model"]).strip()
+    planner = counts.get("planner", 1)
+    coder = counts.get("coder", 1)
+    qa = counts.get("qa", 1)
 
     timeout_minutes = int(raw.get("timeout_minutes", _DEFAULT_TIMEOUT_MINUTES))
     name = str(raw.get("name", "") or path.stem)
