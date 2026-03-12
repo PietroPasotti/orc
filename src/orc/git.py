@@ -370,15 +370,50 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     """Inspect the git tree for *task_name* and return ``(token, reason)``."""
     branch = _feature_branch(task_name)
 
-    if not _feature_branch_exists(branch):
+    branch_exists = _feature_branch_exists(branch)
+    logger.debug(
+        "derive_task_state: branch exists", task=task_name, branch=branch, exists=branch_exists
+    )
+
+    if not branch_exists:
         if _feature_merged_into_dev(branch):
+            logger.info(
+                "derive_task_state: branch absent but merged — closing board",
+                task=task_name,
+                branch=branch,
+            )
             return _CLOSE_BOARD, f"branch {branch!r} merged but board not updated"
+        logger.debug(
+            "derive_task_state: branch absent, not merged — dispatch coder", task=task_name
+        )
         return "coder", f"feature branch {branch!r} does not exist yet"
 
-    if not _feature_has_commits_ahead_of_main(branch):
+    # Branch exists — check if it has work not yet in main.
+    has_commits = _feature_has_commits_ahead_of_main(branch)
+    logger.debug(
+        "derive_task_state: commits ahead of main",
+        task=task_name,
+        branch=branch,
+        has_commits=has_commits,
+    )
+
+    if not has_commits:
+        # Branch exists but is at (or behind) main — this happens when the
+        # feature was already merged and the branch was re-created by
+        # _ensure_feature_worktree, or when cleanup didn't run after merge.
+        # Check whether it's been merged into dev before dispatching a coder.
+        if _feature_merged_into_dev(branch):
+            logger.info(
+                "derive_task_state: branch exists but already merged into dev — closing board",
+                task=task_name,
+                branch=branch,
+            )
+            return _CLOSE_BOARD, f"branch {branch!r} already merged into dev but board not updated"
         return "coder", f"feature branch {branch!r} has no commits ahead of main"
 
     last_msg = _last_feature_commit_message(branch)
+    logger.debug("derive_task_state: last commit", task=task_name, branch=branch, last_msg=last_msg)
+
     if last_msg and last_msg.startswith("qa(passed)"):
         return _QA_PASSED, f"qa passed on {branch!r} — ready to merge"
     if last_msg and last_msg.startswith("qa("):

@@ -72,16 +72,33 @@ class TestDeriveStateFromGit:
         assert agent == CLOSE_BOARD
         assert "merged" in reason
 
-    def test_feature_branch_exists_no_commits_returns_coder(self, monkeypatch):
+    def test_feature_branch_exists_no_commits_not_merged_returns_coder(self, monkeypatch):
+        """Branch exists with no new commits and not yet in dev → dispatch coder."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
             branch_exists=True,
             has_commits=False,
+            is_merged=False,
         )
         agent, reason = _derive_state_from_git()
         assert agent == "coder"
         assert "no commits" in reason
+
+    def test_feature_branch_exists_no_commits_but_merged_returns_close_board(self, monkeypatch):
+        """Branch exists at same tip as main (already merged) → close stale board entry."""
+        self._patch(
+            monkeypatch,
+            active_task="0003-foo.md",
+            branch_exists=True,
+            has_commits=False,
+            is_merged=True,
+        )
+        agent, reason = _derive_state_from_git()
+        from orc.dispatcher import CLOSE_BOARD
+
+        assert agent == CLOSE_BOARD
+        assert "merged" in reason
 
     def test_coder_commits_returns_qa(self, monkeypatch):
         """Coder-authored commit → route to QA."""
