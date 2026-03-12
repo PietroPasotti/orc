@@ -94,7 +94,7 @@ class TestDeriveStateFromGit:
             is_merged=True,
         )
         agent, reason = _derive_state_from_git()
-        from orc.dispatcher import CLOSE_BOARD
+        from orc.engine.dispatcher import CLOSE_BOARD
 
         assert agent == CLOSE_BOARD
         assert "merged" in reason
@@ -121,7 +121,7 @@ class TestDeriveStateFromGit:
             has_commits=True,
             last_commit_msg="qa(passed): no issues found",
         )
-        from orc.dispatcher import QA_PASSED
+        from orc.engine.dispatcher import QA_PASSED
 
         agent, reason = _derive_state_from_git()
         assert agent == QA_PASSED
@@ -761,7 +761,7 @@ class TestDeriveTaskStateExitCommits:
         assert "awaiting review" in reason
 
     def test_qa_approve_routes_to_qa_passed(self, monkeypatch):
-        from orc.dispatcher import QA_PASSED
+        from orc.engine.dispatcher import QA_PASSED
 
         self._patch(monkeypatch, last_commit_msg="chore(qa-2.approve.0002): no critical issues")
         agent, reason = _git._derive_task_state("0002-foo.md")

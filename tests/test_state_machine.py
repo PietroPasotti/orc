@@ -7,8 +7,8 @@ from collections import deque
 import pytest
 
 import orc.git.core as _git
-from orc.dispatcher import CLOSE_BOARD, QA_PASSED
-from orc.state_machine import (
+from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED
+from orc.engine.state_machine import (
     ACTION_CLOSE_BOARD,
     ACTION_QA_PASSED,
     BlockState,

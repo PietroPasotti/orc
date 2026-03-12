@@ -56,7 +56,7 @@ from orc.config import (  # noqa: F401
     _load_placeholders,
     validate_env,
 )
-from orc.context import (  # noqa: F401
+from orc.engine.context import (  # noqa: F401
     _BLOCKED_TIMEOUT,
     _DEFAULT_MODEL,
     _boot_message_body,
@@ -66,6 +66,16 @@ from orc.context import (  # noqa: F401
     build_agent_context,
     invoke_agent,
     wait_for_human_reply,
+)
+from orc.engine.workflow import (  # noqa: F401
+    _ORC_RESOLVED_RE,
+    KNOWN_AGENTS,
+    _do_close_board,
+    _has_unresolved_block,
+    _make_context_builder,
+    _post_boot_message,
+    _post_resolved,
+    determine_next_agent,
 )
 from orc.git.core import (  # noqa: F401
     _CLOSE_BOARD,
@@ -85,16 +95,6 @@ from orc.git.core import (  # noqa: F401
     _last_feature_commit_message,
     _merge_feature_into_dev,
     _rebase_in_progress,
-)
-from orc.workflow import (  # noqa: F401
-    _ORC_RESOLVED_RE,
-    KNOWN_AGENTS,
-    _do_close_board,
-    _has_unresolved_block,
-    _make_context_builder,
-    _post_boot_message,
-    _post_resolved,
-    determine_next_agent,
 )
 
 if __name__ == "__main__":  # pragma: no cover

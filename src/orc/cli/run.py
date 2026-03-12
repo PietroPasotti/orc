@@ -14,15 +14,15 @@ import orc.board as _board
 import orc.cli.merge as _merge_mod
 import orc.cli.status as _status_mod
 import orc.config as _cfg
-import orc.context as _ctx
+import orc.engine.context as _ctx
+import orc.engine.workflow as _wf
 import orc.git.core as _git
-import orc.workflow as _wf
-from orc import dispatcher as _disp
 from orc import tui as _tui
 from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
+from orc.engine import dispatcher as _disp
+from orc.engine.pool import AgentProcess
 from orc.messaging import telegram as tg
-from orc.pool import AgentProcess
 from orc.squad import load_squad
 
 logger = structlog.get_logger(__name__)

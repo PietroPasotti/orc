@@ -9,7 +9,7 @@ import typer
 
 import orc.cli.status as _status
 import orc.config as _cfg
-import orc.context as _ctx
+import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.cli import _check_env_or_exit, app
 from orc.messaging import telegram as tg

@@ -52,8 +52,8 @@ from pathlib import Path
 import structlog
 import typer
 
+from orc.engine.pool import AGENT_LOG_DIR, AgentPool, AgentProcess
 from orc.messaging import telegram as tg
-from orc.pool import AGENT_LOG_DIR, AgentPool, AgentProcess
 from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)

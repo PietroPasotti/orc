@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from conftest import FakePopen
 
-from orc.pool import AgentPool, AgentProcess
+from orc.engine.pool import AgentPool, AgentProcess
 
 
 def _make_agent(tmp_path: Path, *, role: str = "coder", task: str = "0001-foo.md") -> AgentProcess:

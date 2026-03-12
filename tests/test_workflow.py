@@ -5,10 +5,10 @@ from unittest.mock import patch
 from conftest import make_msg
 
 import orc.config as _cfg
-import orc.context as _ctx
+import orc.engine.context as _ctx
 import orc.git.core as _git
 import orc.messaging.telegram as tg
-from orc.workflow import (
+from orc.engine.workflow import (
     _ORC_RESOLVED_RE,
     _has_unresolved_block,
     _post_resolved,
@@ -222,7 +222,7 @@ class TestWorkflowCoverage:
         from unittest.mock import MagicMock
         from unittest.mock import patch as _patch
 
-        import orc.workflow as _wf
+        import orc.engine.workflow as _wf
 
         monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
         monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
@@ -241,7 +241,7 @@ class TestWorkflowCoverage:
             r.returncode = 0
             return r
 
-        with _patch("orc.workflow.subprocess.run", fake_run):
+        with _patch("orc.engine.workflow.subprocess.run", fake_run):
             _wf._do_close_board("0001-foo.md")
 
         cmds = [" ".join(c) for c in runs]
@@ -253,7 +253,7 @@ class TestWorkflowCoverage:
         from unittest.mock import MagicMock
         from unittest.mock import patch as _patch
 
-        import orc.workflow as _wf
+        import orc.engine.workflow as _wf
 
         repo_root = tmp_path / "repo"
         repo_root.mkdir()
@@ -276,7 +276,7 @@ class TestWorkflowCoverage:
             r.returncode = 0
             return r
 
-        with _patch("orc.workflow.subprocess.run", fake_run):
+        with _patch("orc.engine.workflow.subprocess.run", fake_run):
             _wf._do_close_board("0001-foo.md")
 
         cmds = [" ".join(c) for c in runs]
@@ -294,7 +294,7 @@ class TestMakeMergeFeatureFn:
 
     def test_delegates_to_merge_feature_into_dev(self, monkeypatch, tmp_path):
         """Happy path: no conflict, calls _git._merge_feature_into_dev."""
-        import orc.workflow as _wf
+        import orc.engine.workflow as _wf
 
         calls = []
         monkeypatch.setattr(_git, "_merge_feature_into_dev", lambda t: calls.append(t))
@@ -307,8 +307,8 @@ class TestMakeMergeFeatureFn:
 
     def test_spawns_coder_on_merge_conflict(self, monkeypatch, tmp_path):
         """On MergeConflictError, a coder agent is invoked."""
-        import orc.context as _ctx
-        import orc.workflow as _wf
+        import orc.engine.context as _ctx
+        import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
         monkeypatch.setattr(_git, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))
@@ -326,8 +326,8 @@ class TestMakeMergeFeatureFn:
         import pytest
         import typer
 
-        import orc.context as _ctx
-        import orc.workflow as _wf
+        import orc.engine.context as _ctx
+        import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
         monkeypatch.setattr(_git, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))
@@ -345,8 +345,8 @@ class TestMakeMergeFeatureFn:
         import pytest
         import typer
 
-        import orc.context as _ctx
-        import orc.workflow as _wf
+        import orc.engine.context as _ctx
+        import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
         monkeypatch.setattr(_git, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))

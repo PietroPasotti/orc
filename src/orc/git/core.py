@@ -12,8 +12,8 @@ import yaml
 
 import orc.board as _board
 import orc.config as _cfg
-from orc.dispatcher import CLOSE_BOARD as _CLOSE_BOARD
-from orc.dispatcher import QA_PASSED as _QA_PASSED
+from orc.engine.dispatcher import CLOSE_BOARD as _CLOSE_BOARD
+from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
 
 logger = structlog.get_logger(__name__)
 

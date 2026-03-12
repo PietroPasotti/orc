@@ -8,7 +8,7 @@ import pytest
 import typer
 
 import orc.config as _cfg
-import orc.context as _ctx
+import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.git.conflict import ConflictResolver
 

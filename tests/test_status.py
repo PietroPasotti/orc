@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 import orc.cli.status as _st
 import orc.main as m
 from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main
-from orc.dispatcher import QA_PASSED
+from orc.engine.dispatcher import QA_PASSED
 from orc.squad import SquadConfig
 
 runner = CliRunner()
