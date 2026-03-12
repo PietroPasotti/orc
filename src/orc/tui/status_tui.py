@@ -9,7 +9,7 @@ Two tabs navigated with ← / →:
 
 Usage::
 
-    from orc.status_tui import run_status_tui
+    from orc.tui.status_tui import run_status_tui
     run_status_tui(squad="default")
 """
 
@@ -29,7 +29,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import ContentSwitcher, Static
 
 import orc.config as _cfg
-import orc.git as _git
+import orc.git.core as _git
 
 # Maximum commits fetched per branch.
 _MAX_COMMITS = 100

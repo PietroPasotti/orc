@@ -9,17 +9,17 @@ import pytest
 from conftest import FakePopen, make_msg
 from typer.testing import CliRunner
 
+import orc.ai.invoke as inv
 import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
-import orc.context as _ctx
-import orc.dispatcher as _disp
-import orc.git as _git
-import orc.invoke as inv
+import orc.engine.context as _ctx
+import orc.engine.dispatcher as _disp
+import orc.git.core as _git
 import orc.main as m
-import orc.telegram as tg
-from orc.dispatcher import CLOSE_BOARD, QA_PASSED, Dispatcher
-from orc.pool import AgentProcess
+import orc.messaging.telegram as tg
+from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED, Dispatcher
+from orc.engine.pool import AgentProcess
 from orc.squad import SquadConfig
 
 runner = CliRunner()
@@ -821,7 +821,7 @@ class TestDispatcherLoopProperty:
 
     def test_loop_increments_each_cycle(self, tmp_path, monkeypatch):
         """loop property reflects the number of _loop iterations run."""
-        import orc.dispatcher as _d
+        import orc.engine.dispatcher as _d
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
 

@@ -1,15 +1,16 @@
 """Tests for orc/cli/merge.py."""
 
+import subprocess
 from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
 
 import orc.cli.status as _status_mod
 import orc.config as _cfg
-import orc.context as _ctx
-import orc.git as _git
+import orc.engine.context as _ctx
+import orc.git.core as _git
 import orc.main as m
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 
 runner = CliRunner()
 
@@ -33,7 +34,7 @@ class TestMergeCommand:
             r.returncode = 0
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
 
@@ -53,7 +54,7 @@ class TestMergeCommand:
             r.returncode = 0
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
@@ -70,7 +71,7 @@ class TestMergeCommand:
             r.returncode = 0
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True) or True)
 
@@ -89,7 +90,7 @@ class TestMergeCommand:
             r.returncode = 0
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_complete_merge", lambda wt: False)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
@@ -113,7 +114,7 @@ class TestMergeCommand:
             r.stdout = "UU src/conflict.py\n"
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/conflict.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
 
@@ -143,7 +144,7 @@ class TestMergeCommand:
             r.stdout = ""
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
@@ -175,7 +176,7 @@ class TestMergeCommand:
             r.stdout = ""
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
         monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
@@ -196,7 +197,7 @@ class TestMergeCommand:
             r.stdout = ""
             return r
 
-        monkeypatch.setattr(m.subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: True)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)

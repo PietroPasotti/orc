@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 import orc.cli.status as _st
 import orc.main as m
 from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main
-from orc.dispatcher import QA_PASSED
+from orc.engine.dispatcher import QA_PASSED
 from orc.squad import SquadConfig
 
 runner = CliRunner()
@@ -329,7 +329,7 @@ class TestStatusCoverage:
         launched: list[str] = []
         monkeypatch.setattr(_st_module, "_is_tty", lambda: True)
 
-        with patch("orc.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--squad", "default"])
 
         assert result.exit_code == 0

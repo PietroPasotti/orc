@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import rich.table
 
-from orc.status_tui import (
+from orc.tui.status_tui import (
     CommitInfo,
     StatusApp,
     _capture_status,
@@ -73,8 +73,8 @@ class TestGitLog:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
         ):
             rows = _git_log("main", [])
 
@@ -92,8 +92,8 @@ class TestGitLog:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
         ):
             rows = _git_log("main", [])
 
@@ -104,8 +104,8 @@ class TestGitLog:
             raise OSError("git not found")
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
         ):
             rows = _git_log("main", [])
 
@@ -121,8 +121,8 @@ class TestGitLog:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
         ):
             _git_log("dev", ["main"])
 
@@ -137,9 +137,9 @@ class TestFeatBranches:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
-            patch("orc.status_tui._cfg.BRANCH_PREFIX", ""),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui._cfg.BRANCH_PREFIX", ""),
         ):
             branches = _feat_branches()
 
@@ -155,9 +155,9 @@ class TestFeatBranches:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
-            patch("orc.status_tui._cfg.BRANCH_PREFIX", "orc"),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui._cfg.BRANCH_PREFIX", "orc"),
         ):
             branches = _feat_branches()
 
@@ -169,9 +169,9 @@ class TestFeatBranches:
             raise OSError("git not found")
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
-            patch("orc.status_tui._cfg.BRANCH_PREFIX", ""),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui._cfg.BRANCH_PREFIX", ""),
         ):
             assert _feat_branches() == []
 
@@ -204,13 +204,13 @@ class TestGatherGitTree:
                 "dev": "dddeeeffe|dddeee|feat: add work|1700000200\n",
             }
         )
-        monkeypatch.setattr("orc.status_tui._cfg.REPO_ROOT", tmp_path)
-        monkeypatch.setattr("orc.status_tui._cfg.WORK_DEV_BRANCH", "dev")
-        monkeypatch.setattr("orc.status_tui._cfg.BRANCH_PREFIX", "")
-        monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
+        monkeypatch.setattr("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path)
+        monkeypatch.setattr("orc.tui.status_tui._cfg.WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr("orc.tui.status_tui._cfg.BRANCH_PREFIX", "")
+        monkeypatch.setattr("orc.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.tui.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
 
-        with patch("orc.status_tui.subprocess.run", fake_run):
+        with patch("orc.tui.status_tui.subprocess.run", fake_run):
             branches, commits = gather_git_tree()
 
         assert branches[0] == "main"
@@ -229,13 +229,13 @@ class TestGatherGitTree:
                 "feat/0001-foo": "ccc|ccc|feat commit|2000\n",
             }
         )
-        monkeypatch.setattr("orc.status_tui._cfg.REPO_ROOT", tmp_path)
-        monkeypatch.setattr("orc.status_tui._cfg.WORK_DEV_BRANCH", "dev")
-        monkeypatch.setattr("orc.status_tui._cfg.BRANCH_PREFIX", "")
-        monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
+        monkeypatch.setattr("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path)
+        monkeypatch.setattr("orc.tui.status_tui._cfg.WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr("orc.tui.status_tui._cfg.BRANCH_PREFIX", "")
+        monkeypatch.setattr("orc.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.tui.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
 
-        with patch("orc.status_tui.subprocess.run", fake_run):
+        with patch("orc.tui.status_tui.subprocess.run", fake_run):
             _, commits = gather_git_tree()
 
         timestamps = [c.timestamp for c in commits]
@@ -250,13 +250,13 @@ class TestGatherGitTree:
                 "dev": "same1234|same12|shared commit|1000\n",
             }
         )
-        monkeypatch.setattr("orc.status_tui._cfg.REPO_ROOT", tmp_path)
-        monkeypatch.setattr("orc.status_tui._cfg.WORK_DEV_BRANCH", "dev")
-        monkeypatch.setattr("orc.status_tui._cfg.BRANCH_PREFIX", "")
-        monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
+        monkeypatch.setattr("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path)
+        monkeypatch.setattr("orc.tui.status_tui._cfg.WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr("orc.tui.status_tui._cfg.BRANCH_PREFIX", "")
+        monkeypatch.setattr("orc.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.tui.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
 
-        with patch("orc.status_tui.subprocess.run", fake_run):
+        with patch("orc.tui.status_tui.subprocess.run", fake_run):
             _, commits = gather_git_tree()
 
         shas = [c.sha for c in commits]
@@ -273,7 +273,7 @@ class TestRenderGitTree:
             ]
             return branches, commits
 
-        monkeypatch.setattr("orc.status_tui.gather_git_tree", fake_gather)
+        monkeypatch.setattr("orc.tui.status_tui.gather_git_tree", fake_gather)
         result = render_git_tree()
         assert isinstance(result, rich.table.Table)
 
@@ -281,7 +281,7 @@ class TestRenderGitTree:
         def fake_gather():
             raise RuntimeError("no git")
 
-        monkeypatch.setattr("orc.status_tui.gather_git_tree", fake_gather)
+        monkeypatch.setattr("orc.tui.status_tui.gather_git_tree", fake_gather)
         from rich.text import Text
 
         result = render_git_tree()
@@ -291,7 +291,7 @@ class TestRenderGitTree:
         def fake_gather():
             return ["main", "dev"], []
 
-        monkeypatch.setattr("orc.status_tui.gather_git_tree", fake_gather)
+        monkeypatch.setattr("orc.tui.status_tui.gather_git_tree", fake_gather)
         result = render_git_tree()
         assert isinstance(result, rich.table.Table)
 
@@ -303,7 +303,7 @@ class TestCaptureStatus:
 
             sys.stdout.write("Squad: default\nmain is up to date with dev.\n")
 
-        monkeypatch.setattr("orc.status_tui._capture_status.__module__", "orc.status_tui")
+        monkeypatch.setattr("orc.tui.status_tui._capture_status.__module__", "orc.status_tui")
 
         with patch("orc.cli.status._status", fake_status):
             output = _capture_status()
@@ -324,20 +324,21 @@ class TestCaptureStatus:
 class TestMainBranch:
     def test_uses_config_value_when_set(self, monkeypatch):
         monkeypatch.setattr(
-            "orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": "trunk"}
+            "orc.tui.status_tui._cfg._load_orc_config",
+            lambda *a, **kw: {"orc-main-branch": "trunk"},
         )
         assert _main_branch() == "trunk"
 
     def test_falls_back_to_default_branch(self, monkeypatch):
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
-        monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "master")
+        monkeypatch.setattr("orc.tui.status_tui._cfg._load_orc_config", lambda *a, **kw: {})
+        monkeypatch.setattr("orc.tui.status_tui._git._default_branch", lambda: "master")
         assert _main_branch() == "master"
 
     def test_ignores_empty_string_config(self, monkeypatch):
         monkeypatch.setattr(
-            "orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": ""}
+            "orc.tui.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": ""}
         )
-        monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.tui.status_tui._git._default_branch", lambda: "main")
         assert _main_branch() == "main"
 
 
@@ -349,8 +350,8 @@ class TestGitLogEdgeCases:
             return r
 
         with (
-            patch("orc.status_tui.subprocess.run", fake_run),
-            patch("orc.status_tui._cfg.REPO_ROOT", tmp_path),
+            patch("orc.tui.status_tui.subprocess.run", fake_run),
+            patch("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path),
         ):
             rows = _git_log("main", [])
 
@@ -368,12 +369,12 @@ class TestGatherGitTreeEdgeCases:
             r.stdout = ""
             return r
 
-        monkeypatch.setattr("orc.status_tui._cfg.REPO_ROOT", tmp_path)
-        monkeypatch.setattr("orc.status_tui._cfg.WORK_DEV_BRANCH", "dev")
-        monkeypatch.setattr("orc.status_tui._cfg.BRANCH_PREFIX", "")
-        monkeypatch.setattr("orc.status_tui._main_branch", bad_main)
+        monkeypatch.setattr("orc.tui.status_tui._cfg.REPO_ROOT", tmp_path)
+        monkeypatch.setattr("orc.tui.status_tui._cfg.WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr("orc.tui.status_tui._cfg.BRANCH_PREFIX", "")
+        monkeypatch.setattr("orc.tui.status_tui._main_branch", bad_main)
 
-        with patch("orc.status_tui.subprocess.run", fake_run):
+        with patch("orc.tui.status_tui.subprocess.run", fake_run):
             branches, _ = gather_git_tree()
 
         assert branches[0] == "main"
@@ -381,7 +382,7 @@ class TestGatherGitTreeEdgeCases:
 
 class TestRenderGitTreeEdgeCases:
     def test_no_branches_returns_text(self, monkeypatch):
-        monkeypatch.setattr("orc.status_tui.gather_git_tree", lambda: ([], []))
+        monkeypatch.setattr("orc.tui.status_tui.gather_git_tree", lambda: ([], []))
         from rich.text import Text
 
         result = render_git_tree()
@@ -390,7 +391,7 @@ class TestRenderGitTreeEdgeCases:
     def test_long_subject_is_truncated(self, monkeypatch):
         long_subject = "a" * 80
         commits = [CommitInfo("abc", "abc", long_subject, 1000, "main", 0)]
-        monkeypatch.setattr("orc.status_tui.gather_git_tree", lambda: (["main"], commits))
+        monkeypatch.setattr("orc.tui.status_tui.gather_git_tree", lambda: (["main"], commits))
         result = render_git_tree()
         assert isinstance(result, rich.table.Table)
         # Verify the truncation happened by checking we can still build the table.
@@ -482,7 +483,7 @@ class TestStatusApp:
 
     def test_refresh_agents_updates_widget(self, monkeypatch):
         monkeypatch.setattr(
-            "orc.status_tui._capture_status", lambda squad="default": "agent output"
+            "orc.tui.status_tui._capture_status", lambda squad="default": "agent output"
         )
         app = StatusApp()
         updates: list = []
@@ -497,7 +498,7 @@ class TestStatusApp:
 
     def test_refresh_git_tree_updates_widget(self, monkeypatch):
         fake_renderable = MagicMock()
-        monkeypatch.setattr("orc.status_tui.render_git_tree", lambda: fake_renderable)
+        monkeypatch.setattr("orc.tui.status_tui.render_git_tree", lambda: fake_renderable)
         app = StatusApp()
         updates: list = []
 

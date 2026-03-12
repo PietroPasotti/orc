@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orc.retry import retry, retry_call
+from orc.engine.retry import retry, retry_call
 
 
 class TestRetryDecorator:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orc.telegram_messages import (
+from orc.messaging.messages import (
     INFORMATIONAL_STATES,
     KNOWN_AGENTS,
     KNOWN_ROLES,

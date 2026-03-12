@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 import orc.config as _cfg
-import orc.git as _git
+import orc.git.core as _git
 from orc.board import _active_task_name
 from orc.config import DEV_WORKTREE  # noqa: F401
-from orc.git import (
+from orc.git.core import (
     _close_task_on_board,
     _derive_state_from_git,
     _ensure_feature_worktree,
@@ -35,10 +35,12 @@ class TestDeriveStateFromGit:
         last_commit_msg=None,
     ):
         monkeypatch.setattr("orc.board._active_task_name", lambda: active_task)
-        monkeypatch.setattr("orc.git._feature_branch_exists", lambda b: branch_exists)
-        monkeypatch.setattr("orc.git._feature_has_commits_ahead_of_main", lambda b: has_commits)
-        monkeypatch.setattr("orc.git._feature_merged_into_dev", lambda b: is_merged)
-        monkeypatch.setattr("orc.git._last_feature_commit_message", lambda b: last_commit_msg)
+        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
+        monkeypatch.setattr(
+            "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
+        )
+        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
+        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
 
     def test_no_open_tasks_returns_planner(self, monkeypatch):
         self._patch(monkeypatch, active_task=None, branch_exists=False, has_commits=False)
@@ -92,7 +94,7 @@ class TestDeriveStateFromGit:
             is_merged=True,
         )
         agent, reason = _derive_state_from_git()
-        from orc.dispatcher import CLOSE_BOARD
+        from orc.engine.dispatcher import CLOSE_BOARD
 
         assert agent == CLOSE_BOARD
         assert "merged" in reason
@@ -119,7 +121,7 @@ class TestDeriveStateFromGit:
             has_commits=True,
             last_commit_msg="qa(passed): no issues found",
         )
-        from orc.dispatcher import QA_PASSED
+        from orc.engine.dispatcher import QA_PASSED
 
         agent, reason = _derive_state_from_git()
         assert agent == QA_PASSED
@@ -356,7 +358,7 @@ class TestGitCoverage:
             r.returncode = 0
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             _git._ensure_dev_worktree()
         assert any("worktree" in " ".join(c) for c in runs)
 
@@ -376,7 +378,7 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             result = _git._rebase_in_progress(tmp_path)
         assert result is False
 
@@ -392,7 +394,7 @@ class TestGitCoverage:
             r.stdout = "Updating abc..def\nFast-forward\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             result = _git._complete_merge(tmp_path)
         cmds = [" ".join(c) for c in runs]
         assert any("checkout" in c and "main" in c for c in cmds)
@@ -409,7 +411,7 @@ class TestGitCoverage:
             r.stdout = "Already up to date.\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             result = _git._complete_merge(tmp_path)
         assert result is False
 
@@ -421,14 +423,14 @@ class TestGitCoverage:
             r.stdout = "UU src/conflict.py"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             result = _git._conflict_status(tmp_path)
         assert "conflict" in result
 
     def test_close_task_agents_dir_not_relative_to_repo_root(self, tmp_path, monkeypatch):
         """Lines 86-87: AGENTS_DIR outside REPO_ROOT uses basename fallback."""
         import orc.config as _cfg
-        import orc.git as _git
+        import orc.git.core as _git
 
         agents_dir = tmp_path / "other" / "orc"
         agents_dir.mkdir(parents=True)
@@ -444,7 +446,7 @@ class TestGitCoverage:
     def test_merge_feature_commits_board_when_board_exists(self, tmp_path, monkeypatch):
         """Lines 142-148: _merge_feature_into_dev commits board when board.yaml present."""
         import orc.config as _cfg
-        import orc.git as _git
+        import orc.git.core as _git
 
         # Set up minimal git-shaped directory structure
         dev_wt = tmp_path / "dev"
@@ -470,7 +472,7 @@ class TestGitCoverage:
             r.stdout = "abc1234\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             _git._merge_feature_into_dev("0001-task.md")
 
         cmds_str = [" ".join(c) for c in runs]
@@ -479,7 +481,7 @@ class TestGitCoverage:
     def test_merge_feature_commits_board_agents_outside_root(self, tmp_path, monkeypatch):
         """Lines 308-309: except ValueError when AGENTS_DIR is outside REPO_ROOT."""
         import orc.config as _cfg
-        import orc.git as _git
+        import orc.git.core as _git
 
         repo_root = tmp_path / "repo"
         repo_root.mkdir()
@@ -507,7 +509,7 @@ class TestGitCoverage:
             r.stdout = "abc1234\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             _git._merge_feature_into_dev("0001-task.md")
 
         cmds_str = [" ".join(c) for c in runs]
@@ -516,7 +518,7 @@ class TestGitCoverage:
     def test_merge_feature_raises_merge_conflict_error_on_conflict(self, tmp_path, monkeypatch):
         """When git merge fails, MergeConflictError is raised (no --abort) so coder can resolve."""
         import orc.config as _cfg
-        import orc.git as _git
+        import orc.git.core as _git
 
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir()
@@ -541,7 +543,7 @@ class TestGitCoverage:
 
         import pytest
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             with pytest.raises(_git.MergeConflictError) as exc_info:
                 _git._merge_feature_into_dev("0001-task.md")
 
@@ -555,7 +557,7 @@ class TestGitCoverage:
     def test_merge_feature_resets_dirty_dev_before_merge(self, tmp_path, monkeypatch):
         """When dev worktree is dirty, git reset --hard HEAD is called before the merge."""
         import orc.config as _cfg
-        import orc.git as _git
+        import orc.git.core as _git
 
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir()
@@ -578,7 +580,7 @@ class TestGitCoverage:
             r.stdout = "abc1234\n" if "--short" in cmd else ""
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             _git._merge_feature_into_dev("0001-task.md")
 
         cmds_str = [" ".join(c) for c in runs]
@@ -592,7 +594,7 @@ class TestGitCoverage:
             r.stdout = " M src/foo.py\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             assert _git._is_worktree_dirty(tmp_path) is True
 
     def test_is_worktree_dirty_false(self, tmp_path):
@@ -601,7 +603,7 @@ class TestGitCoverage:
             r.stdout = ""
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             assert _git._is_worktree_dirty(tmp_path) is False
 
     def test_merge_in_progress_true(self, tmp_path):
@@ -614,7 +616,7 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             assert _git._merge_in_progress(tmp_path) is True
 
     def test_merge_in_progress_false(self, tmp_path):
@@ -626,7 +628,7 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.subprocess.run", fake_run):
+        with patch("orc.git.core.subprocess.run", fake_run):
             assert _git._merge_in_progress(tmp_path) is False
 
 
@@ -641,7 +643,7 @@ class TestGitRunner:
     def test_run_issues_git_command(self, tmp_path):
         """GitRunner.run passes the right args to subprocess.run."""
         fake = MagicMock(returncode=0, stdout="ok\n", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake) as mock_run:
+        with patch("orc.git.core.subprocess.run", return_value=fake) as mock_run:
             runner = _git.GitRunner(tmp_path)
             result = runner.run("status", "--short")
         mock_run.assert_called_once_with(
@@ -655,31 +657,31 @@ class TestGitRunner:
 
     def test_branch_exists_true(self, tmp_path):
         fake = MagicMock(returncode=0, stdout="  main\n", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.branch_exists("main") is True
 
     def test_branch_exists_false(self, tmp_path):
         fake = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.branch_exists("nonexistent") is False
 
     def test_is_ancestor_true(self, tmp_path):
         fake = MagicMock(returncode=0)
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.is_ancestor("abc123", "HEAD") is True
 
     def test_is_ancestor_false(self, tmp_path):
         fake = MagicMock(returncode=1)
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.is_ancestor("abc123", "HEAD") is False
 
     def test_log_oneline(self, tmp_path):
         fake = MagicMock(returncode=0, stdout="abc def commit one\nxyz ghi commit two\n", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             lines = runner.log_oneline("main..feat/foo")
         assert len(lines) == 2
@@ -687,13 +689,13 @@ class TestGitRunner:
 
     def test_log_oneline_empty(self, tmp_path):
         fake = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.log_oneline("main..feat/foo") == []
 
     def test_short_head(self, tmp_path):
         fake = MagicMock(returncode=0, stdout="abc1234\n", stderr="")
-        with patch("orc.git.subprocess.run", return_value=fake):
+        with patch("orc.git.core.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.short_head() == "abc1234"
 
@@ -747,10 +749,10 @@ class TestDeriveTaskStateExitCommits:
     """Tests for the new chore(<id>.<action>.<code>): routing in _derive_task_state."""
 
     def _patch(self, monkeypatch, *, last_commit_msg):
-        monkeypatch.setattr("orc.git._feature_branch_exists", lambda b: True)
-        monkeypatch.setattr("orc.git._feature_has_commits_ahead_of_main", lambda b: True)
-        monkeypatch.setattr("orc.git._feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr("orc.git._last_feature_commit_message", lambda b: last_commit_msg)
+        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
+        monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
+        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
 
     def test_coder_done_routes_to_qa(self, monkeypatch):
         self._patch(monkeypatch, last_commit_msg="chore(coder-1.done.0002): all tests green")
@@ -759,7 +761,7 @@ class TestDeriveTaskStateExitCommits:
         assert "awaiting review" in reason
 
     def test_qa_approve_routes_to_qa_passed(self, monkeypatch):
-        from orc.dispatcher import QA_PASSED
+        from orc.engine.dispatcher import QA_PASSED
 
         self._patch(monkeypatch, last_commit_msg="chore(qa-2.approve.0002): no critical issues")
         agent, reason = _git._derive_task_state("0002-foo.md")
@@ -783,11 +785,11 @@ class TestDeriveTaskStateExitCommits:
         """_feature_merged_into_dev uses subprocess; verify it parses returncode correctly."""
         from unittest.mock import MagicMock
 
-        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=0)):
+        with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=0)):
             assert _git._feature_merged_into_dev("feat/0001-foo") is True
 
     def test_feature_merged_into_dev_returns_false(self, monkeypatch):
         from unittest.mock import MagicMock
 
-        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=1)):
+        with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=1)):
             assert _git._feature_merged_into_dev("feat/0001-foo") is False

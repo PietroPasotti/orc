@@ -6,9 +6,9 @@ import time
 from conftest import make_msg
 
 import orc.config as _cfg
-import orc.context as _ctx
-import orc.git as _git
-import orc.telegram as tg
+import orc.engine.context as _ctx
+import orc.git.core as _git
+import orc.messaging.telegram as tg
 
 # ---------------------------------------------------------------------------
 # _boot_message_body

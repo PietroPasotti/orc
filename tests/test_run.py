@@ -7,10 +7,10 @@ import orc.board as _board
 import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
-import orc.dispatcher as _disp
-import orc.git as _git
+import orc.engine.dispatcher as _disp
+import orc.git.core as _git
+import orc.messaging.telegram as tg
 import orc.squad as _sq
-import orc.telegram as tg
 from orc.squad import SquadConfig
 
 runner = CliRunner()
@@ -120,7 +120,7 @@ class TestTuiPath:
         from conftest import FakePopen
 
         import orc.tui as _tui_mod
-        from orc.pool import AgentProcess
+        from orc.engine.pool import AgentProcess
 
         tui_called = []
         captured_callbacks: list = []

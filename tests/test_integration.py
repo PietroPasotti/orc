@@ -41,12 +41,12 @@ import yaml
 from conftest import FakePopen
 from typer.testing import CliRunner
 
+import orc.ai.invoke as inv
 import orc.cli.merge as _merge_mod
 import orc.config as _cfg
-import orc.dispatcher as _disp
-import orc.invoke as inv
+import orc.engine.dispatcher as _disp
 import orc.main as m
-import orc.telegram as tg
+import orc.messaging.telegram as tg
 
 runner = CliRunner()
 

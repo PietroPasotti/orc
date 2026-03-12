@@ -1,11 +1,11 @@
 """Pure message-parsing helpers for the orc Telegram channel.
 
 This module contains **only** stateless functions and constants — no file I/O,
-no HTTP calls, no global mutable state.  It is imported by :mod:`orc.telegram`
+no HTTP calls, no global mutable state.  It is imported by :mod:`orc.messaging.telegram`
 and may also be imported independently for testing or tooling that only needs
 message parsing.
 
-Public symbols (all re-exported from :mod:`orc.telegram`):
+Public symbols (all re-exported from :mod:`orc.messaging.telegram`):
 
 * :data:`KNOWN_ROLES` — frozenset of valid agent role names
 * :data:`KNOWN_AGENTS` — alias for ``KNOWN_ROLES``

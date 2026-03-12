@@ -11,11 +11,11 @@ import typer
 
 import orc.board as _board
 import orc.config as _cfg
-import orc.context as _ctx
-import orc.git as _git
-import orc.workflow as _wf
-from orc import telegram as tg
+import orc.engine.context as _ctx
+import orc.engine.workflow as _wf
+import orc.git.core as _git
 from orc.cli import app
+from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
 logger = structlog.get_logger(__name__)
@@ -259,7 +259,7 @@ def status(
 ) -> None:
     """Print current workflow state without running any agent."""
     if _is_tty():
-        from orc.status_tui import run_status_tui  # noqa: PLC0415
+        from orc.tui.status_tui import run_status_tui  # noqa: PLC0415
 
         run_status_tui(squad=squad)
     else:

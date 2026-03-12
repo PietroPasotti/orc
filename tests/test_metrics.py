@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orc.metrics import MetricsCollector
+from orc.engine.metrics import MetricsCollector
 
 
 class TestMetricsCollector:

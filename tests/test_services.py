@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from orc.services import BoardService, MessagingService, WorktreeService
+from orc.engine.services import BoardService, MessagingService, WorktreeService
 
 # ---------------------------------------------------------------------------
 # Concrete stub implementations that satisfy each protocol
