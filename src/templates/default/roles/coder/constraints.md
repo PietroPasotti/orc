@@ -6,4 +6,4 @@
   report it as a blocker so the planner can update the ADR first.
 - Always leave `just test` green before reporting `done`.
 - Do not add dependencies without checking `pyproject.toml` first and updating
-  it via `uv add`.
+  it via `uv add` and unless really necessary.

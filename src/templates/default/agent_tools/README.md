@@ -61,6 +61,20 @@ git add orc/work/0003-foo.md
 # Produces: chore(qa-2.reject.0003): missing tests for error paths; see task file
 ```
 
+### Planner
+
+| Script | Action | Effect |
+|--------|--------|--------|
+| `planner/publish_task.sh` | — | commits task file + board to dev |
+
+```bash
+.orc/agent_tools/planner/publish_task.sh <task-file> [extra-files...]
+
+# Example:
+.orc/agent_tools/planner/publish_task.sh orc/work/0003-add-foo.md orc/work/board.yaml
+# Produces: chore(orc): add task 0003-add-foo
+```
+
 ## Arguments
 
 All scripts accept the same three positional arguments:
