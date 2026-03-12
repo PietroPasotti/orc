@@ -15,7 +15,7 @@ import orc.cli.merge as _merge_mod
 import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 import orc.workflow as _wf
 from orc import dispatcher as _disp
 from orc import tui as _tui

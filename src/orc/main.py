@@ -67,7 +67,7 @@ from orc.context import (  # noqa: F401
     invoke_agent,
     wait_for_human_reply,
 )
-from orc.git import (  # noqa: F401
+from orc.git.core import (  # noqa: F401
     _CLOSE_BOARD,
     _QA_PASSED,
     _close_task_on_board,

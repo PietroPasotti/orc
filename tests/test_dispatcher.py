@@ -15,7 +15,7 @@ import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.context as _ctx
 import orc.dispatcher as _disp
-import orc.git as _git
+import orc.git.core as _git
 import orc.main as m
 import orc.messaging.telegram as tg
 from orc.dispatcher import CLOSE_BOARD, QA_PASSED, Dispatcher

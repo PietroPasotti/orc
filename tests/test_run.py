@@ -8,7 +8,7 @@ import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.dispatcher as _disp
-import orc.git as _git
+import orc.git.core as _git
 import orc.messaging.telegram as tg
 import orc.squad as _sq
 from orc.squad import SquadConfig

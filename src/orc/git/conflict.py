@@ -21,7 +21,7 @@ import typer
 
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)

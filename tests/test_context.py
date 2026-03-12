@@ -7,7 +7,7 @@ from conftest import make_msg
 
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 import orc.messaging.telegram as tg
 
 # ---------------------------------------------------------------------------

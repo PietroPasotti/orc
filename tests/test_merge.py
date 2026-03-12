@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 import orc.main as m
 import orc.messaging.telegram as tg
 

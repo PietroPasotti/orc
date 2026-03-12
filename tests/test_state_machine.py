@@ -6,7 +6,7 @@ from collections import deque
 
 import pytest
 
-import orc.git as _git
+import orc.git.core as _git
 from orc.dispatcher import CLOSE_BOARD, QA_PASSED
 from orc.state_machine import (
     ACTION_CLOSE_BOARD,
@@ -224,17 +224,19 @@ class TestRouteMatchesImplementation:
         merged_into_dev,
         last_commit_msg=None,
     ):
-        monkeypatch.setattr("orc.git._feature_branch_exists", lambda b: branch_exists)
-        monkeypatch.setattr("orc.git._feature_has_commits_ahead_of_main", lambda b: commits_ahead)
-        monkeypatch.setattr("orc.git._feature_merged_into_dev", lambda b: merged_into_dev)
-        monkeypatch.setattr("orc.git._last_feature_commit_message", lambda b: last_commit_msg)
+        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
+        monkeypatch.setattr(
+            "orc.git.core._feature_has_commits_ahead_of_main", lambda b: commits_ahead
+        )
+        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: merged_into_dev)
+        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
         monkeypatch.setattr("orc.board._active_task_name", lambda: "0001-foo.md")
 
     def _last_commit_from_msg(self, msg: str | None) -> LastCommit:
         if msg is None:
             return LastCommit.NONE
         # New structured exit-commit format.
-        from orc.git import _parse_exit_scope
+        from orc.git.core import _parse_exit_scope
 
         parsed = _parse_exit_scope(msg)
         if parsed is not None:

@@ -11,7 +11,7 @@ import yaml
 
 import orc.board as _board
 import orc.config as _cfg
-import orc.git as _git
+import orc.git.core as _git
 from orc.ai import invoke as inv
 from orc.messaging import telegram as tg
 

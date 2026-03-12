@@ -6,7 +6,7 @@ from conftest import make_msg
 
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 import orc.messaging.telegram as tg
 from orc.workflow import (
     _ORC_RESOLVED_RE,
@@ -141,7 +141,7 @@ class TestPostResolved:
 
 class TestDetermineNextAgent:
     def _git_patch(self, monkeypatch, agent: str, reason: str = "test"):
-        monkeypatch.setattr("orc.git._derive_state_from_git", lambda: (agent, reason))
+        monkeypatch.setattr("orc.git.core._derive_state_from_git", lambda: (agent, reason))
 
     def test_no_messages_falls_through_to_git(self, monkeypatch):
         self._git_patch(monkeypatch, "coder")

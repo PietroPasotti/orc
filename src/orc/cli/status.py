@@ -12,7 +12,7 @@ import typer
 import orc.board as _board
 import orc.config as _cfg
 import orc.context as _ctx
-import orc.git as _git
+import orc.git.core as _git
 import orc.workflow as _wf
 from orc.cli import app
 from orc.messaging import telegram as tg
