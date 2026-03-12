@@ -1,6 +1,5 @@
 """Tests for orc/invoke.py – credential resolution and CLI dispatch."""
 
-import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +7,7 @@ import pytest
 from conftest import FakePopen
 
 # Import after conftest has stubbed out dotenv
+from orc.ai import backends as bk
 from orc.ai import invoke as iv
 
 # ---------------------------------------------------------------------------
@@ -38,26 +38,28 @@ class TestRequireConfig:
 class TestResolveGhToken:
     def test_env_var_takes_priority(self, monkeypatch, tmp_path):
         monkeypatch.setenv("GH_TOKEN", "ghp_env_token")
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", tmp_path / "nonexistent.json")
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
         assert iv._resolve_gh_token() == "ghp_env_token"
 
     def test_apps_json_fallback(self, monkeypatch, tmp_path):
+        import json
+
         monkeypatch.delenv("GH_TOKEN", raising=False)
         apps = tmp_path / "apps.json"
         apps.write_text(json.dumps({"entry": {"oauth_token": "ghp_apps_json"}}))
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", apps)
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", apps)
         with patch("subprocess.run", side_effect=FileNotFoundError):
             assert iv._resolve_gh_token() == "ghp_apps_json"
 
     def test_gh_cli_fallback(self, monkeypatch, tmp_path):
         monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", tmp_path / "nonexistent.json")
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
         with patch("subprocess.run", return_value=MagicMock(stdout="ghp_gh_cli\n")):
             assert iv._resolve_gh_token() == "ghp_gh_cli"
 
     def test_gh_cli_called_process_error_falls_through(self, monkeypatch, tmp_path):
         monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", tmp_path / "nonexistent.json")
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
         with patch(
             "subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "gh"),
@@ -67,7 +69,7 @@ class TestResolveGhToken:
 
     def test_raises_when_nothing_available(self, monkeypatch, tmp_path):
         monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", tmp_path / "nonexistent.json")
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
         with patch("subprocess.run", side_effect=FileNotFoundError):
             with pytest.raises(EnvironmentError, match="GH_TOKEN"):
                 iv._resolve_gh_token()
@@ -77,7 +79,7 @@ class TestResolveGhToken:
         monkeypatch.delenv("GH_TOKEN", raising=False)
         apps = tmp_path / "apps.json"
         apps.write_text("not valid json {{{")
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", apps)
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", apps)
         with patch("subprocess.run", return_value=MagicMock(stdout="ghp_fallback\n")):
             assert iv._resolve_gh_token() == "ghp_fallback"
 
@@ -163,7 +165,7 @@ class TestInvoke:
     def test_copilot_missing_token_raises(self, monkeypatch, tmp_path):
         monkeypatch.setattr(iv, "_CLI", "copilot")
         monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(iv, "_COPILOT_APPS_JSON", tmp_path / "nonexistent.json")
+        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
         with patch("subprocess.run", side_effect=FileNotFoundError):
             with pytest.raises(EnvironmentError, match="GH_TOKEN"):
                 iv.invoke("do the thing")
@@ -186,10 +188,10 @@ class TestInvokeSpawn:
         from unittest.mock import patch
 
         monkeypatch.setattr(iv, "_CLI", "copilot")
-        monkeypatch.setattr(iv, "_resolve_gh_token", lambda: "ghp_test")
+        monkeypatch.setattr(bk.CopilotBackend, "resolve_token", lambda self: "ghp_test")
 
         fake_proc = FakePopen()
-        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="gpt-4", log_path=None)
         assert proc is fake_proc
         assert fh is None
@@ -200,10 +202,10 @@ class TestInvokeSpawn:
         from unittest.mock import patch
 
         monkeypatch.setattr(iv, "_CLI", "claude")
-        monkeypatch.setattr(iv, "_resolve_anthropic_key", lambda: "key123")
+        monkeypatch.setattr(bk.ClaudeBackend, "resolve_key", lambda self: "key123")
 
         fake_proc = FakePopen()
-        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="claude-3", log_path=None)
         assert proc is fake_proc
         Path(fake_proc._context_tmp).unlink(missing_ok=True)
@@ -213,11 +215,11 @@ class TestInvokeSpawn:
         from unittest.mock import patch
 
         monkeypatch.setattr(iv, "_CLI", "copilot")
-        monkeypatch.setattr(iv, "_resolve_gh_token", lambda: "ghp_test")
+        monkeypatch.setattr(bk.CopilotBackend, "resolve_token", lambda self: "ghp_test")
 
         log_path = tmp_path / "agent.log"
         fake_proc = FakePopen()
-        with patch("orc.ai.invoke.subprocess.Popen", return_value=fake_proc):
+        with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
             proc, fh = iv.spawn("ctx", cwd=tmp_path, model="m", log_path=log_path)
         assert fh is not None
         fh.close()
