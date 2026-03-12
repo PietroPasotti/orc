@@ -60,6 +60,9 @@ class AgentProcess:
     log_fh: IO[str] | None
     """Open file handle for the log (kept open while the process runs)."""
 
+    context_tmp: str | None
+    """Path to the temporary prompt file; deleted when the agent is cleaned up."""
+
     started_at: float = field(default_factory=time.monotonic)
     """Monotonic timestamp of when the agent was spawned."""
 

@@ -15,6 +15,7 @@ import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
 import orc.git.core as _git
 from orc.cli import app
+from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
 from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
@@ -143,7 +144,7 @@ def _status(squad: str = "default") -> None:
                 coder_tasks.append((name, reason))
             elif token == "qa":
                 qa_tasks.append((name, _git._feature_branch(name)))
-            elif token == _git._QA_PASSED:
+            elif token == _QA_PASSED:
                 merge_pending.append(name)
 
         if not _board.has_open_work():

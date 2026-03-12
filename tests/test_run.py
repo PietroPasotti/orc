@@ -172,6 +172,7 @@ class TestTuiPath:
             worktree=Path(tmp_path),
             log_path=tmp_path / "log",
             log_fh=None,
+            context_tmp=None,
         )
         cb.on_agent_start(fake_agent)
 

@@ -18,6 +18,7 @@ def _make_agent(tmp_path: Path, *, role: str = "coder", task: str = "0001-foo.md
         worktree=tmp_path,
         log_path=tmp_path / f"{role}.log",
         log_fh=None,
+        context_tmp=None,
     )
 
 
@@ -57,6 +58,7 @@ class TestPoolCoverage:
                 worktree=tmp_path,
                 log_path=tmp_path / "qa.log",
                 log_fh=None,
+                context_tmp=None,
             )
         )
         assert len(pool.running_by_role("coder")) == 1
@@ -81,6 +83,7 @@ class TestPoolCoverage:
                 worktree=tmp_path,
                 log_path=tmp_path / "log",
                 log_fh=None,
+                context_tmp=None,
             )
         )
         pool.kill("coder-1")  # must not raise
@@ -103,6 +106,7 @@ class TestPoolCoverage:
             worktree=tmp_path,
             log_path=log_file,
             log_fh=fh,
+            context_tmp=None,
         )
         pool = AgentPool()
         pool.close_log(agent)
@@ -121,6 +125,7 @@ class TestPoolCoverage:
             worktree=tmp_path,
             log_path=tmp_path / "log",
             log_fh=bad_fh,
+            context_tmp=None,
         )
         pool.close_log(agent)
         assert agent.log_fh is None

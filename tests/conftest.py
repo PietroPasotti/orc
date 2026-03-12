@@ -46,7 +46,6 @@ class FakePopen:
 
     def __init__(self, returncode: int = 0) -> None:
         self.returncode = returncode
-        self._context_tmp: str | None = None
 
     def poll(self) -> int:
         return self.returncode

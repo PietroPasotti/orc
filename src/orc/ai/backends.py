@@ -33,8 +33,32 @@ import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Protocol, runtime_checkable
+
+# ---------------------------------------------------------------------------
+# Spawn result
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SpawnResult:
+    """Encapsulates the result of a non-blocking AI CLI spawn.
+
+    Replaces the previous convention of monkey-patching ``_context_tmp`` onto
+    the :class:`subprocess.Popen` object.
+    """
+
+    process: subprocess.Popen
+    """The spawned subprocess handle."""
+
+    log_fh: IO[str] | None
+    """Open log file handle, or ``None`` when no *log_path* was given."""
+
+    context_tmp: str
+    """Path to the temporary prompt file; must be deleted after the process exits."""
+
 
 # ---------------------------------------------------------------------------
 # Protocol (structural typing contract)
@@ -64,11 +88,11 @@ class AIBackend(Protocol):
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
-    ) -> tuple[subprocess.Popen, IO[str] | None]:
+    ) -> SpawnResult:
         """Spawn the AI CLI as a **non-blocking** subprocess.
 
-        Returns ``(process, log_fh)`` where *log_fh* is ``None`` when
-        *log_path* is ``None``.
+        Returns a :class:`SpawnResult` containing the process, optional log
+        file handle, and the temporary prompt file path.
         """
         ...
 
@@ -118,7 +142,7 @@ class BaseAIBackend(ABC):
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
-    ) -> tuple[subprocess.Popen, IO[str] | None]:
+    ) -> SpawnResult:
         """Write *context* to a temp file and spawn the AI CLI non-blocking."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
             tmp.write(context)
@@ -138,8 +162,7 @@ class BaseAIBackend(ABC):
             stderr = subprocess.DEVNULL
 
         process = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=stdout, stderr=stderr)
-        process._context_tmp = tmp_path  # type: ignore[attr-defined]
-        return process, log_fh
+        return SpawnResult(process=process, log_fh=log_fh, context_tmp=tmp_path)
 
 
 # ---------------------------------------------------------------------------

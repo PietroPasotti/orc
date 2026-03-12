@@ -47,6 +47,7 @@ import orc.config as _cfg
 import orc.engine.dispatcher as _disp
 import orc.main as m
 import orc.messaging.telegram as tg
+from orc.ai.backends import SpawnResult
 
 runner = CliRunner()
 
@@ -310,13 +311,13 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
-    ) -> tuple[FakePopen, None]:
+    ) -> SpawnResult:
         idx = idx_box[0]
         call_records.append({"idx": idx, "cwd": cwd, "model": model})
         if idx < len(handlers):
             handlers[idx](context, cwd, model, log_path)
         idx_box[0] += 1
-        return FakePopen(), None
+        return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
     monkeypatch.setattr(inv, "spawn", _fake_spawn)
     monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)

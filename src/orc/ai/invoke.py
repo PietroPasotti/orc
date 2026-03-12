@@ -9,13 +9,11 @@ See :mod:`orc.ai.backends` for supported backends and their configuration.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
-from typing import IO
 
 from dotenv import load_dotenv
 
-from orc.ai.backends import ClaudeBackend, CopilotBackend, get_backend
+from orc.ai.backends import ClaudeBackend, CopilotBackend, SpawnResult, get_backend
 
 load_dotenv()  # auto-discovers .env from CWD upward
 
@@ -57,14 +55,11 @@ def spawn(
     cwd: Path,
     model: str | None = None,
     log_path: Path | None = None,
-) -> tuple[subprocess.Popen, IO[str] | None]:
+) -> SpawnResult:
     """Spawn the configured AI CLI as a **non-blocking** subprocess.
 
-    Returns ``(process, log_fh)``.  The caller is responsible for polling
-    the process and closing the log file handle when the process exits.
-
-    The temp-file path is stored on the ``Popen`` object as
-    ``process._context_tmp`` for cleanup.
+    Returns a :class:`~orc.ai.backends.SpawnResult` with the process handle,
+    optional log file handle, and the temporary prompt file path for cleanup.
 
     Raises :class:`OSError` if ``COLONY_AI_CLI`` is invalid or a required
     credential is missing.

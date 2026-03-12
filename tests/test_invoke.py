@@ -1,6 +1,7 @@
 """Tests for orc/invoke.py – credential resolution and CLI dispatch."""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from conftest import FakePopen
 # Import after conftest has stubbed out dotenv
 from orc.ai import backends as bk
 from orc.ai import invoke as iv
+from orc.ai.backends import SpawnResult
 
 # ---------------------------------------------------------------------------
 # _require_config
@@ -192,13 +194,13 @@ class TestInvokeSpawn:
 
         fake_proc = FakePopen()
         with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
-            proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="gpt-4", log_path=None)
-        assert proc is fake_proc
-        assert fh is None
-        Path(fake_proc._context_tmp).unlink(missing_ok=True)
+            result = iv.spawn("ctx text", cwd=tmp_path, model="gpt-4", log_path=None)
+        assert isinstance(result, SpawnResult)
+        assert result.process is fake_proc
+        assert result.log_fh is None
+        Path(result.context_tmp).unlink(missing_ok=True)
 
     def test_spawn_claude(self, tmp_path, monkeypatch):
-        from pathlib import Path
         from unittest.mock import patch
 
         monkeypatch.setattr(iv, "_CLI", "claude")
@@ -206,12 +208,12 @@ class TestInvokeSpawn:
 
         fake_proc = FakePopen()
         with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
-            proc, fh = iv.spawn("ctx text", cwd=tmp_path, model="claude-3", log_path=None)
-        assert proc is fake_proc
-        Path(fake_proc._context_tmp).unlink(missing_ok=True)
+            result = iv.spawn("ctx text", cwd=tmp_path, model="claude-3", log_path=None)
+        assert isinstance(result, SpawnResult)
+        assert result.process is fake_proc
+        Path(result.context_tmp).unlink(missing_ok=True)
 
     def test_spawn_with_log_path(self, tmp_path, monkeypatch):
-        from pathlib import Path
         from unittest.mock import patch
 
         monkeypatch.setattr(iv, "_CLI", "copilot")
@@ -220,7 +222,8 @@ class TestInvokeSpawn:
         log_path = tmp_path / "agent.log"
         fake_proc = FakePopen()
         with patch("orc.ai.backends.subprocess.Popen", return_value=fake_proc):
-            proc, fh = iv.spawn("ctx", cwd=tmp_path, model="m", log_path=log_path)
-        assert fh is not None
-        fh.close()
-        Path(fake_proc._context_tmp).unlink(missing_ok=True)
+            result = iv.spawn("ctx", cwd=tmp_path, model="m", log_path=log_path)
+        assert isinstance(result, SpawnResult)
+        assert result.log_fh is not None
+        result.log_fh.close()
+        Path(result.context_tmp).unlink(missing_ok=True)

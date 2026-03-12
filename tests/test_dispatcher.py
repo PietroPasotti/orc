@@ -18,6 +18,7 @@ import orc.engine.dispatcher as _disp
 import orc.git.core as _git
 import orc.main as m
 import orc.messaging.telegram as tg
+from orc.ai.backends import SpawnResult
 from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED, Dispatcher
 from orc.engine.pool import AgentProcess
 from orc.squad import SquadConfig
@@ -40,6 +41,7 @@ def _make_agent(tmp_path: Path, *, role: str = "coder", task: str = "0001-foo.md
         worktree=tmp_path,
         log_path=tmp_path / f"{role}.log",
         log_fh=None,
+        context_tmp=None,
     )
 
 
@@ -74,7 +76,7 @@ def _make_callbacks(
     (board_dir / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
 
     def _spawn(ctx, cwd, model, log):
-        return FakePopen(), None
+        return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
     return _disp.DispatchCallbacks(
         get_messages=get_messages or (lambda: []),
@@ -130,7 +132,11 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
-        monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
+        monkeypatch.setattr(
+            inv,
+            "spawn",
+            lambda *a, **kw: SpawnResult(process=FakePopen(), log_fh=None, context_tmp=""),
+        )
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         result = runner.invoke(m.app, ["run", "--maxcalls", "1"])
@@ -156,7 +162,7 @@ class TestBootMessageSentBeforeInvoke:
 
         def fake_spawn(*a, **kw):
             call_order.append("invoke")
-            return FakePopen(), None
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         monkeypatch.setattr(inv, "spawn", fake_spawn)
 
@@ -203,7 +209,11 @@ class TestBlockedResumption:
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
-        monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
+        monkeypatch.setattr(
+            inv,
+            "spawn",
+            lambda *a, **kw: SpawnResult(process=FakePopen(), log_fh=None, context_tmp=""),
+        )
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         monkeypatch.setattr(_run_mod, "logger", MagicMock())
 
@@ -218,7 +228,11 @@ class TestBlockedResumption:
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Help.")
-        monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
+        monkeypatch.setattr(
+            inv,
+            "spawn",
+            lambda *a, **kw: SpawnResult(process=FakePopen(), log_fh=None, context_tmp=""),
+        )
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         # The planner-1 case has an empty board.  A vision doc is required so
@@ -342,7 +356,11 @@ class TestBlockedResumption:
             "build_agent_context",
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
-        monkeypatch.setattr(inv, "spawn", lambda *a, **kw: (FakePopen(), None))
+        monkeypatch.setattr(
+            inv,
+            "spawn",
+            lambda *a, **kw: SpawnResult(process=FakePopen(), log_fh=None, context_tmp=""),
+        )
 
         wait_called: list[bool] = []
         monkeypatch.setattr(
@@ -491,7 +509,6 @@ class TestDispatcherCoverage:
 
         class StuckPopen:
             returncode = None
-            _context_tmp = None
 
             def poll(self):
                 return None
@@ -507,8 +524,8 @@ class TestDispatcherCoverage:
         def spawn_fn(ctx, cwd, model, log):
             if not spawned[0]:
                 spawned[0] = True
-                return StuckPopen(), None
-            return FakePopen(), None
+                return SpawnResult(process=StuckPopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         squad = SquadConfig(
             planner=1,
@@ -574,6 +591,7 @@ class TestDispatcherCoverage:
             worktree=tmp_path,
             log_path=tmp_path / "log",
             log_fh=None,
+            context_tmp=None,
         )
         d.pool.add(agent)
         d._handle_completion(agent, 0, [])
@@ -672,19 +690,12 @@ class TestDispatcherInternalCoverage:
         tmp_file = tmp_path / "ctx.tmp"
         tmp_file.write_text("context data")
 
-        class FakeProc:
-            _context_tmp = str(tmp_file)
-
-        _disp._cleanup_context_tmp(FakeProc())
+        _disp._cleanup_context_tmp(str(tmp_file))
         assert not tmp_file.exists()
 
     def test_cleanup_context_tmp_no_attr(self, tmp_path):
-        """_cleanup_context_tmp is a no-op when _context_tmp not present."""
-
-        class FakeProc:
-            pass
-
-        _disp._cleanup_context_tmp(FakeProc())  # should not raise
+        """_cleanup_context_tmp is a no-op when context_tmp is None."""
+        _disp._cleanup_context_tmp(None)  # should not raise
 
     def test_dispatch_returns_zero_when_nothing_to_do(self, tmp_path, monkeypatch):
         """_dispatch returns 0 immediately when no tasks or visions (line 318)."""
@@ -751,7 +762,7 @@ class TestDispatchCallbacksOptional:
         started = []
 
         def _spawn(ctx, cwd, model, log):
-            return FakePopen(), None
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         cb = _make_callbacks(
             tmp_path,
@@ -794,7 +805,7 @@ class TestDispatchCallbacksOptional:
         """on_agent_start=None (default) does not crash."""
 
         def _spawn(ctx, cwd, model, log):
-            return FakePopen(), None
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         cb = _make_callbacks(tmp_path, spawn_fn=_spawn)
         assert cb.on_agent_start is None
