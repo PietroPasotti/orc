@@ -40,18 +40,23 @@ def setup(
     log_level: str | None = None,
     log_format: _Format | None = None,
     log_file: Path | None | object = _UNSET,
+    default_log_file: Path | None = None,
 ) -> None:
     """Configure structlog and the stdlib logging bridge for orc.
 
     Reads ``ORC_LOG_LEVEL``, ``ORC_LOG_FORMAT``, and ``ORC_LOG_FILE`` from
     the environment when the corresponding parameter is not explicitly supplied.
+
+    *default_log_file* sets the final fallback path (before ``_DEFAULT_LOG_FILE``)
+    so callers can inject a config-derived path without overriding env vars.
     """
     resolved_level: str = log_level or os.environ.get("ORC_LOG_LEVEL", _DEFAULT_LEVEL)
     resolved_format: _Format = (  # type: ignore[assignment]
         log_format or os.environ.get("ORC_LOG_FORMAT", _DEFAULT_FORMAT)
     )
 
-    # Resolve log file: explicit arg > ORC_LOG_FILE env var > ORC_LOG_DIR > default path
+    # Resolve log file:
+    # explicit arg > ORC_LOG_FILE > ORC_LOG_DIR > default_log_file > _DEFAULT_LOG_FILE
     if log_file is _UNSET:
         env_val = os.environ.get("ORC_LOG_FILE")
         if env_val is not None:
@@ -61,7 +66,9 @@ def setup(
             if log_dir_val:
                 resolved_log_file = Path(log_dir_val) / "orc.log"
             else:
-                resolved_log_file = _DEFAULT_LOG_FILE
+                resolved_log_file = (
+                    default_log_file if default_log_file is not None else _DEFAULT_LOG_FILE
+                )
     else:
         resolved_log_file = log_file  # type: ignore[assignment]
 

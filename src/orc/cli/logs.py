@@ -8,10 +8,10 @@ from typing import Annotated
 
 import typer
 
+from orc import config as _cfg
 from orc.cli import app
-from orc.logger import _CACHE_DIR
 
-_DEFAULT_LOG_DIR = _CACHE_DIR
+_DEFAULT_LOG_DIR = _cfg.LOG_DIR
 
 
 @app.command("logs")

@@ -18,7 +18,9 @@ _TEE = "├── "
 _LAST = "└── "
 
 # Paths (relative to .orc/) that --upgrade must never touch.
-_UPGRADE_PRESERVE: frozenset[str] = frozenset(["orc-CHANGELOG.md", "vision", "work"])
+_UPGRADE_PRESERVE: frozenset[str] = frozenset(
+    ["orc-CHANGELOG.md", "vision", "work", "worktrees", "logs"]
+)
 
 
 def _is_preserved(rel: Path) -> bool:

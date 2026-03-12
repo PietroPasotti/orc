@@ -193,10 +193,10 @@ def _feature_branch(task_name: str) -> str:
 def _feature_worktree_path(task_name: str) -> Path:
     """Return the expected filesystem path of the feature worktree.
 
-    Worktrees are placed under ``WORKTREE_BASE / repo_name / task_stem``,
-    e.g. ``~/.cache/orc/colony/0001-foo`` for task ``0001-foo.md``.
+    Worktrees are placed under ``WORKTREE_BASE / task_stem``,
+    e.g. ``.orc/worktrees/0001-foo`` for task ``0001-foo.md``.
     """
-    return _cfg.WORKTREE_BASE / _cfg.REPO_ROOT.name / Path(task_name).stem
+    return _cfg.WORKTREE_BASE / Path(task_name).stem
 
 
 def _ensure_feature_worktree(task_name: str) -> Path:

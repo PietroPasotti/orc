@@ -261,9 +261,8 @@ class TestFeatureWorktree:
 
     def test_feature_worktree_path_under_worktree_base(self, monkeypatch, tmp_path):
         monkeypatch.setattr(_cfg, "WORKTREE_BASE", tmp_path / "wt")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path / "colony")
         wt = _feature_worktree_path("0003-resource-type-enum.md")
-        assert wt == tmp_path / "wt" / "colony" / "0003-resource-type-enum"
+        assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
     def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"

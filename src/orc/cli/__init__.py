@@ -45,7 +45,7 @@ def _app_entry(
     ] = None,
 ) -> None:
     """Bootstrap observability and resolve the config directory."""
-    _obs.setup()
+    _obs.setup(default_log_file=_cfg.LOG_DIR / "orc.log")
     if project_dir is not None:
         os.chdir(project_dir.resolve())
     if config_dir is not None:

@@ -290,7 +290,7 @@ class TestLoadOrcConfig:
         _cfg._init_paths(agents_dir)
         assert _cfg.WORKTREE_BASE == custom_base.resolve()
 
-    def test_init_paths_defaults_worktree_base_to_cache_orc(self, tmp_path, monkeypatch):
+    def test_init_paths_defaults_worktree_base_to_orc_worktrees(self, tmp_path, monkeypatch):
         agents_dir = tmp_path / ".orc"
         agents_dir.mkdir()
         _globals = (
@@ -304,11 +304,12 @@ class TestLoadOrcConfig:
             "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
             "BRANCH_PREFIX",
+            "LOG_DIR",
         )
         for k in _globals:
             monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
         _cfg._init_paths(agents_dir)
-        assert _cfg.WORKTREE_BASE == Path.home() / ".cache" / "orc"
+        assert _cfg.WORKTREE_BASE == (agents_dir / "worktrees").resolve()
 
     def test_init_paths_dev_worktree_under_worktree_base(self, tmp_path, monkeypatch):
         agents_dir = tmp_path / ".orc"
@@ -328,9 +329,9 @@ class TestLoadOrcConfig:
             "WORKTREE_BASE",
             "WORK_DEV_BRANCH",
             "BRANCH_PREFIX",
+            "LOG_DIR",
         )
         for k in _globals:
             monkeypatch.setattr(_cfg, k, getattr(_cfg, k))
         _cfg._init_paths(agents_dir, repo_root=tmp_path)
-        repo_name = tmp_path.name
-        assert _cfg.DEV_WORKTREE == custom_base.resolve() / repo_name / "staging"
+        assert _cfg.DEV_WORKTREE == custom_base.resolve() / "staging"
