@@ -13,6 +13,7 @@ from orc.ai.backends import (
     AIBackend,
     ClaudeBackend,
     CopilotBackend,
+    SpawnResult,
     get_backend,
 )
 
@@ -112,18 +113,20 @@ class TestCopilotBackend:
         log_path = tmp_path / "agent.log"
         fake_proc = MagicMock()
         with patch("subprocess.Popen", return_value=fake_proc):
-            proc, fh = b.spawn("context", tmp_path, log_path=log_path)
-        assert proc is fake_proc
-        assert fh is not None
-        fh.close()
+            result = b.spawn("context", tmp_path, log_path=log_path)
+        assert isinstance(result, SpawnResult)
+        assert result.process is fake_proc
+        assert result.log_fh is not None
+        result.log_fh.close()
 
     def test_spawn_without_log_returns_none_fh(self, monkeypatch, tmp_path):
         b = CopilotBackend()
         monkeypatch.setenv("GH_TOKEN", "ghp_test")
         fake_proc = MagicMock()
         with patch("subprocess.Popen", return_value=fake_proc):
-            proc, fh = b.spawn("context", tmp_path)
-        assert fh is None
+            result = b.spawn("context", tmp_path)
+        assert isinstance(result, SpawnResult)
+        assert result.log_fh is None
 
 
 class TestClaudeBackend:

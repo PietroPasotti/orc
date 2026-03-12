@@ -8,8 +8,9 @@ Both scenarios follow the same pattern:
 1. A git operation (merge or rebase) stops with conflicts.
 2. A coder agent is invoked with a detailed task description.
 3. If the agent succeeds the operation is assumed complete.
-4. If the agent fails or the git state is still "in progress", a
-   :class:`~typer.Exit` is raised so the caller can abort cleanly.
+4. If the agent fails or the git state is still "in progress",
+   :class:`ConflictResolutionFailed` is raised so the CLI caller can
+   abort cleanly (e.g. by converting it to :class:`~typer.Exit`).
 """
 
 from __future__ import annotations
@@ -25,6 +26,22 @@ import orc.git.core as _git
 from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)
+
+
+class ConflictResolutionFailed(Exception):
+    """Raised by :class:`ConflictResolver` when conflict resolution fails.
+
+    CLI callers should convert this to :class:`~typer.Exit`.
+
+    Attributes
+    ----------
+    code:
+        Suggested process exit code.
+    """
+
+    def __init__(self, code: int = 1) -> None:
+        super().__init__(f"Conflict resolution failed (exit code {code})")
+        self.code = code
 
 
 class ConflictResolver:
@@ -66,9 +83,10 @@ class ConflictResolver:
 
         Raises
         ------
-        typer.Exit
+        ConflictResolutionFailed
             If the coder agent exits non-zero or the merge is still in
-            progress after the agent exits.
+            progress after the agent exits.  CLI callers should convert
+            this to :class:`~typer.Exit`.
         """
         typer.echo(f"⚠ Merge conflict on {branch!r}:\n{status_output}\nDelegating to coder agent…")
 
@@ -99,12 +117,12 @@ class ConflictResolver:
         if rc != 0:
             logger.error("coder agent failed to resolve merge conflict", exit_code=rc)
             typer.echo(f"✗ Coder agent exited with code {rc} while resolving merge conflict.")
-            raise typer.Exit(code=rc)
+            raise ConflictResolutionFailed(code=rc)
 
         if _git._merge_in_progress(worktree):
             logger.error("merge still in progress after coder exited", branch=branch)
             typer.echo("✗ Merge still in progress after agent exit.  Manual intervention needed.")
-            raise typer.Exit(code=1)
+            raise ConflictResolutionFailed(code=1)
 
         logger.info("merge conflict resolved by coder agent", branch=branch)
         typer.echo(f"✓ Merge conflict on {branch!r} resolved by coder agent.")
@@ -128,9 +146,10 @@ class ConflictResolver:
 
         Raises
         ------
-        typer.Exit
+        ConflictResolutionFailed
             If the coder agent exits non-zero or the rebase is still in
-            progress after the agent exits.
+            progress after the agent exits.  CLI callers should convert
+            this to :class:`~typer.Exit`.
         """
         typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")
 
@@ -160,12 +179,12 @@ class ConflictResolver:
         if rc != 0:
             logger.error("coder agent failed to resolve startup rebase", exit_code=rc)
             typer.echo(f"✗ Coder agent exited with code {rc} while resolving startup rebase.")
-            raise typer.Exit(code=rc)
+            raise ConflictResolutionFailed(code=rc)
 
         if _git._rebase_in_progress(worktree):
             logger.error("rebase still in progress after coder exited")
             typer.echo("✗ Rebase still in progress after agent exit. Manual intervention needed.")
-            raise typer.Exit(code=1)
+            raise ConflictResolutionFailed(code=1)
 
         logger.info("dev rebased on main after conflict resolution by coder")
         typer.echo("✓ dev rebased on main (conflicts resolved by coder).")

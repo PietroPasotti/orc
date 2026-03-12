@@ -419,17 +419,18 @@ class Dispatcher:
         _cv.bind_contextvars(agent_id=agent_id)
 
         log_path = AGENT_LOG_DIR / f"{agent_id}.log"
-        process, log_fh = self.cb.spawn_fn(context, worktree, model, log_path)
+        spawn_result = self.cb.spawn_fn(context, worktree, model, log_path)
 
         agent = AgentProcess(
             agent_id=agent_id,
             role=role,
             model=model,
             task_name=task_name,
-            process=process,
+            process=spawn_result.process,
             worktree=worktree,
             log_path=log_path,
-            log_fh=log_fh,
+            log_fh=spawn_result.log_fh,
+            context_tmp=spawn_result.context_tmp,
         )
         self.pool.add(agent)
         if self.cb.on_agent_start is not None:
@@ -455,7 +456,7 @@ class Dispatcher:
         logger.info("agent exited", agent_id=agent.agent_id, exit_code=rc)
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
-        _cleanup_context_tmp(agent.process)
+        _cleanup_context_tmp(agent.context_tmp)
         if self.cb.on_agent_done is not None:
             self.cb.on_agent_done(agent, rc)
 
@@ -512,7 +513,7 @@ class Dispatcher:
         )
         self.pool.kill(agent.agent_id)
         self.pool.remove(agent.agent_id)
-        _cleanup_context_tmp(agent.process)
+        _cleanup_context_tmp(agent.context_tmp)
         if agent.task_name:
             self.cb.unassign_task(agent.task_name)
 
@@ -582,10 +583,9 @@ class _ShutdownSignal(BaseException):
 # ---------------------------------------------------------------------------
 
 
-def _cleanup_context_tmp(process: object) -> None:
-    """Delete the context temp file stored on *process* (if present)."""
-    tmp = getattr(process, "_context_tmp", None)
-    if tmp:
+def _cleanup_context_tmp(context_tmp: str | None) -> None:
+    """Delete the context temp file *context_tmp* (if present)."""
+    if context_tmp:
         from pathlib import Path as _Path
 
-        _Path(tmp).unlink(missing_ok=True)
+        _Path(context_tmp).unlink(missing_ok=True)

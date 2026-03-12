@@ -138,6 +138,7 @@ def _safe_dev_ahead() -> int:
     try:
         return _status_mod._dev_ahead_of_main()
     except Exception:
+        logger.debug("_safe_dev_ahead: failed to compute dev-ahead count", exc_info=True)
         return 0
 
 
