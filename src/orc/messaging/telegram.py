@@ -40,6 +40,7 @@ from pathlib import Path
 
 import certifi
 import httpx
+import structlog
 from dotenv import load_dotenv
 
 # Pure message parsing helpers — no side effects, no global state.
@@ -64,6 +65,8 @@ from orc.messaging.messages import (  # noqa: F401
 # ---------------------------------------------------------------------------
 
 load_dotenv()  # auto-discovers .env from CWD upward
+
+logger = structlog.get_logger(__name__)
 
 _TOKEN = os.environ.get("COLONY_TELEGRAM_TOKEN")
 _CHAT_ID = os.environ.get("COLONY_TELEGRAM_CHAT_ID")
@@ -131,7 +134,7 @@ def _read_log() -> list[dict]:
         try:
             msgs.append(json.loads(line))
         except json.JSONDecodeError:
-            pass
+            logger.debug("telegram: skipping malformed JSONL line", line=line, exc_info=True)
     return msgs
 
 
@@ -187,6 +190,7 @@ def get_messages(limit: int = 100) -> list[dict]:
     try:
         remote = _get_telegram_updates(limit)
     except (OSError, Exception):
+        logger.debug("get_messages: failed to fetch Telegram updates", exc_info=True)
         remote = []
 
     seen_texts = {m["text"] for m in local}

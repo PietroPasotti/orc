@@ -33,6 +33,7 @@ def _read_board() -> dict:
         data.setdefault("done", [])
         return data
     except Exception:
+        logger.debug("_read_board: failed to parse board file", path=str(path), exc_info=True)
         return {"counter": 0, "open": [], "done": []}
 
 
