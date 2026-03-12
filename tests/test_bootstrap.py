@@ -110,8 +110,81 @@ class TestBootstrap:
 
 
 # ---------------------------------------------------------------------------
-# _write_file helper
+# bootstrap --upgrade
 # ---------------------------------------------------------------------------
+
+
+class TestBootstrapUpgrade:
+    def test_upgrade_fails_without_orc_dir(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert result.exit_code != 0
+        assert ".orc/" in result.output
+
+    def test_upgrade_overwrites_roles_and_squads(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        # Mutate a role file and a squad file
+        role_file = tmp_path / ".orc" / "roles" / "coder" / "_main.md"
+        squad_file = tmp_path / ".orc" / "squads" / "default.yaml"
+        role_file.write_text("# custom coder")
+        squad_file.write_text("custom: true")
+        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert role_file.read_text() != "# custom coder"
+        assert squad_file.read_text() != "custom: true"
+
+    def test_upgrade_preserves_vision(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        vision_doc = tmp_path / ".orc" / "vision" / "my-feature.md"
+        vision_doc.write_text("# vision")
+        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert vision_doc.exists()
+        assert vision_doc.read_text() == "# vision"
+
+    def test_upgrade_preserves_work(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.write_text("counter: 5\nopen: []\ndone: []\n")
+        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert board.read_text() == "counter: 5\nopen: []\ndone: []\n"
+
+    def test_upgrade_preserves_changelog(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        changelog = tmp_path / ".orc" / "orc-CHANGELOG.md"
+        changelog.write_text("## my project history\n")
+        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert changelog.read_text() == "## my project history\n"
+
+    def test_upgrade_prompts_for_confirmation(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap", "--upgrade"], input="n\n")
+        assert result.exit_code != 0
+
+    def test_upgrade_yes_skips_prompt(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert result.exit_code == 0
+        assert "Upgrade complete" in result.output
+
+    def test_upgrade_reports_updated_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert "Upgraded" in result.output
+        assert "justfile" in result.output
+
+    def test_upgrade_reports_preserved_paths(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
+        assert "Preserved" in result.output
+        assert "vision" in result.output
+        assert "work" in result.output
 
 
 class TestBootstrapWriteFile:

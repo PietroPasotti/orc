@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -16,6 +17,14 @@ _BRANCH = "│   "
 _TEE = "├── "
 _LAST = "└── "
 
+# Paths (relative to .orc/) that --upgrade must never touch.
+_UPGRADE_PRESERVE: frozenset[str] = frozenset(["orc-CHANGELOG.md", "vision", "work"])
+
+
+def _is_preserved(rel: Path) -> bool:
+    """Return True if *rel* (relative to the .orc target) should survive --upgrade."""
+    return rel.parts[0] in _UPGRADE_PRESERVE
+
 
 def _write_file(path: Path, content: str, created: list[str], skipped: list[str]) -> None:
     """Write *content* to *path* if it does not exist; record the outcome."""
@@ -28,8 +37,6 @@ def _write_file(path: Path, content: str, created: list[str], skipped: list[str]
 
 def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> None:
     """Copy *src* to *dst* if *dst* does not exist; record the outcome."""
-    import shutil
-
     if dst.exists():
         skipped.append(str(dst))
     else:
@@ -52,8 +59,6 @@ def _tree(dir_path: Path, prefix: str = ""):
 
 
 def _bootstrap(force: bool = False) -> None:
-    import shutil
-
     _obs.setup()
     project_root = Path.cwd()
     to = ".orc"
@@ -115,11 +120,83 @@ Next steps
     )
 
 
+def _upgrade(*, yes: bool = False) -> None:
+    """Overwrite bundled template files in an existing .orc/ installation.
+
+    Preserves: orc-CHANGELOG.md, vision/, work/.
+    Everything else (roles/, squads/, agent_tools/, justfile, config.yaml, …)
+    is replaced with the version shipped in the currently installed package.
+    """
+    _obs.setup()
+    project_root = Path.cwd()
+    target = (project_root / ".orc").resolve()
+
+    if not target.is_dir():
+        typer.echo("✗ No .orc/ directory found in the current directory.", err=True)
+        typer.echo("  Run 'orc bootstrap' to create one first.", err=True)
+        raise typer.Exit(code=1)
+
+    if not yes:
+        typer.echo("This will overwrite all files in .orc/ EXCEPT:")
+        for name in sorted(_UPGRADE_PRESERVE):
+            typer.echo(f"  .orc/{name}")
+        typer.echo("\nChanges to roles/, squads/, and agent_tools/ will be lost.")
+        typer.confirm("Continue?", abort=True)
+
+    updated: list[str] = []
+    skipped: list[str] = []
+
+    for src in sorted(_TEMPLATES_DIR.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(_TEMPLATES_DIR)
+        if rel.parts[0] == ".env.example":
+            # .env.example lives at project root, not inside .orc/
+            dst = project_root / ".env.example"
+        else:
+            if _is_preserved(rel):
+                skipped.append(str(rel))
+                continue
+            dst = target / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        updated.append(str(dst))
+
+    rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
+
+    if updated:
+        typer.echo("\nUpgraded:")
+        for f in updated:
+            typer.echo(f"    {rel_path(f)}")
+
+    if skipped:
+        typer.echo("\nPreserved (not touched):")
+        for f in skipped:
+            typer.echo(f"    .orc/{f}")
+
+    typer.echo("\n✓ Upgrade complete.")
+
+
 @app.command()
 def bootstrap(
     force: Annotated[
         bool,
         typer.Option("--force", help="Overwrite existing files."),
+    ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option(
+            "--upgrade",
+            help=(
+                "Upgrade an existing .orc/ installation to the bundled template version. "
+                "Preserves orc-CHANGELOG.md, vision/, and work/. "
+                "All other files (roles/, squads/, agent_tools/, …) are overwritten."
+            ),
+        ),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompt (for scripted upgrades)."),
     ] = False,
 ) -> None:
     """Scaffold an orc configuration directory in the current project.
@@ -136,4 +213,6 @@ def bootstrap(
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)
     """
+    if upgrade:
+        return _upgrade(yes=yes)
     return _bootstrap(force=force)
