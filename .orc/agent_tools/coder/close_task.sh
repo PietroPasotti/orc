@@ -12,8 +12,8 @@
 # Example:
 #   .orc/agent_tools/coder/close_task.sh coder-1 0002 "implemented auth module; all tests green"
 #
-# This commits ALL staged and unstaged tracked changes (git commit -a) and
-# produces a commit of the form:
+# This stages all changes (including new untracked files) and commits them,
+# producing a commit of the form:
 #   chore(coder-1.done.0002): implemented auth module; all tests green
 #
 # The orchestrator reads this prefix to know the coder is done and routes
@@ -31,4 +31,5 @@ if [[ -z "$AGENT_ID" || -z "$TASK_CODE" || -z "$MESSAGE" ]]; then
     exit 1
 fi
 
-git commit -a --allow-empty -m "chore(${AGENT_ID}.done.${TASK_CODE}): ${MESSAGE}"
+git add -A
+git commit --allow-empty -m "chore(${AGENT_ID}.done.${TASK_CODE}): ${MESSAGE}"
