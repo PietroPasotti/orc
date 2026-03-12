@@ -6,9 +6,23 @@
 | `blocked` | You cannot proceed without human input (explain what you need) |
 | `done` | No more plans or ADRs to create; the vision is fully translated |
 
-The planner does not signal exit state via a git commit — write
-**one** message to the **Telegram chat** using the format below, then stop.
-Use `orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
+### Signalling `ready`
+
+When you have created a task (or ADR), publish it with:
+
+```bash
+.orc/agent_tools/planner/publish_task.sh <agent-id> <task-file> [extra-files...]
+```
+
+Example:
+```bash
+.orc/agent_tools/planner/publish_task.sh planner-1 .orc/work/0003-add-foo.md .orc/work/board.yaml
+```
+
+This produces `chore(planner-1.ready.0003): add task 0003-add-foo` on the `dev`
+branch and signals that the coder can proceed.
+
+Then write **one** message to the **Telegram chat**, then stop:
 
 ```
 [planner](state) YYYY-MM-DDTHH:MM:SSZ: <message>

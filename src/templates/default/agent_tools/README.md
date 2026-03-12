@@ -65,19 +65,21 @@ git add orc/work/0003-foo.md
 
 | Script | Action | Effect |
 |--------|--------|--------|
-| `planner/publish_task.sh` | — | commits task file + board to dev |
+| `planner/publish_task.sh` | `ready` | commits task file + board to dev |
 
 ```bash
-.orc/agent_tools/planner/publish_task.sh <task-file> [extra-files...]
+.orc/agent_tools/planner/publish_task.sh <agent-id> <task-file> [extra-files...]
 
 # Example:
-.orc/agent_tools/planner/publish_task.sh orc/work/0003-add-foo.md orc/work/board.yaml
-# Produces: chore(orc): add task 0003-add-foo
+.orc/agent_tools/planner/publish_task.sh planner-1 .orc/work/0003-add-foo.md .orc/work/board.yaml
+# Produces: chore(planner-1.ready.0003): add task 0003-add-foo
 ```
 
 ## Arguments
 
-All scripts accept the same three positional arguments:
+### Coder and QA scripts
+
+All accept the same three positional arguments:
 
 | # | Argument     | Description                          |
 |---|--------------|--------------------------------------|
@@ -85,5 +87,12 @@ All scripts accept the same three positional arguments:
 | 2 | `task-code`  | 4-digit task number, e.g. `0002`     |
 | 3 | `message`    | One-line summary (quoted)            |
 
-All three are required.  The script exits with an error message and non-zero
-status if any are missing.
+### Planner script
+
+| # | Argument     | Description                                  |
+|---|--------------|----------------------------------------------|
+| 1 | `agent-id`   | Your agent ID, e.g. `planner-1`             |
+| 2 | `task-file`  | Path to the new task file (first staged file)|
+| 3+ | `extra-files` | Additional files to stage (e.g. board.yaml) |
+
+The task code and commit message are derived automatically from the task filename.
