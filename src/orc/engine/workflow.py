@@ -18,8 +18,6 @@ from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)
 
-KNOWN_AGENTS = tg.KNOWN_ROLES
-
 _ORC_RESOLVED_RE = _re.compile(r"^\[orc\]\(resolved\)\s+\S+:\s+.*$")
 
 
