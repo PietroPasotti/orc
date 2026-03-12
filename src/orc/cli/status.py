@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import Annotated
 
 import structlog
@@ -57,9 +58,17 @@ def _pending_visions() -> list[str]:
 
 
 def _pending_reviews() -> list[str]:
-    """Return feat/* branches that exist locally but are not yet merged into dev."""
+    """Return feature branches that exist locally but are not yet merged into dev.
+
+    Respects ``orc-branch-prefix``: when a prefix is configured (e.g. ``orc``),
+    branches are listed as ``{prefix}/feat/*``; otherwise ``feat/*``.
+    """
+    if _cfg.BRANCH_PREFIX:
+        pattern = f"{_cfg.BRANCH_PREFIX}/feat/*"
+    else:
+        pattern = "feat/*"
     result = subprocess.run(
-        ["git", "branch", "--list", "feat/*"],
+        ["git", "branch", "--list", pattern],
         cwd=_cfg.REPO_ROOT,
         capture_output=True,
         text=True,
@@ -233,6 +242,11 @@ def _status(squad: str = "default") -> None:
             typer.echo(f"  ✓ {name}  ({tag}){ts_str}")
 
 
+def _is_tty() -> bool:
+    """Return True if stdout is a TTY (enables the interactive TUI)."""
+    return sys.stdout.isatty()
+
+
 @app.command()
 def status(
     squad: Annotated[
@@ -244,4 +258,9 @@ def status(
     ] = "default",
 ) -> None:
     """Print current workflow state without running any agent."""
-    return _status(squad=squad)
+    if _is_tty():
+        from orc.status_tui import run_status_tui  # noqa: PLC0415
+
+        run_status_tui(squad=squad)
+    else:
+        return _status(squad=squad)

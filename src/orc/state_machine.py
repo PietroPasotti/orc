@@ -10,6 +10,9 @@ This module provides two complementary views of the orc state machine:
    without any I/O.  ``successors`` enumerates every possible next
    ``WorldState`` after an action completes (nondeterministic agent outcomes).
 
+   The per-task git fields are also encapsulated in :class:`TaskState`, which
+   is reused by the system-level multi-task model.
+
    This encoding is the authoritative spec for deadlock-freedom and liveness
    properties, and is tested exhaustively in ``tests/test_state_machine.py``.
 
@@ -25,6 +28,10 @@ A *deadlock* is any non-terminal :class:`WorldState` from which
 test ``test_no_deadlocks`` (in ``tests/test_state_machine.py``) verifies this
 by exhaustively exploring the reachability graph via BFS.
 
+The deadlock-freedom proof covers **one task at a time**.  The system-level
+multi-task model (``SystemState`` / ``system_route`` / ``system_successors``)
+extends this guarantee to N concurrent tasks; see below.
+
 Architecture note
 -----------------
 ``route()`` mirrors the imperative logic in :func:`orc.git._derive_task_state`
@@ -37,7 +44,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from pathlib import Path
+from pathlib import Path  # noqa: F401 — kept for public API compatibility
 
 # ---------------------------------------------------------------------------
 # Formal model — WorldState, route(), successors()
@@ -68,6 +75,33 @@ class BlockState(Enum):
 
 
 @dataclass(frozen=True)
+class TaskState:
+    """Per-task git snapshot used by both :class:`WorldState` and the system model.
+
+    Invariants
+    ----------
+    * ``commits_ahead=True`` implies ``branch_exists=True``.
+    * ``last_commit`` is meaningful only when ``commits_ahead=True``; use
+      :data:`LastCommit.NONE` otherwise.
+    * ``merged_into_dev`` is only populated when the branch still exists
+      (i.e. ``branch_exists=True``); for a missing branch use the default
+      ``False`` and dispatch a coder.
+    """
+
+    branch_exists: bool = False
+    """Feature branch (``feat/XXXX``) exists locally."""
+
+    commits_ahead: bool = False
+    """Branch has at least one commit not in main."""
+
+    merged_into_dev: bool = False
+    """Branch tip is an ancestor of dev (already merged, branch still present)."""
+
+    last_commit: LastCommit = LastCommit.NONE
+    """Subject line category of the most recent commit on the feature branch."""
+
+
+@dataclass(frozen=True)
 class WorldState:
     """Complete snapshot of every input that drives the orchestrator routing.
 
@@ -75,12 +109,8 @@ class WorldState:
     corresponds to exactly one ``route()`` decision; ``successors()`` maps it
     to the set of possible next states after an agent run completes.
 
-    Invariants
-    ----------
-    * ``commits_ahead=True`` implies ``branch_exists=True``.
-    * ``last_commit`` is meaningful only when ``commits_ahead=True``.
-    * ``branch_exists`` / ``commits_ahead`` / ``merged_into_dev`` /
-      ``last_commit`` are only consulted when ``has_open_task=True``.
+    The per-task git fields mirror :class:`TaskState` and are only consulted
+    when ``has_open_task=True``.
     """
 
     # --- board ----------------------------------------------------------------
@@ -98,7 +128,7 @@ class WorldState:
     """Branch has at least one commit not in main."""
 
     merged_into_dev: bool = False
-    """Branch tip is an ancestor of dev (already merged)."""
+    """Branch tip is an ancestor of dev (already merged, branch still present)."""
 
     last_commit: LastCommit = LastCommit.NONE
     """Subject line category of the most recent commit on the feature branch."""
@@ -106,6 +136,15 @@ class WorldState:
     # --- telegram -------------------------------------------------------------
     block: BlockState = BlockState.NONE
     """Most recent unresolved block message in the chat."""
+
+    def task_state(self) -> TaskState:
+        """Return the per-task git fields as a :class:`TaskState`."""
+        return TaskState(
+            branch_exists=self.branch_exists,
+            commits_ahead=self.commits_ahead,
+            merged_into_dev=self.merged_into_dev,
+            last_commit=self.last_commit,
+        )
 
 
 def route(state: WorldState) -> str | None:
@@ -140,7 +179,16 @@ def route(state: WorldState) -> str | None:
         return None  # COMPLETE
 
     # Has open task — derive per-task git state (mirrors _derive_task_state).
-    if not state.branch_exists or not state.commits_ahead:
+    if not state.branch_exists:
+        # Branch was never created (or was cleaned up after a proper merge that
+        # already closed the board — so if it's still on the board it needs a
+        # coder to create it).
+        return "coder"
+
+    if not state.commits_ahead:
+        # Branch exists but has no commits ahead of main.
+        # This happens when the branch was re-created after a merge (but board
+        # not yet updated) or when the coder hasn't committed anything yet.
         if state.merged_into_dev:
             return ACTION_CLOSE_BOARD
         return "coder"
@@ -152,7 +200,6 @@ def route(state: WorldState) -> str | None:
         return "coder"
 
     return "qa"
-
 
 def successors(state: WorldState) -> frozenset[WorldState]:
     """Return every :class:`WorldState` reachable from *state* in one step.
@@ -267,6 +314,222 @@ def is_complete(state: WorldState) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# System-level model — SystemState, system_route(), system_successors()
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SystemState:
+    """Full system state for N concurrent tasks.
+
+    The per-task list lives in ``tasks`` as a frozenset of
+    :class:`TaskState` objects (each one an open, not-yet-merged task).  The
+    shared fields ``pending_visions`` and ``block`` mirror the same concepts
+    in :class:`WorldState`.
+
+    Parameters
+    ----------
+    tasks:
+        The set of currently open tasks (unordered; identity comes from their
+        git state, not a task name).  Empty when all tasks are done.
+    pending_visions:
+        Number of unprocessed vision documents capped at 2 (0 / 1 / 2+).
+        Capping at 2 keeps the state space finite without losing any property.
+    block:
+        System-wide block state derived from the Telegram scan.  A
+        :attr:`BlockState.SOFT` pauses dispatch for all tasks (matches the
+        dispatcher's current behaviour).
+    """
+
+    tasks: frozenset[TaskState] = field(default_factory=frozenset)
+    pending_visions: int = 0
+    block: BlockState = BlockState.NONE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pending_visions", min(self.pending_visions, 2))
+
+
+def _system_is_complete(state: SystemState) -> bool:
+    """Return True when the system has no more work to do."""
+    return not state.tasks and state.pending_visions == 0 and state.block != BlockState.HARD
+
+
+def system_route(state: SystemState) -> dict[TaskState, str] | None:
+    """Return the set of dispatch actions for *state* (pure, no I/O).
+
+    Returns
+    -------
+    dict[TaskState, str]
+        Maps each task to the action (agent name or sentinel) it should receive.
+        An empty dict means the system is complete.
+    None
+        The system is hard-blocked; no actions should be taken.
+
+    The soft-block semantics mirror the dispatcher: when the system is
+    soft-blocked, a single ``"planner"`` action is returned for a synthetic
+    (no-task) entry and all per-task dispatch is suppressed.
+
+    Interleaving semantics
+    ----------------------
+    Unlike :func:`route`, which models a single task, this function returns
+    *all* eligible per-task actions simultaneously.  :func:`system_successors`
+    then applies *one* action at a time (interleaving semantics) to avoid the
+    Cartesian product explosion.
+    """
+    if state.block == BlockState.HARD:
+        return None
+
+    if state.block == BlockState.SOFT:
+        # Planner needed to resolve block; no per-task dispatch.
+        return {"__soft_block_planner__": "planner"}  # type: ignore[dict-item]
+
+    actions: dict[TaskState, str] = {}
+
+    for task in state.tasks:
+        w = WorldState(
+            has_open_task=True,
+            branch_exists=task.branch_exists,
+            commits_ahead=task.commits_ahead,
+            merged_into_dev=task.merged_into_dev,
+            last_commit=task.last_commit,
+        )
+        action = route(w)
+        if action is not None:
+            actions[task] = action
+
+    if not actions and not state.tasks:
+        if state.pending_visions > 0:
+            return {"__vision_planner__": "planner"}  # type: ignore[dict-item]
+        return {}  # COMPLETE
+
+    return actions
+
+
+def system_successors(state: SystemState) -> frozenset[SystemState]:
+    """Return every :class:`SystemState` reachable from *state* in one step.
+
+    Uses **interleaving semantics**: exactly one task's action completes per
+    step.  This avoids the Cartesian product explosion while still exploring
+    all interleavings of concurrent agents.
+
+    The outcomes for each action mirror :func:`successors` for the single-task
+    model.
+    """
+    actions = system_route(state)
+
+    if actions is None:
+        return frozenset()  # hard-blocked terminal
+
+    if not actions:
+        return frozenset()  # COMPLETE terminal
+
+    result: set[SystemState] = set()
+
+    # Soft-block planner action.
+    if "__soft_block_planner__" in actions:
+        result.add(SystemState(
+            tasks=state.tasks,
+            pending_visions=state.pending_visions,
+            block=BlockState.NONE,
+        ))
+        return frozenset(result)
+
+    # Vision planner action.
+    if "__vision_planner__" in actions:
+        new_task = TaskState()
+        result.add(
+            SystemState(
+                tasks=frozenset({new_task}),
+                pending_visions=max(0, state.pending_visions - 1),
+                block=BlockState.NONE,
+            )
+        )
+        return frozenset(result)
+
+    # Per-task actions — pick ONE task per step (interleaving).
+    for task, action in actions.items():
+        if action == ACTION_CLOSE_BOARD or action == ACTION_QA_PASSED:
+            # Deterministic orchestrator action: remove task from the set.
+            new_tasks = frozenset(t for t in state.tasks if t != task)
+            result.add(SystemState(
+                tasks=new_tasks,
+                pending_visions=state.pending_visions,
+                block=state.block,
+            ))
+
+        elif action == "coder":
+            done_task = TaskState(
+                branch_exists=True,
+                commits_ahead=True,
+                merged_into_dev=False,
+                last_commit=LastCommit.CODER_WORK,
+            )
+            # Success: coder commits work.
+            result.add(SystemState(
+                tasks=frozenset((state.tasks - {task}) | {done_task}),
+                pending_visions=state.pending_visions,
+                block=state.block,
+            ))
+            # Hard block.
+            result.add(SystemState(
+                tasks=state.tasks,
+                pending_visions=state.pending_visions,
+                block=BlockState.HARD,
+            ))
+            # Soft block.
+            result.add(SystemState(
+                tasks=state.tasks,
+                pending_visions=state.pending_visions,
+                block=BlockState.SOFT,
+            ))
+
+        elif action == "qa":
+            qa_passed = TaskState(
+                branch_exists=task.branch_exists,
+                commits_ahead=task.commits_ahead,
+                merged_into_dev=task.merged_into_dev,
+                last_commit=LastCommit.QA_PASSED,
+            )
+            qa_other = TaskState(
+                branch_exists=task.branch_exists,
+                commits_ahead=task.commits_ahead,
+                merged_into_dev=task.merged_into_dev,
+                last_commit=LastCommit.QA_OTHER,
+            )
+            # QA passes.
+            result.add(SystemState(
+                tasks=frozenset((state.tasks - {task}) | {qa_passed}),
+                pending_visions=state.pending_visions,
+                block=state.block,
+            ))
+            # QA finds issues.
+            result.add(SystemState(
+                tasks=frozenset((state.tasks - {task}) | {qa_other}),
+                pending_visions=state.pending_visions,
+                block=state.block,
+            ))
+            # Hard block.
+            result.add(SystemState(
+                tasks=state.tasks,
+                pending_visions=state.pending_visions,
+                block=BlockState.HARD,
+            ))
+
+        elif action == "planner":
+            # Planner creates a new task from pending vision.
+            new_task = TaskState()
+            result.add(
+                SystemState(
+                    tasks=frozenset(state.tasks | {new_task}),
+                    pending_visions=max(0, state.pending_visions - 1),
+                    block=BlockState.NONE,
+                )
+            )
+
+    return frozenset(result)
+
+
+# ---------------------------------------------------------------------------
 # State enum
 # ---------------------------------------------------------------------------
 
@@ -308,48 +571,6 @@ class WorkflowState(Enum):
 
 
 # ---------------------------------------------------------------------------
-# Transition table (for documentation / validation)
-# ---------------------------------------------------------------------------
-
-#: Allowed transitions between states.  ``None`` in the target set means the
-#: state machine can remain in the same state (self-loops are always allowed).
-TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState | None]] = {
-    WorkflowState.IDLE: frozenset({WorkflowState.PLANNING}),
-    WorkflowState.PLANNING: frozenset({WorkflowState.CODING, WorkflowState.IDLE}),
-    WorkflowState.CODING: frozenset(
-        {
-            WorkflowState.REVIEWING,
-            WorkflowState.CODING,
-            WorkflowState.BLOCKED,
-        }
-    ),
-    WorkflowState.REVIEWING: frozenset(
-        {
-            WorkflowState.MERGING,
-            WorkflowState.CODING,
-            WorkflowState.BLOCKED,
-        }
-    ),
-    WorkflowState.MERGING: frozenset({WorkflowState.COMPLETE, WorkflowState.BLOCKED}),
-    WorkflowState.BLOCKED: frozenset(
-        {
-            WorkflowState.CODING,
-            WorkflowState.REVIEWING,
-            WorkflowState.IDLE,
-        }
-    ),
-    WorkflowState.SOFT_BLOCKED: frozenset(
-        {
-            WorkflowState.CODING,
-            WorkflowState.REVIEWING,
-            WorkflowState.IDLE,
-        }
-    ),
-    WorkflowState.COMPLETE: frozenset({WorkflowState.IDLE}),
-}
-
-
-# ---------------------------------------------------------------------------
 # State machine wrapper
 # ---------------------------------------------------------------------------
 
@@ -366,19 +587,15 @@ class WorkflowStateMachine:
     ----------
     determine_next_agent_fn:
         A callable with the same signature as
-        :func:`orc.workflow.determine_next_agent`.  Defaults to the real
-        implementation; can be replaced with a stub in tests.
+        :func:`orc.workflow.determine_next_agent`:
+        ``(messages: list[dict]) -> tuple[str | None, str]``.
+        Can be replaced with a stub in tests.
     """
 
     determine_next_agent_fn: Callable[..., str | None] = field(repr=False)
 
-    def current_state(
-        self,
-        task: dict,
-        messages: list[dict],
-        worktree: Path | None = None,
-    ) -> WorkflowState:
-        """Return the :class:`WorkflowState` for *task* given *messages*.
+    def current_state(self, messages: list[dict]) -> WorkflowState:
+        """Return the :class:`WorkflowState` given the Telegram *messages*.
 
         The state is derived from the next-agent decision:
 
@@ -394,17 +611,13 @@ class WorkflowStateMachine:
         Any other value returned by the underlying function is mapped to
         :attr:`WorkflowState.IDLE`.
         """
-        next_agent = self.determine_next_agent_fn(task, messages, worktree=worktree)
+        next_agent, _ = self.determine_next_agent_fn(messages)
         return _agent_to_state(next_agent)
 
-    def next_agent(
-        self,
-        task: dict,
-        messages: list[dict],
-        worktree: Path | None = None,
-    ) -> str | None:
+    def next_agent(self, messages: list[dict]) -> str | None:
         """Return the name of the next agent to run, or ``None`` if idle."""
-        return self.determine_next_agent_fn(task, messages, worktree=worktree)
+        next_agent, _ = self.determine_next_agent_fn(messages)
+        return next_agent
 
 
 def _agent_to_state(agent: str | None) -> WorkflowState:

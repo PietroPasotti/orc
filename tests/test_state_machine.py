@@ -11,17 +11,21 @@ from orc.dispatcher import CLOSE_BOARD, QA_PASSED
 from orc.state_machine import (
     ACTION_CLOSE_BOARD,
     ACTION_QA_PASSED,
-    TRANSITIONS,
     BlockState,
     LastCommit,
+    SystemState,
+    TaskState,
     WorkflowState,
     WorkflowStateMachine,
     WorldState,
     _agent_to_state,
+    _system_is_complete,
     is_complete,
     is_terminal,
     route,
     successors,
+    system_route,
+    system_successors,
 )
 
 # ---------------------------------------------------------------------------
@@ -116,12 +120,14 @@ class TestRoute:
         assert route(s) == "planner"
 
     def test_open_task_no_branch_routes_to_coder(self):
+        """When branch doesn't exist, always dispatch coder regardless of merged state."""
         s = WorldState(has_open_task=True, branch_exists=False, merged_into_dev=False)
         assert route(s) == "coder"
 
-    def test_open_task_no_branch_but_merged_closes_board(self):
+    def test_open_task_no_branch_even_if_merged_routes_to_coder(self):
+        """Branch absent — cannot safely check merge ancestry; dispatch coder."""
         s = WorldState(has_open_task=True, branch_exists=False, merged_into_dev=True)
-        assert route(s) == ACTION_CLOSE_BOARD
+        assert route(s) == "coder"
 
     def test_branch_exists_no_commits_not_merged_routes_to_coder(self):
         s = WorldState(
@@ -338,7 +344,42 @@ class TestDeadlockFreedom:
 
 
 # ---------------------------------------------------------------------------
-# Coarse enum / WorkflowStateMachine (existing tests, unchanged)
+# TaskState
+# ---------------------------------------------------------------------------
+
+
+class TestTaskState:
+    def test_task_state_defaults(self):
+        ts = TaskState()
+        assert ts.branch_exists is False
+        assert ts.commits_ahead is False
+        assert ts.merged_into_dev is False
+        assert ts.last_commit == LastCommit.NONE
+
+    def test_world_state_task_state_roundtrip(self):
+        w = WorldState(
+            has_open_task=True,
+            branch_exists=True,
+            commits_ahead=True,
+            merged_into_dev=False,
+            last_commit=LastCommit.CODER_WORK,
+        )
+        ts = w.task_state()
+        assert ts == TaskState(
+            branch_exists=True,
+            commits_ahead=True,
+            merged_into_dev=False,
+            last_commit=LastCommit.CODER_WORK,
+        )
+
+    def test_task_state_is_frozen(self):
+        ts = TaskState()
+        with pytest.raises((AttributeError, TypeError)):
+            ts.branch_exists = True  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Coarse enum / WorkflowStateMachine
 # ---------------------------------------------------------------------------
 
 
@@ -357,18 +398,6 @@ class TestWorkflowStateEnum:
     def test_enum_values_are_strings(self):
         for state in WorkflowState:
             assert isinstance(state.value, str)
-
-
-class TestTransitionTable:
-    def test_all_states_have_transitions(self):
-        for state in WorkflowState:
-            assert state in TRANSITIONS, f"No transition entry for {state}"
-
-    def test_targets_are_valid_states(self):
-        for state, targets in TRANSITIONS.items():
-            for target in targets:
-                if target is not None:
-                    assert isinstance(target, WorkflowState)
 
 
 class TestAgentToState:
@@ -391,44 +420,284 @@ class TestAgentToState:
 class TestWorkflowStateMachine:
     def _make_machine(self, next_agent):
         """Return a state machine whose determine_next_agent always returns *next_agent*."""
-        return WorkflowStateMachine(determine_next_agent_fn=lambda *a, **kw: next_agent)
+        return WorkflowStateMachine(determine_next_agent_fn=lambda msgs: (next_agent, "test"))
 
     def test_current_state_coding(self):
         m = self._make_machine("coder")
-        assert m.current_state({}, []) == WorkflowState.CODING
+        assert m.current_state([]) == WorkflowState.CODING
 
     def test_current_state_reviewing(self):
         m = self._make_machine("qa")
-        assert m.current_state({}, []) == WorkflowState.REVIEWING
+        assert m.current_state([]) == WorkflowState.REVIEWING
 
     def test_current_state_planning(self):
         m = self._make_machine("planner")
-        assert m.current_state({}, []) == WorkflowState.PLANNING
+        assert m.current_state([]) == WorkflowState.PLANNING
 
     def test_current_state_idle_when_none(self):
         m = self._make_machine(None)
-        assert m.current_state({}, []) == WorkflowState.IDLE
+        assert m.current_state([]) == WorkflowState.IDLE
 
     def test_next_agent_returns_value(self):
         m = self._make_machine("coder")
-        assert m.next_agent({}, []) == "coder"
+        assert m.next_agent([]) == "coder"
 
     def test_next_agent_returns_none(self):
         m = self._make_machine(None)
-        assert m.next_agent({}, []) is None
+        assert m.next_agent([]) is None
 
-    def test_passes_task_and_messages_to_fn(self):
+    def test_passes_messages_to_fn(self):
         received = {}
 
-        def fn(task, messages, worktree=None):
-            received["task"] = task
+        def fn(messages):
             received["messages"] = messages
-            received["worktree"] = worktree
-            return None
+            return None, "done"
 
         m = WorkflowStateMachine(determine_next_agent_fn=fn)
-        task = {"name": "test"}
         msgs = [{"text": "hi"}]
-        m.current_state(task, msgs, worktree=None)
-        assert received["task"] is task
+        m.current_state(msgs)
         assert received["messages"] is msgs
+
+
+# ---------------------------------------------------------------------------
+# System-level model — SystemState, system_route(), system_successors()
+# ---------------------------------------------------------------------------
+
+
+def _system_reachability_graph(
+    entry_states: frozenset[SystemState],
+) -> tuple[set[SystemState], dict[SystemState, set[SystemState]]]:
+    """BFS over the system state space from *entry_states*.
+
+    Returns (visited, forward_edges).
+    """
+    visited: set[SystemState] = set()
+    forward: dict[SystemState, set[SystemState]] = {}
+    queue: deque[SystemState] = deque(entry_states)
+    visited.update(entry_states)
+
+    while queue:
+        s = queue.popleft()
+        nexts = system_successors(s)
+        forward[s] = set(nexts)
+        for ns in nexts:
+            if ns not in visited:
+                visited.add(ns)
+                queue.append(ns)
+
+    return visited, forward
+
+
+class TestSystemState:
+    def test_defaults(self):
+        s = SystemState()
+        assert s.tasks == frozenset()
+        assert s.pending_visions == 0
+        assert s.block == BlockState.NONE
+
+    def test_pending_visions_capped_at_2(self):
+        s = SystemState(pending_visions=99)
+        assert s.pending_visions == 2
+
+    def test_is_frozen(self):
+        s = SystemState()
+        with pytest.raises((AttributeError, TypeError)):
+            s.pending_visions = 5  # type: ignore[misc]
+
+    def test_complete_when_no_tasks_no_visions(self):
+        assert _system_is_complete(SystemState())
+
+    def test_not_complete_with_pending_vision(self):
+        assert not _system_is_complete(SystemState(pending_visions=1))
+
+    def test_not_complete_with_open_task(self):
+        assert not _system_is_complete(SystemState(tasks=frozenset({TaskState()})))
+
+    def test_not_complete_when_hard_blocked(self):
+        assert not _system_is_complete(SystemState(block=BlockState.HARD))
+
+
+class TestSystemRoute:
+    def test_hard_block_returns_none(self):
+        s = SystemState(tasks=frozenset({TaskState()}), block=BlockState.HARD)
+        assert system_route(s) is None
+
+    def test_soft_block_returns_planner_key(self):
+        s = SystemState(tasks=frozenset({TaskState()}), block=BlockState.SOFT)
+        actions = system_route(s)
+        assert actions is not None
+        assert "planner" in actions.values()
+
+    def test_complete_returns_empty_dict(self):
+        s = SystemState()
+        assert system_route(s) == {}
+
+    def test_vision_routes_to_planner(self):
+        s = SystemState(pending_visions=1)
+        actions = system_route(s)
+        assert actions is not None
+        assert "planner" in actions.values()
+
+    def test_task_with_no_branch_routes_to_coder(self):
+        task = TaskState(branch_exists=False)
+        s = SystemState(tasks=frozenset({task}))
+        actions = system_route(s)
+        assert actions is not None
+        assert actions[task] == "coder"
+
+    def test_task_with_coder_commits_routes_to_qa(self):
+        task = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK)
+        s = SystemState(tasks=frozenset({task}))
+        actions = system_route(s)
+        assert actions is not None
+        assert actions[task] == "qa"
+
+    def test_two_tasks_both_dispatched(self):
+        t1 = TaskState(branch_exists=False)
+        t2 = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK)
+        s = SystemState(tasks=frozenset({t1, t2}))
+        actions = system_route(s)
+        assert actions is not None
+        assert actions[t1] == "coder"
+        assert actions[t2] == "qa"
+
+
+class TestSystemSuccessors:
+    def test_hard_blocked_has_no_successors(self):
+        s = SystemState(tasks=frozenset({TaskState()}), block=BlockState.HARD)
+        assert system_successors(s) == frozenset()
+
+    def test_complete_has_no_successors(self):
+        s = SystemState()
+        assert system_successors(s) == frozenset()
+
+    def test_soft_block_resolved_by_planner(self):
+        task = TaskState()
+        s = SystemState(tasks=frozenset({task}), block=BlockState.SOFT)
+        nexts = system_successors(s)
+        assert any(ns.block == BlockState.NONE for ns in nexts)
+
+    def test_coder_success_adds_commits(self):
+        task = TaskState(branch_exists=False)
+        s = SystemState(tasks=frozenset({task}))
+        nexts = system_successors(s)
+        expected_done = TaskState(
+            branch_exists=True,
+            commits_ahead=True,
+            last_commit=LastCommit.CODER_WORK,
+        )
+        assert any(expected_done in ns.tasks for ns in nexts)
+
+    def test_coder_can_hard_block(self):
+        task = TaskState(branch_exists=False)
+        s = SystemState(tasks=frozenset({task}))
+        nexts = system_successors(s)
+        assert any(ns.block == BlockState.HARD for ns in nexts)
+
+    def test_qa_passed_removes_task(self):
+        task = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.QA_PASSED)
+        s = SystemState(tasks=frozenset({task}))
+        nexts = system_successors(s)
+        assert any(task not in ns.tasks for ns in nexts)
+
+
+@pytest.mark.parametrize(
+    "entry_tasks",
+    [
+        # Single task — no branch yet
+        [TaskState()],
+        # Two tasks in different git states
+        [
+            TaskState(),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK),
+        ],
+        # Three tasks: new, in-progress, ready-for-qa
+        [
+            TaskState(),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.QA_PASSED),
+        ],
+        # Four tasks with mixed states
+        [
+            TaskState(),
+            TaskState(branch_exists=True, commits_ahead=False),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.QA_OTHER),
+        ],
+    ],
+    ids=["1-task", "2-tasks", "3-tasks", "4-tasks"],
+)
+def test_system_no_deadlocks(entry_tasks: list[TaskState]):
+    """Every non-hard-blocked system state can eventually reach COMPLETE.
+
+    Uses interleaving BFS (one agent completion per step).  The frozenset
+    representation deduplicates structurally identical task states, keeping
+    the state space tractable (BFS completes in milliseconds).
+    """
+    entry: frozenset[SystemState] = frozenset(
+        {
+            SystemState(tasks=frozenset(entry_tasks), pending_visions=v)
+            for v in range(3)
+        }
+    )
+
+    visited, forward = _system_reachability_graph(entry)
+
+    complete_states = {s for s in visited if _system_is_complete(s)}
+    assert complete_states, "No COMPLETE terminal states reachable!"
+
+    reverse: dict[SystemState, set[SystemState]] = {s: set() for s in visited}
+    for s, nexts in forward.items():
+        for ns in nexts:
+            if ns in reverse:
+                reverse[ns].add(s)
+
+    can_reach_complete: set[SystemState] = set(complete_states)
+    queue: deque[SystemState] = deque(complete_states)
+    while queue:
+        s = queue.popleft()
+        for pred in reverse.get(s, set()):
+            if pred not in can_reach_complete:
+                can_reach_complete.add(pred)
+                queue.append(pred)
+
+    non_blocked = {s for s in visited if s.block != BlockState.HARD}
+    deadlocks = non_blocked - can_reach_complete
+    assert not deadlocks, (
+        f"[{len(entry_tasks)} task(s)] {len(deadlocks)} system deadlock(s) found:\n"
+        + "\n".join(f"  route={system_route(s)!r}  state={s}" for s in list(deadlocks)[:5])
+    )
+
+
+class TestSystemCrossChecks:
+    """Verify system_route() agrees with single-task route() for each task independently."""
+
+    @pytest.mark.parametrize(
+        "task",
+        [
+            TaskState(),
+            TaskState(branch_exists=True, commits_ahead=False, merged_into_dev=False),
+            TaskState(branch_exists=True, commits_ahead=False, merged_into_dev=True),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.QA_PASSED),
+            TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.QA_OTHER),
+        ],
+    )
+    def test_system_route_agrees_with_single_task_route(self, task: TaskState):
+        """system_route() must agree with route() for each individual task."""
+        w = WorldState(
+            has_open_task=True,
+            branch_exists=task.branch_exists,
+            commits_ahead=task.commits_ahead,
+            merged_into_dev=task.merged_into_dev,
+            last_commit=task.last_commit,
+        )
+        expected = route(w)
+
+        s = SystemState(tasks=frozenset({task}))
+        actions = system_route(s)
+        assert actions is not None
+        assert actions.get(task) == expected, (
+            f"system_route disagrees for task={task}: "
+            f"system_route={actions.get(task)!r}, route={expected!r}"
+        )

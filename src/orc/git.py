@@ -367,7 +367,25 @@ def _last_feature_commit_message(branch: str) -> str | None:
 
 
 def _derive_task_state(task_name: str) -> tuple[str, str]:
-    """Inspect the git tree for *task_name* and return ``(token, reason)``."""
+    """Inspect the git tree for *task_name* and return ``(token, reason)``.
+
+    Decision tree:
+
+    Does feat/NNNN-foo branch exist?
+    │
+    ├─ NO → Has it been merged into dev?
+    │       ├─ YES → ACTION_CLOSE_BOARD (board out of sync)
+    │       └─ NO  → dispatch "coder"
+    │
+    └─ YES → Does it have commits ahead of main?
+              │
+              ├─ NO  → (same merge check as above)
+              │
+              └─ YES → What's the subject of the last commit?
+                        ├─ starts with "qa(passed):"  → ACTION_QA_PASSED (merge it)
+                        ├─ starts with "qa("          → dispatch "coder" (QA found issues)
+                        └─ anything else              → dispatch "qa"
+    """
     branch = _feature_branch(task_name)
 
     branch_exists = _feature_branch_exists(branch)
@@ -376,15 +394,16 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     )
 
     if not branch_exists:
-        if _feature_merged_into_dev(branch):
-            logger.info(
-                "derive_task_state: branch absent but merged — closing board",
-                task=task_name,
-                branch=branch,
-            )
-            return _CLOSE_BOARD, f"branch {branch!r} merged but board not updated"
+        # The branch was never created or was already deleted.
+        # We cannot reliably test merge ancestry for a non-existent ref
+        # (git merge-base returns exit 128 for unknown refs, which also
+        # happens to return False — but could false-positive on a tag or
+        # remote ref with the same name).
+        # In the normal flow the branch is only deleted AFTER the board has
+        # been committed closed, so if the task is still open here the branch
+        # simply hasn't been created yet.  Dispatch a coder to create it.
         logger.debug(
-            "derive_task_state: branch absent, not merged — dispatch coder", task=task_name
+            "derive_task_state: branch absent — dispatch coder", task=task_name
         )
         return "coder", f"feature branch {branch!r} does not exist yet"
 

@@ -298,3 +298,17 @@ class TestStatusCoverage:
         result = runner.invoke(m.app, ["status"])
         assert "Pending reviews" in result.output
         assert "feat/0001-foo" in result.output
+
+    def test_status_tui_launched_when_isatty(self, monkeypatch):
+        """status() launches the TUI when stdout is a TTY."""
+        import orc.cli.status as _st_module
+
+        self._setup(monkeypatch, ahead=0)
+        launched: list[str] = []
+        monkeypatch.setattr(_st_module, "_is_tty", lambda: True)
+
+        with patch("orc.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+            result = runner.invoke(m.app, ["status", "--squad", "default"])
+
+        assert result.exit_code == 0
+        assert launched == ["default"]

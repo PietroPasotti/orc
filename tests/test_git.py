@@ -57,20 +57,17 @@ class TestDeriveStateFromGit:
         assert agent == "coder"
         assert "does not exist" in reason
 
-    def test_no_branch_but_merged_returns_close_board(self, monkeypatch):
-        """Crash recovery: branch merged but board not yet updated."""
+    def test_no_branch_returns_coder(self, monkeypatch):
+        """Branch does not exist (never created or previously deleted) → dispatch coder."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
             branch_exists=False,
             has_commits=False,
-            is_merged=True,
         )
         agent, reason = _derive_state_from_git()
-        from orc.dispatcher import CLOSE_BOARD
-
-        assert agent == CLOSE_BOARD
-        assert "merged" in reason
+        assert agent == "coder"
+        assert "does not exist" in reason
 
     def test_feature_branch_exists_no_commits_not_merged_returns_coder(self, monkeypatch):
         """Branch exists with no new commits and not yet in dev → dispatch coder."""
