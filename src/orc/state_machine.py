@@ -62,8 +62,9 @@ class LastCommit(Enum):
 
     NONE = "none"  # branch has no commits, or no readable message
     CODER_WORK = "coder_work"  # ordinary coder commit (feat/fix/refactor/…)
-    QA_PASSED = "qa_passed"  # starts with "qa(passed):"
-    QA_OTHER = "qa_other"  # starts with "qa(" but not passed (failed, blocked…)
+    CODER_DONE = "coder_done"  # structured exit: chore(<id>.done.<code>): …
+    QA_PASSED = "qa_passed"  # structured exit approve, or legacy "qa(passed):"
+    QA_OTHER = "qa_other"  # structured exit reject, or legacy "qa(" (not passed)
 
 
 class BlockState(Enum):
@@ -199,7 +200,9 @@ def route(state: WorldState) -> str | None:
     if state.last_commit == LastCommit.QA_OTHER:
         return "coder"
 
+    # CODER_DONE and CODER_WORK both route to QA.
     return "qa"
+
 
 def successors(state: WorldState) -> frozenset[WorldState]:
     """Return every :class:`WorldState` reachable from *state* in one step.
@@ -244,13 +247,22 @@ def successors(state: WorldState) -> frozenset[WorldState]:
     if action == "coder":
         return frozenset(
             {
-                # Coder makes commits — branch now has work ahead of main.
+                # Coder makes ordinary commits — branch now has work ahead of main.
                 replace(
                     state,
                     branch_exists=True,
                     commits_ahead=True,
                     merged_into_dev=False,
                     last_commit=LastCommit.CODER_WORK,
+                    block=BlockState.NONE,
+                ),
+                # Coder signals done via structured exit commit.
+                replace(
+                    state,
+                    branch_exists=True,
+                    commits_ahead=True,
+                    merged_into_dev=False,
+                    last_commit=LastCommit.CODER_DONE,
                     block=BlockState.NONE,
                 ),
                 # Coder gets hard-blocked (ambiguous spec, missing dependency…).
@@ -427,11 +439,13 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
 
     # Soft-block planner action.
     if "__soft_block_planner__" in actions:
-        result.add(SystemState(
-            tasks=state.tasks,
-            pending_visions=state.pending_visions,
-            block=BlockState.NONE,
-        ))
+        result.add(
+            SystemState(
+                tasks=state.tasks,
+                pending_visions=state.pending_visions,
+                block=BlockState.NONE,
+            )
+        )
         return frozenset(result)
 
     # Vision planner action.
@@ -451,11 +465,13 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
         if action == ACTION_CLOSE_BOARD or action == ACTION_QA_PASSED:
             # Deterministic orchestrator action: remove task from the set.
             new_tasks = frozenset(t for t in state.tasks if t != task)
-            result.add(SystemState(
-                tasks=new_tasks,
-                pending_visions=state.pending_visions,
-                block=state.block,
-            ))
+            result.add(
+                SystemState(
+                    tasks=new_tasks,
+                    pending_visions=state.pending_visions,
+                    block=state.block,
+                )
+            )
 
         elif action == "coder":
             done_task = TaskState(
@@ -464,24 +480,44 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
                 merged_into_dev=False,
                 last_commit=LastCommit.CODER_WORK,
             )
-            # Success: coder commits work.
-            result.add(SystemState(
-                tasks=frozenset((state.tasks - {task}) | {done_task}),
-                pending_visions=state.pending_visions,
-                block=state.block,
-            ))
+            done_task_exit = TaskState(
+                branch_exists=True,
+                commits_ahead=True,
+                merged_into_dev=False,
+                last_commit=LastCommit.CODER_DONE,
+            )
+            # Success: coder makes ordinary commits.
+            result.add(
+                SystemState(
+                    tasks=frozenset((state.tasks - {task}) | {done_task}),
+                    pending_visions=state.pending_visions,
+                    block=state.block,
+                )
+            )
+            # Success: coder signals done via structured exit commit.
+            result.add(
+                SystemState(
+                    tasks=frozenset((state.tasks - {task}) | {done_task_exit}),
+                    pending_visions=state.pending_visions,
+                    block=state.block,
+                )
+            )
             # Hard block.
-            result.add(SystemState(
-                tasks=state.tasks,
-                pending_visions=state.pending_visions,
-                block=BlockState.HARD,
-            ))
+            result.add(
+                SystemState(
+                    tasks=state.tasks,
+                    pending_visions=state.pending_visions,
+                    block=BlockState.HARD,
+                )
+            )
             # Soft block.
-            result.add(SystemState(
-                tasks=state.tasks,
-                pending_visions=state.pending_visions,
-                block=BlockState.SOFT,
-            ))
+            result.add(
+                SystemState(
+                    tasks=state.tasks,
+                    pending_visions=state.pending_visions,
+                    block=BlockState.SOFT,
+                )
+            )
 
         elif action == "qa":
             qa_passed = TaskState(
@@ -497,26 +533,32 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
                 last_commit=LastCommit.QA_OTHER,
             )
             # QA passes.
-            result.add(SystemState(
-                tasks=frozenset((state.tasks - {task}) | {qa_passed}),
-                pending_visions=state.pending_visions,
-                block=state.block,
-            ))
+            result.add(
+                SystemState(
+                    tasks=frozenset((state.tasks - {task}) | {qa_passed}),
+                    pending_visions=state.pending_visions,
+                    block=state.block,
+                )
+            )
             # QA finds issues.
-            result.add(SystemState(
-                tasks=frozenset((state.tasks - {task}) | {qa_other}),
-                pending_visions=state.pending_visions,
-                block=state.block,
-            ))
+            result.add(
+                SystemState(
+                    tasks=frozenset((state.tasks - {task}) | {qa_other}),
+                    pending_visions=state.pending_visions,
+                    block=state.block,
+                )
+            )
             # Hard block.
-            result.add(SystemState(
-                tasks=state.tasks,
-                pending_visions=state.pending_visions,
-                block=BlockState.HARD,
-            ))
+            result.add(
+                SystemState(
+                    tasks=state.tasks,
+                    pending_visions=state.pending_visions,
+                    block=BlockState.HARD,
+                )
+            )
 
-        elif action == "planner":
-            # Planner creates a new task from pending vision.
+        elif action == "planner":  # pragma: no cover
+            # Per-task planner action is unreachable via system_route (block states handled above).
             new_task = TaskState()
             result.add(
                 SystemState(

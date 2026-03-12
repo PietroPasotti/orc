@@ -43,8 +43,8 @@ already written and apply a simple table:
 no open tasks              → planner
 open task, no branch       → coder
 open task, coder commits   → qa
-qa(passed): commit         → merge + loop
-qa(failed): commit         → coder
+chore(<id>.approve.<task>) → merge + loop
+chore(<id>.reject.<task>)  → coder
 ```
 
 Telegram is a sidecar, not the spine.  I consult it only to detect a
@@ -70,7 +70,7 @@ crowded, but I enjoy the noise.
 parallel, the planner already thinking about the next task.  Everything moving
 at once.  That is when I feel most alive.
 
-**Clean commit prefixes.**  `qa(passed): all tests green.`  Six words.
+**Clean commit prefixes.**  `chore(qa-1.approve.0002): all tests green.`  Six words.
 The branch can be merged.  The wheel turns.  Satisfying.
 
 **The `board.yaml`.**  My little kanban.  An open task has a name and an owner.

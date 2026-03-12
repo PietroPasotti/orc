@@ -175,6 +175,16 @@ class TestRoute:
         )
         assert route(s) == "coder"
 
+    def test_coder_done_routes_to_qa(self):
+        """CODER_DONE is a richer variant of CODER_WORK — still routes to QA."""
+        s = WorldState(
+            has_open_task=True,
+            branch_exists=True,
+            commits_ahead=True,
+            last_commit=LastCommit.CODER_DONE,
+        )
+        assert route(s) == "qa"
+
 
 # ---------------------------------------------------------------------------
 # Formal model — sentinel alignment with dispatcher constants
@@ -222,6 +232,19 @@ class TestRouteMatchesImplementation:
     def _last_commit_from_msg(self, msg: str | None) -> LastCommit:
         if msg is None:
             return LastCommit.NONE
+        # New structured exit-commit format.
+        from orc.git import _parse_exit_scope
+
+        parsed = _parse_exit_scope(msg)
+        if parsed is not None:
+            _agent_id, action, _task_code = parsed
+            if action == "approve":
+                return LastCommit.QA_PASSED
+            if action == "reject":
+                return LastCommit.QA_OTHER
+            if action == "done":
+                return LastCommit.CODER_DONE
+        # Legacy format.
         if msg.startswith("qa(passed)"):
             return LastCommit.QA_PASSED
         if msg.startswith("qa("):
@@ -238,6 +261,10 @@ class TestRouteMatchesImplementation:
             (True, True, False, "feat: add thing"),
             (True, True, False, "qa(passed): all good"),
             (True, True, False, "qa(failed): coverage low"),
+            # New structured exit-commit format.
+            (True, True, False, "chore(coder-1.done.0001): implementation complete"),
+            (True, True, False, "chore(qa-1.approve.0001): all checks green"),
+            (True, True, False, "chore(qa-2.reject.0001): missing error-path tests"),
         ],
     )
     def test_route_matches_derive_task_state(
@@ -635,10 +662,7 @@ def test_system_no_deadlocks(entry_tasks: list[TaskState]):
     the state space tractable (BFS completes in milliseconds).
     """
     entry: frozenset[SystemState] = frozenset(
-        {
-            SystemState(tasks=frozenset(entry_tasks), pending_visions=v)
-            for v in range(3)
-        }
+        {SystemState(tasks=frozenset(entry_tasks), pending_visions=v) for v in range(3)}
     )
 
     visited, forward = _system_reachability_graph(entry)

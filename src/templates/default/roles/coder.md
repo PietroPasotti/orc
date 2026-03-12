@@ -60,7 +60,25 @@ After completing each step in the task, mark it done by changing `- [ ]` to
 
 ### 4. Close the task when done
 
-Once all steps are complete and `just test` and `just lint` are green, you can exit with `done`.
+Once all steps are complete and `just test` and `just lint` are green, signal
+completion with the agent tool:
+
+```bash
+.orc/agent_tools/coder/close_task.sh <your-agent-id> <task-code> "<one-line summary>"
+```
+
+Replace `<your-agent-id>` with your ID (e.g. `coder-1`), `<task-code>` with
+the 4-digit task number (e.g. `0002`), and `<one-line summary>` with a brief
+description of what was done.
+
+Example:
+```bash
+.orc/agent_tools/coder/close_task.sh coder-1 0002 "implemented auth module; all tests green"
+# Produces: chore(coder-1.done.0002): implemented auth module; all tests green
+```
+
+This commit is how the orchestrator knows you are done — it will automatically
+route the task to QA.
 
 ### 5. Commit frequently
 
@@ -114,10 +132,14 @@ architecture.
 
 ## Exit states
 
-After completing your work (or hitting a blocker), write **one** message to
-the **Telegram chat** using the format below, then stop.  Use
-``orc/telegram.py``'s ``send_message(format_agent_message(...))`` helper,
-or send the message manually via your Telegram client.
+After completing your work (or hitting a blocker):
+
+1. **If done:** run the close-task tool (see §4 above).  This commits your
+   exit signal to git — the orchestrator reads it to route to QA.
+2. **In all cases:** write **one** message to the **Telegram chat** using the
+   format below, then stop.  Use ``orc/telegram.py``'s
+   ``send_message(format_agent_message(...))`` helper, or send the message
+   manually via your Telegram client.
 
 | State | When to use                                                                             |
 |-------|-----------------------------------------------------------------------------------------|

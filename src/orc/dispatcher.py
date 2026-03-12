@@ -323,7 +323,7 @@ class Dispatcher:
                 # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
                 # Strip everything up to and including "feat/" to get the stem.
                 feat_idx = branch.find("feat/")
-                task_stem = branch[feat_idx + len("feat/"):] if feat_idx != -1 else branch
+                task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
                 task_name = task_stem + ".md"
                 if task_name not in self._merge_queue:
                     self._merge_queue.append(task_name)

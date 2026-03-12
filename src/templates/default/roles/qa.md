@@ -85,29 +85,34 @@ git diff main..HEAD
 ```
 
 **Do NOT merge the feature branch yourself.** The orchestrator handles the merge
-automatically once it detects your `qa(passed):` commit.
+automatically once it detects your approval commit.
 
 #### Signalling your verdict via a git commit
 
-After completing your review, you **must** make a commit on the feature branch.
-This is how the orchestrator knows your verdict — it checks the last commit message
-prefix on the branch.
+After completing your review, use the appropriate agent tool to commit your
+verdict.  This is how the orchestrator knows your decision — it reads the last
+commit message on the feature branch.
 
 **If passed** — no Critical or Major issues:
 ```bash
-git commit --allow-empty -m "qa(passed): <one-line summary>"
+.orc/agent_tools/qa/approve_task.sh <your-agent-id> <task-code> "<one-line summary>"
+# e.g.:
+.orc/agent_tools/qa/approve_task.sh qa-1 0002 "all tests green; no critical issues"
+# Produces: chore(qa-1.approve.0002): all tests green; no critical issues
 ```
 
 **If failed** — one or more Critical or Major issues found:
 1. Append an issues section to the task `.md` file in `orc/work/` (see format below).
-2. Then commit that change:
+2. Stage it and call the reject tool:
 ```bash
 git add orc/work/NNNN-task-title.md
-git commit -m "qa(failed): <one-line summary of the blocking issue>"
+.orc/agent_tools/qa/reject_task.sh <your-agent-id> <task-code> "<one-line summary>"
+# e.g.:
+.orc/agent_tools/qa/reject_task.sh qa-2 0003 "missing tests for error paths; see task file"
+# Produces: chore(qa-2.reject.0003): missing tests for error paths; see task file
 ```
 
-The commit message must start with exactly `qa(passed):` or `qa(failed):` — the
-orchestrator matches on this prefix.
+The orchestrator reads the action in the commit scope (`approve` → merge, `reject` → back to coder).
 
 After committing, also post a status message to the Telegram chat (see "Exit states" below).
 
@@ -124,8 +129,9 @@ After committing, also post a status message to the Telegram chat (see "Exit sta
 
 ## Exit states
 
-After completing your review, make the git commit described above, then write
-**one** status message to the **Telegram chat** using the format below, then stop.
+After completing your review, make the git commit described above (using the
+agent tools), then write **one** status message to the **Telegram chat** using
+the format below, then stop.
 Use `orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
 
 | State | When to use |

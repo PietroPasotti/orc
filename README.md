@@ -12,7 +12,7 @@
 orc run
   └── planner                   – reads vision docs and #TODOs|#FIXMEs, creates tasks in orc/work/
         └── coder               – implements each task on a feature branch
-              └── qa            – reviews the branch, commits qa(passed): or qa(failed):
+              └── qa            – reviews the branch, commits chore(<qa-id>.approve.<task>): or chore(<qa-id>.reject.<task>):
                     └── orc     – merges the feature branch into dev, loops back to planner
 ```
 

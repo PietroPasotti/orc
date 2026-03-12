@@ -280,6 +280,28 @@ class TestStatusCoverage:
             result = _st._pending_reviews()
         assert result == ["feat/0004-worktree", "feat/0005-normal"]
 
+    def test_pending_reviews_with_branch_prefix(self, monkeypatch, tmp_path):
+        """Line 67: when BRANCH_PREFIX is set, pattern uses prefix/feat/* glob."""
+        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_st._cfg, "BRANCH_PREFIX", "orc")
+
+        seen_patterns = []
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            if "--list" in cmd:
+                seen_patterns.append(cmd[-1])
+                r.stdout = "  orc/feat/0001-foo\n"
+            else:
+                r.returncode = 1  # unmerged
+            return r
+
+        with patch("orc.cli.status.subprocess.run", fake_run):
+            result = _st._pending_reviews()
+        assert seen_patterns == ["orc/feat/*"]
+        assert result == ["orc/feat/0001-foo"]
+
     def test_status_shows_pending_visions(self, tmp_path, monkeypatch):
         """Lines 197-200: pending visions section printed when visions exist."""
         self._setup(monkeypatch, ahead=0)

@@ -660,3 +660,98 @@ class TestGitRunner:
         with patch("orc.git.subprocess.run", return_value=fake):
             runner = _git.GitRunner(tmp_path)
             assert runner.short_head() == "abc1234"
+
+
+# ---------------------------------------------------------------------------
+# _parse_exit_scope
+# ---------------------------------------------------------------------------
+
+
+class TestParseExitScope:
+    """Unit tests for _parse_exit_scope — the structured exit-commit parser."""
+
+    def test_coder_done(self):
+        result = _git._parse_exit_scope("chore(coder-1.done.0002): implemented auth; tests green")
+        assert result == ("coder-1", "done", "0002")
+
+    def test_qa_approve(self):
+        result = _git._parse_exit_scope("chore(qa-2.approve.0003): all checks green")
+        assert result == ("qa-2", "approve", "0003")
+
+    def test_qa_reject(self):
+        result = _git._parse_exit_scope("chore(qa-1.reject.0007): missing error-path tests")
+        assert result == ("qa-1", "reject", "0007")
+
+    def test_returns_none_for_legacy_qa_passed(self):
+        assert _git._parse_exit_scope("qa(passed): no issues found") is None
+
+    def test_returns_none_for_conventional_commit(self):
+        assert _git._parse_exit_scope("feat: add ResourceType enum") is None
+
+    def test_returns_none_for_non_chore(self):
+        assert _git._parse_exit_scope("fix(coder-1.done.0002): oops") is None
+
+    def test_returns_none_for_missing_task_code(self):
+        assert _git._parse_exit_scope("chore(coder-1.done): message") is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _git._parse_exit_scope("") is None
+
+    def test_high_agent_number(self):
+        result = _git._parse_exit_scope("chore(coder-12.done.0099): done")
+        assert result == ("coder-12", "done", "0099")
+
+
+# ---------------------------------------------------------------------------
+# _derive_task_state — new exit-commit routing
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveTaskStateExitCommits:
+    """Tests for the new chore(<id>.<action>.<code>): routing in _derive_task_state."""
+
+    def _patch(self, monkeypatch, *, last_commit_msg):
+        monkeypatch.setattr("orc.git._feature_branch_exists", lambda b: True)
+        monkeypatch.setattr("orc.git._feature_has_commits_ahead_of_main", lambda b: True)
+        monkeypatch.setattr("orc.git._feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr("orc.git._last_feature_commit_message", lambda b: last_commit_msg)
+
+    def test_coder_done_routes_to_qa(self, monkeypatch):
+        self._patch(monkeypatch, last_commit_msg="chore(coder-1.done.0002): all tests green")
+        agent, reason = _git._derive_task_state("0002-foo.md")
+        assert agent == "qa"
+        assert "awaiting review" in reason
+
+    def test_qa_approve_routes_to_qa_passed(self, monkeypatch):
+        from orc.dispatcher import QA_PASSED
+
+        self._patch(monkeypatch, last_commit_msg="chore(qa-2.approve.0002): no critical issues")
+        agent, reason = _git._derive_task_state("0002-foo.md")
+        assert agent == QA_PASSED
+        assert "ready to merge" in reason
+
+    def test_qa_reject_routes_to_coder(self, monkeypatch):
+        self._patch(monkeypatch, last_commit_msg="chore(qa-2.reject.0003): missing tests")
+        agent, reason = _git._derive_task_state("0003-foo.md")
+        assert agent == "coder"
+        assert "rejected" in reason
+
+    def test_unknown_action_falls_through_to_qa(self, monkeypatch):
+        """A structured exit commit with an unknown action falls through to legacy matching,
+        then to the default 'qa' dispatch."""
+        self._patch(monkeypatch, last_commit_msg="chore(coder-1.unknown.0002): weird action")
+        agent, _ = _git._derive_task_state("0002-foo.md")
+        assert agent == "qa"
+
+    def test_feature_merged_into_dev_returns_true(self, monkeypatch):
+        """_feature_merged_into_dev uses subprocess; verify it parses returncode correctly."""
+        from unittest.mock import MagicMock
+
+        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=0)):
+            assert _git._feature_merged_into_dev("feat/0001-foo") is True
+
+    def test_feature_merged_into_dev_returns_false(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=1)):
+            assert _git._feature_merged_into_dev("feat/0001-foo") is False

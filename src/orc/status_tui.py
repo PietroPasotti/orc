@@ -69,8 +69,8 @@ class CommitInfo:
     short: str
     subject: str
     timestamp: int  # unix epoch — used for sorting
-    branch: str     # branch name the commit "belongs to"
-    col: int        # column index in the display table
+    branch: str  # branch name the commit "belongs to"
+    col: int  # column index in the display table
 
 
 # ---------------------------------------------------------------------------
@@ -90,11 +90,14 @@ def _main_branch() -> str:
 def _git_log(branch: str, exclude: list[str]) -> list[tuple[str, str, str, int]]:
     """Run ``git log`` and return ``(sha, short_sha, subject, unix_ts)`` tuples."""
     args = [
-        "git", "log", "--first-parent",
+        "git",
+        "log",
+        "--first-parent",
         "--format=%H|%h|%s|%at",
         branch,
         *[f"^{b}" for b in exclude],
-        "-n", str(_MAX_COMMITS),
+        "-n",
+        str(_MAX_COMMITS),
     ]
     try:
         result = subprocess.run(args, cwd=_cfg.REPO_ROOT, capture_output=True, text=True)
@@ -185,7 +188,7 @@ def render_git_tree() -> RenderableType:
     _MAX_COL = 20  # max chars in a header name
 
     def _header(b: str) -> str:
-        return b if len(b) <= _MAX_COL else "…" + b[-(_MAX_COL - 1):]
+        return b if len(b) <= _MAX_COL else "…" + b[-(_MAX_COL - 1) :]
 
     table = rich.table.Table(
         show_header=True,
@@ -202,9 +205,11 @@ def render_git_tree() -> RenderableType:
 
     for commit in commits:
         style, icon = _classify_commit(commit.subject)
-        label = f"{commit.short} {icon}{commit.subject}" if icon else f"{commit.short} {commit.subject}"
+        label = (
+            f"{commit.short} {icon}{commit.subject}" if icon else f"{commit.short} {commit.subject}"
+        )
         if len(label) > _CELL_WIDTH:
-            label = label[:_CELL_WIDTH - 1] + "…"
+            label = label[: _CELL_WIDTH - 1] + "…"
         cell: Text | str = Text(label, style=style) if style else label
         cells: list[Text | str] = [""] * ncols
         cells[commit.col] = cell
@@ -281,7 +286,7 @@ class StatusApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Static(self._tab_bar_markup(), id="tab-bar")
-        with ContentSwitcher(initial=_TAB_IDS[0]):
+        with ContentSwitcher(initial=_TAB_IDS[0]):  # pragma: no cover
             with VerticalScroll(id=_TAB_IDS[0]):
                 yield Static("Loading…", id="agents-content")
             with VerticalScroll(id=_TAB_IDS[1]):

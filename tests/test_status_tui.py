@@ -305,8 +305,6 @@ class TestCaptureStatus:
 
         monkeypatch.setattr("orc.status_tui._capture_status.__module__", "orc.status_tui")
 
-        from orc.status_tui import _capture_status
-
         with patch("orc.cli.status._status", fake_status):
             output = _capture_status()
 
@@ -317,8 +315,6 @@ class TestCaptureStatus:
         def bad_status(squad="default"):
             raise RuntimeError("board missing")
 
-        from orc.status_tui import _capture_status
-
         with patch("orc.cli.status._status", bad_status):
             output = _capture_status()
 
@@ -327,7 +323,9 @@ class TestCaptureStatus:
 
 class TestMainBranch:
     def test_uses_config_value_when_set(self, monkeypatch):
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": "trunk"})
+        monkeypatch.setattr(
+            "orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": "trunk"}
+        )
         assert _main_branch() == "trunk"
 
     def test_falls_back_to_default_branch(self, monkeypatch):
@@ -336,7 +334,9 @@ class TestMainBranch:
         assert _main_branch() == "master"
 
     def test_ignores_empty_string_config(self, monkeypatch):
-        monkeypatch.setattr("orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": ""})
+        monkeypatch.setattr(
+            "orc.status_tui._cfg._load_orc_config", lambda *a, **kw: {"orc-main-branch": ""}
+        )
         monkeypatch.setattr("orc.status_tui._git._default_branch", lambda: "main")
         assert _main_branch() == "main"
 
@@ -481,7 +481,9 @@ class TestStatusApp:
         assert "git_tree" in refreshed
 
     def test_refresh_agents_updates_widget(self, monkeypatch):
-        monkeypatch.setattr("orc.status_tui._capture_status", lambda squad="default": "agent output")
+        monkeypatch.setattr(
+            "orc.status_tui._capture_status", lambda squad="default": "agent output"
+        )
         app = StatusApp()
         updates: list = []
 

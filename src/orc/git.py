@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -366,6 +367,32 @@ def _last_feature_commit_message(branch: str) -> str | None:
     return result.stdout.strip() or None
 
 
+_EXIT_SCOPE_RE = re.compile(
+    r"^chore\((?P<agent_id>[a-z]+-\d+)\.(?P<action>[a-z]+)\.(?P<task_code>\d{4})\):"
+)
+"""Regex for the structured exit-commit scope: ``chore(<agent-id>.<action>.<task-code>):``."""
+
+
+def _parse_exit_scope(subject: str) -> tuple[str, str, str] | None:
+    """Parse a structured exit commit subject into ``(agent_id, action, task_code)``.
+
+    Returns ``None`` for subjects that do not match the exit-commit format.
+
+    Examples
+    --------
+    >>> _parse_exit_scope("chore(coder-1.done.0002): finished task")
+    ('coder-1', 'done', '0002')
+    >>> _parse_exit_scope("chore(qa-2.approve.0003): all green")
+    ('qa-2', 'approve', '0003')
+    >>> _parse_exit_scope("feat: add something")
+    None
+    """
+    m = _EXIT_SCOPE_RE.match(subject)
+    if m is None:
+        return None
+    return m.group("agent_id"), m.group("action"), m.group("task_code")
+
+
 def _derive_task_state(task_name: str) -> tuple[str, str]:
     """Inspect the git tree for *task_name* and return ``(token, reason)``.
 
@@ -382,9 +409,12 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
               ├─ NO  → (same merge check as above)
               │
               └─ YES → What's the subject of the last commit?
-                        ├─ starts with "qa(passed):"  → ACTION_QA_PASSED (merge it)
-                        ├─ starts with "qa("          → dispatch "coder" (QA found issues)
-                        └─ anything else              → dispatch "qa"
+                        ├─ exit scope action "approve" → ACTION_QA_PASSED (merge it)
+                        ├─ exit scope action "reject"  → dispatch "coder" (QA found issues)
+                        ├─ exit scope action "done"    → dispatch "qa" (coder finished)
+                        ├─ legacy "qa(passed):"        → ACTION_QA_PASSED (backward compat)
+                        ├─ legacy "qa(…)"              → dispatch "coder" (backward compat)
+                        └─ anything else               → dispatch "qa"
     """
     branch = _feature_branch(task_name)
 
@@ -402,9 +432,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
         # In the normal flow the branch is only deleted AFTER the board has
         # been committed closed, so if the task is still open here the branch
         # simply hasn't been created yet.  Dispatch a coder to create it.
-        logger.debug(
-            "derive_task_state: branch absent — dispatch coder", task=task_name
-        )
+        logger.debug("derive_task_state: branch absent — dispatch coder", task=task_name)
         return "coder", f"feature branch {branch!r} does not exist yet"
 
     # Branch exists — check if it has work not yet in main.
@@ -433,10 +461,24 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     last_msg = _last_feature_commit_message(branch)
     logger.debug("derive_task_state: last commit", task=task_name, branch=branch, last_msg=last_msg)
 
-    if last_msg and last_msg.startswith("qa(passed)"):
-        return _QA_PASSED, f"qa passed on {branch!r} — ready to merge"
-    if last_msg and last_msg.startswith("qa("):
-        return "coder", f"qa reviewed {branch!r} with issues: {last_msg!r}"
+    if last_msg:
+        # New structured exit-commit format: chore(<agent-id>.<action>.<code>): …
+        parsed = _parse_exit_scope(last_msg)
+        if parsed is not None:
+            _agent_id, action, _task_code = parsed
+            if action == "approve":
+                return _QA_PASSED, f"qa approved on {branch!r} — ready to merge"
+            if action == "reject":
+                return "coder", f"qa rejected {branch!r}: {last_msg!r}"
+            if action == "done":
+                return "qa", f"coder finished {branch!r}, awaiting review"
+            # Unknown action — fall through to legacy matching below.
+
+        # Legacy format: qa(passed): / qa(…)  — kept for backward compatibility.
+        if last_msg.startswith("qa(passed)"):
+            return _QA_PASSED, f"qa passed on {branch!r} — ready to merge"
+        if last_msg.startswith("qa("):
+            return "coder", f"qa reviewed {branch!r} with issues: {last_msg!r}"
 
     return "qa", f"coder has commits on {branch!r}, awaiting review"
 
