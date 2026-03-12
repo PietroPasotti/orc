@@ -148,14 +148,15 @@ class TestRoute:
         )
         assert route(s) == ACTION_CLOSE_BOARD
 
-    def test_coder_commits_routes_to_qa(self):
+    def test_coder_commits_routes_to_coder(self):
+        """CODER_WORK routes back to coder — they're still working."""
         s = WorldState(
             has_open_task=True,
             branch_exists=True,
             commits_ahead=True,
             last_commit=LastCommit.CODER_WORK,
         )
-        assert route(s) == "qa"
+        assert route(s) == "coder"
 
     def test_qa_passed_routes_to_merge(self):
         s = WorldState(
@@ -572,16 +573,16 @@ class TestSystemRoute:
         assert actions is not None
         assert actions[task] == "coder"
 
-    def test_task_with_coder_commits_routes_to_qa(self):
+    def test_task_with_coder_commits_routes_to_coder(self):
         task = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK)
         s = SystemState(tasks=frozenset({task}))
         actions = system_route(s)
         assert actions is not None
-        assert actions[task] == "qa"
+        assert actions[task] == "coder"
 
     def test_two_tasks_both_dispatched(self):
         t1 = TaskState(branch_exists=False)
-        t2 = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_WORK)
+        t2 = TaskState(branch_exists=True, commits_ahead=True, last_commit=LastCommit.CODER_DONE)
         s = SystemState(tasks=frozenset({t1, t2}))
         actions = system_route(s)
         assert actions is not None

@@ -200,8 +200,12 @@ def route(state: WorldState) -> str | None:
     if state.last_commit == LastCommit.QA_OTHER:
         return "coder"
 
-    # CODER_DONE and CODER_WORK both route to QA.
-    return "qa"
+    # Coder explicitly signalled done via close_task.sh → send to QA.
+    if state.last_commit == LastCommit.CODER_DONE:
+        return "qa"
+
+    # Ordinary coder commit (CODER_WORK or unknown) — coder is still working.
+    return "coder"
 
 
 def successors(state: WorldState) -> frozenset[WorldState]:

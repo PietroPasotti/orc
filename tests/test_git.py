@@ -97,8 +97,8 @@ class TestDeriveStateFromGit:
         assert agent == CLOSE_BOARD
         assert "merged" in reason
 
-    def test_coder_commits_returns_qa(self, monkeypatch):
-        """Coder-authored commit → route to QA."""
+    def test_coder_commits_returns_coder(self, monkeypatch):
+        """Ordinary coder commit (no close_task.sh) → route back to coder, still working."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
@@ -107,8 +107,8 @@ class TestDeriveStateFromGit:
             last_commit_msg="feat: implement ResourceType enum",
         )
         agent, reason = _derive_state_from_git()
-        assert agent == "qa"
-        assert "awaiting review" in reason
+        assert agent == "coder"
+        assert "not yet signalled done" in reason
 
     def test_qa_passed_commit_returns_qa_passed_sentinel(self, monkeypatch):
         """qa(passed): commit → _QA_PASSED sentinel."""
@@ -150,8 +150,8 @@ class TestDeriveStateFromGit:
         agent, reason = _derive_state_from_git()
         assert agent == "coder"
 
-    def test_no_last_commit_message_returns_qa(self, monkeypatch):
-        """No commit message (e.g. git error) → treat as coder commits, route to QA."""
+    def test_no_last_commit_message_returns_coder(self, monkeypatch):
+        """No commit message (e.g. git error) → treat as coder still working, route to coder."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
@@ -160,7 +160,7 @@ class TestDeriveStateFromGit:
             last_commit_msg=None,
         )
         agent, _ = _derive_state_from_git()
-        assert agent == "qa"
+        assert agent == "coder"
 
     def test_reason_includes_branch_name(self, monkeypatch):
         self._patch(
@@ -773,12 +773,12 @@ class TestDeriveTaskStateExitCommits:
         assert agent == "coder"
         assert "rejected" in reason
 
-    def test_unknown_action_falls_through_to_qa(self, monkeypatch):
+    def test_unknown_action_falls_through_to_coder(self, monkeypatch):
         """A structured exit commit with an unknown action falls through to legacy matching,
-        then to the default 'qa' dispatch."""
+        then to the default 'coder' dispatch (still working)."""
         self._patch(monkeypatch, last_commit_msg="chore(coder-1.unknown.0002): weird action")
         agent, _ = _git._derive_task_state("0002-foo.md")
-        assert agent == "qa"
+        assert agent == "coder"
 
     def test_feature_merged_into_dev_returns_true(self, monkeypatch):
         """_feature_merged_into_dev uses subprocess; verify it parses returncode correctly."""

@@ -250,7 +250,7 @@ class TestBlockedResumption:
                     "_feature_branch_exists": True,
                     "_feature_has_commits_ahead_of_main": True,
                     "_feature_merged_into_dev": False,
-                    "_last_feature_commit_message": "feat: implement it",
+                    "_last_feature_commit_message": "chore(coder-1.done.0001): finished task",
                 },
             ),
         ]

@@ -418,7 +418,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
                         ├─ exit scope action "done"    → dispatch "qa" (coder finished)
                         ├─ legacy "qa(passed):"        → ACTION_QA_PASSED (backward compat)
                         ├─ legacy "qa(…)"              → dispatch "coder" (backward compat)
-                        └─ anything else               → dispatch "qa"
+                        └─ anything else               → dispatch "coder" (still working)
     """
     branch = _feature_branch(task_name)
 
@@ -484,7 +484,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
         if last_msg.startswith("qa("):
             return "coder", f"qa reviewed {branch!r} with issues: {last_msg!r}"
 
-    return "qa", f"coder has commits on {branch!r}, awaiting review"
+    return "coder", f"coder has uncommitted work on {branch!r} — not yet signalled done"
 
 
 def _derive_state_from_git() -> tuple[str, str]:

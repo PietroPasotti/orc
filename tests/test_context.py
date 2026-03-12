@@ -326,6 +326,29 @@ class TestContextCoverage:
         assert isinstance(ctx, str)
         assert len(ctx) > 0
 
+    def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
+        """QA agent with an active feature branch gets review-specific git info."""
+        roles_dir = tmp_path / "roles"
+        roles_dir.mkdir()
+        work_dir = tmp_path / ".orc" / "work"
+        work_dir.mkdir(parents=True)
+        (work_dir / "board.yaml").write_text(
+            "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
+        )
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
+        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
+        _, ctx = _ctx.build_agent_context("qa", [], worktree=tmp_path)
+        assert "feat/0001-task" in ctx
+        assert "Branch to review" in ctx
+
     def test_role_symbol_with_symbol_in_frontmatter(self, tmp_path, monkeypatch):
         """Lines 65-67: role file has valid frontmatter containing 'symbol' key."""
         roles_dir = tmp_path / "roles"
