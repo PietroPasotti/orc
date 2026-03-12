@@ -334,9 +334,9 @@ class TestBootstrap:
 
     def test_creates_expected_structure(self, git_project):
         root = git_project
-        assert (root / ".orc" / "roles" / "planner.md").exists()
-        assert (root / ".orc" / "roles" / "coder.md").exists()
-        assert (root / ".orc" / "roles" / "qa.md").exists()
+        assert (root / ".orc" / "roles" / "planner" / "_main.md").exists()
+        assert (root / ".orc" / "roles" / "coder" / "_main.md").exists()
+        assert (root / ".orc" / "roles" / "qa" / "_main.md").exists()
         assert (root / ".orc" / "squads" / "default.yaml").exists()
         assert (root / ".orc" / "work" / "board.yaml").exists()
         assert (root / ".orc" / "vision" / "feature-x.md").exists()

@@ -25,9 +25,11 @@ class TestBootstrap:
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
         for role in ("planner", "coder", "qa"):
-            role_file = tmp_path / ".orc" / "roles" / f"{role}.md"
-            assert role_file.exists(), f"Missing {role}.md"
-            assert len(role_file.read_text()) > 100
+            role_dir = tmp_path / ".orc" / "roles" / role
+            assert role_dir.is_dir(), f"Missing {role}/ directory"
+            main_file = role_dir / "_main.md"
+            assert main_file.exists(), f"Missing {role}/_main.md"
+            assert len(main_file.read_text()) > 100
 
     def test_copies_default_squad(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -96,7 +98,7 @@ class TestBootstrap:
     def test_custom_orc_dir(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap", "--to", "agents"])
-        assert (tmp_path / "agents" / "roles" / "planner.md").exists()
+        assert (tmp_path / "agents" / "roles" / "planner" / "_main.md").exists()
         assert (tmp_path / "agents" / "work" / "board.yaml").exists()
 
     def test_output_reports_created_files(self, tmp_path, monkeypatch):

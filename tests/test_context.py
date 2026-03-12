@@ -213,6 +213,72 @@ class TestContextCoverage:
         result = _ctx._parse_role_file("wizard")
         assert "wizard" in result
 
+    def test_parse_role_file_directory_format(self, tmp_path, monkeypatch):
+        """Directory format: _main.md loaded first, then remaining files alphabetically."""
+        roles_dir = tmp_path / "roles"
+        role_dir = roles_dir / "coder"
+        role_dir.mkdir(parents=True)
+        (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nIdentity section.")
+        (role_dir / "constraints.md").write_text("Constraints section.")
+        (role_dir / "exit-states.md").write_text("Exit states section.")
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        result = _ctx._parse_role_file("coder")
+        assert "Identity section." in result
+        assert "Constraints section." in result
+        assert "Exit states section." in result
+        assert "symbol" not in result
+        assert result.index("Identity section.") < result.index("Constraints section.")
+        assert result.index("Constraints section.") < result.index("Exit states section.")
+
+    def test_parse_role_file_directory_takes_precedence_over_flat_file(self, tmp_path, monkeypatch):
+        """When both directory and .md file exist, directory wins."""
+        roles_dir = tmp_path / "roles"
+        role_dir = roles_dir / "coder"
+        role_dir.mkdir(parents=True)
+        (role_dir / "_main.md").write_text("Directory version.")
+        (roles_dir / "coder.md").write_text("Flat file version.")
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        result = _ctx._parse_role_file("coder")
+        assert "Directory version." in result
+        assert "Flat file version." not in result
+
+    def test_parse_role_dir_empty_returns_fallback(self, tmp_path, monkeypatch):
+        """Empty directory returns a fallback string."""
+        roles_dir = tmp_path / "roles"
+        role_dir = roles_dir / "coder"
+        role_dir.mkdir(parents=True)
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        result = _ctx._parse_role_file("coder")
+        assert "coder" in result
+
+    def test_parse_role_file_project_dir_overrides_pkg_flat(self, tmp_path, monkeypatch):
+        """Project-level directory overrides package-level flat file."""
+        roles_dir = tmp_path / "roles"
+        role_dir = roles_dir / "coder"
+        role_dir.mkdir(parents=True)
+        (role_dir / "_main.md").write_text("Project directory version.")
+        pkg_roles = tmp_path / "pkg_roles"
+        pkg_roles.mkdir()
+        (pkg_roles / "coder.md").write_text("Package flat version.")
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", pkg_roles)
+        result = _ctx._parse_role_file("coder")
+        assert "Project directory version." in result
+        assert "Package flat version." not in result
+
+    def test_role_symbol_directory_format(self, tmp_path, monkeypatch):
+        """_role_symbol reads from _main.md when role is a directory."""
+        roles_dir = tmp_path / "roles"
+        role_dir = roles_dir / "coder"
+        role_dir.mkdir(parents=True)
+        (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nYou are a coder.\n")
+        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        assert _ctx._role_symbol("coder") == "🛠️"
+
     def test_parse_role_file_with_frontmatter(self, tmp_path, monkeypatch):
         roles_dir = tmp_path / "roles"
         roles_dir.mkdir()

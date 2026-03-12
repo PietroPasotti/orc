@@ -99,28 +99,68 @@ def _has_planner_work() -> bool:
     return bool(_scan_todos(_cfg.REPO_ROOT))
 
 
-def _parse_role_file(agent_name: str) -> str:
-    """Read a role file and return its content."""
-    role_file = _cfg.ROLES_DIR / f"{agent_name}.md"
-    if not role_file.exists():
-        role_file = _cfg._PACKAGE_ROLES_DIR / f"{agent_name}.md"
-    if not role_file.exists():
-        return f"You are the {agent_name} agent."
-
-    raw = role_file.read_text()
-
+def _strip_frontmatter(raw: str) -> str:
+    """Strip YAML frontmatter (delimited by ``---``) from *raw* text."""
     if raw.startswith("---"):
         end = raw.find("\n---", 3)
         if end != -1:
             raw = raw[end + 4 :].lstrip("\n")
-
     return raw
 
 
+def _parse_role_dir(role_dir: Path) -> str:
+    """Load a role from a directory.
+
+    ``_main.md`` is loaded first (if present), then all remaining ``*.md``
+    files in alphabetical order.  YAML frontmatter is stripped from every
+    file.  Returns a fallback string when the directory contains no Markdown.
+    """
+    parts: list[str] = []
+    main_file = role_dir / "_main.md"
+    if main_file.exists():
+        parts.append(_strip_frontmatter(main_file.read_text()))
+    for md_file in sorted(role_dir.glob("*.md")):
+        if md_file.name == "_main.md":
+            continue
+        parts.append(_strip_frontmatter(md_file.read_text()))
+    return "\n\n".join(parts) if parts else f"You are the {role_dir.name} agent."
+
+
+def _parse_role_file(agent_name: str) -> str:
+    """Read a role definition and return its content.
+
+    Supports two formats, checked in this order for each search directory:
+
+    1. **Directory** – ``roles/{agent}/``: ``_main.md`` is loaded first,
+       then the remaining ``*.md`` files alphabetically.  Each file's YAML
+       frontmatter is stripped before concatenation.
+    2. **Single file** – ``roles/{agent}.md``: loaded as before, with YAML
+       frontmatter stripped.
+
+    Search order: project-level ``ROLES_DIR`` before the package-bundled
+    ``_PACKAGE_ROLES_DIR``.
+    """
+    for base_dir in (_cfg.ROLES_DIR, _cfg._PACKAGE_ROLES_DIR):
+        role_dir = base_dir / agent_name
+        if role_dir.is_dir():
+            return _parse_role_dir(role_dir)
+        role_file = base_dir / f"{agent_name}.md"
+        if role_file.exists():
+            return _strip_frontmatter(role_file.read_text())
+    return f"You are the {agent_name} agent."
+
+
 def _role_symbol(role: str) -> str:
-    """Return the symbol declared in the role file's frontmatter, or '' if absent."""
+    """Return the symbol declared in the role file's frontmatter, or '' if absent.
+
+    For directory-format roles, the frontmatter is read from ``_main.md``.
+    """
     for directory in (_cfg.ROLES_DIR, _cfg._PACKAGE_ROLES_DIR):
-        role_file = directory / f"{role}.md"
+        role_dir = directory / role
+        if role_dir.is_dir():
+            role_file = role_dir / "_main.md"
+        else:
+            role_file = directory / f"{role}.md"
         if not role_file.exists():
             continue
         raw = role_file.read_text()
