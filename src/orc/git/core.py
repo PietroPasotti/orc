@@ -12,8 +12,9 @@ import yaml
 
 import orc.board as _board
 import orc.config as _cfg
-from orc.engine.dispatcher import CLOSE_BOARD as _CLOSE_BOARD
-from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
+from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
+from orc.engine.state_machine import LastCommit, WorldState
+from orc.engine.state_machine import route as _route
 
 logger = structlog.get_logger(__name__)
 
@@ -397,28 +398,41 @@ def _parse_exit_scope(subject: str) -> tuple[str, str, str] | None:
     return m.group("agent_id"), m.group("action"), m.group("task_code")
 
 
+def _classify_last_commit(last_msg: str | None) -> LastCommit:
+    """Map a raw commit subject to a :class:`~orc.engine.state_machine.LastCommit` value.
+
+    This is the canonical commit classifier — :func:`_derive_task_state` uses it
+    so that :func:`~orc.engine.state_machine.route` remains the single
+    source of truth for routing decisions.
+    """
+    if not last_msg:
+        return LastCommit.CODER_WORK
+
+    parsed = _parse_exit_scope(last_msg)
+    if parsed is not None:
+        _, action, _ = parsed
+        if action == "approve":
+            return LastCommit.QA_PASSED
+        if action == "reject":
+            return LastCommit.QA_OTHER
+        if action == "done":
+            return LastCommit.CODER_DONE
+        # Unknown action — fall through to legacy matching.
+
+    # Legacy format: qa(passed): / qa(…) — kept for backward compatibility.
+    if last_msg.startswith("qa(passed)"):
+        return LastCommit.QA_PASSED
+    if last_msg.startswith("qa("):
+        return LastCommit.QA_OTHER
+
+    return LastCommit.CODER_WORK
+
+
 def _derive_task_state(task_name: str) -> tuple[str, str]:
     """Inspect the git tree for *task_name* and return ``(token, reason)``.
 
-    Decision tree:
-
-    Does feat/NNNN-foo branch exist?
-    │
-    ├─ NO → Has it been merged into dev?
-    │       ├─ YES → ACTION_CLOSE_BOARD (board out of sync)
-    │       └─ NO  → dispatch "coder"
-    │
-    └─ YES → Does it have commits ahead of main?
-              │
-              ├─ NO  → (same merge check as above)
-              │
-              └─ YES → What's the subject of the last commit?
-                        ├─ exit scope action "approve" → ACTION_QA_PASSED (merge it)
-                        ├─ exit scope action "reject"  → dispatch "coder" (QA found issues)
-                        ├─ exit scope action "done"    → dispatch "qa" (coder finished)
-                        ├─ legacy "qa(passed):"        → ACTION_QA_PASSED (backward compat)
-                        ├─ legacy "qa(…)"              → dispatch "coder" (backward compat)
-                        └─ anything else               → dispatch "coder" (still working)
+    Collects live git state, then delegates the routing decision to
+    :func:`~orc.engine.state_machine.route` — the single source of truth.
     """
     branch = _feature_branch(task_name)
 
@@ -428,18 +442,9 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     )
 
     if not branch_exists:
-        # The branch was never created or was already deleted.
-        # We cannot reliably test merge ancestry for a non-existent ref
-        # (git merge-base returns exit 128 for unknown refs, which also
-        # happens to return False — but could false-positive on a tag or
-        # remote ref with the same name).
-        # In the normal flow the branch is only deleted AFTER the board has
-        # been committed closed, so if the task is still open here the branch
-        # simply hasn't been created yet.  Dispatch a coder to create it.
         logger.debug("derive_task_state: branch absent — dispatch coder", task=task_name)
         return "coder", f"feature branch {branch!r} does not exist yet"
 
-    # Branch exists — check if it has work not yet in main.
     has_commits = _feature_has_commits_ahead_of_main(branch)
     logger.debug(
         "derive_task_state: commits ahead of main",
@@ -449,10 +454,6 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     )
 
     if not has_commits:
-        # Branch exists but is at (or behind) main — this happens when the
-        # feature was already merged and the branch was re-created by
-        # _ensure_feature_worktree, or when cleanup didn't run after merge.
-        # Check whether it's been merged into dev before dispatching a coder.
         if _feature_merged_into_dev(branch):
             logger.info(
                 "derive_task_state: branch exists but already merged into dev — closing board",
@@ -465,26 +466,30 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     last_msg = _last_feature_commit_message(branch)
     logger.debug("derive_task_state: last commit", task=task_name, branch=branch, last_msg=last_msg)
 
-    if last_msg:
-        # New structured exit-commit format: chore(<agent-id>.<action>.<code>): …
-        parsed = _parse_exit_scope(last_msg)
-        if parsed is not None:
-            _agent_id, action, _task_code = parsed
-            if action == "approve":
-                return _QA_PASSED, f"qa approved on {branch!r} — ready to merge"
-            if action == "reject":
-                return "coder", f"qa rejected {branch!r}: {last_msg!r}"
-            if action == "done":
-                return "qa", f"coder finished {branch!r}, awaiting review"
-            # Unknown action — fall through to legacy matching below.
+    last_commit = _classify_last_commit(last_msg)
+    world_state = WorldState(
+        has_open_task=True,
+        branch_exists=True,
+        commits_ahead=True,
+        last_commit=last_commit,
+    )
+    action = _route(world_state)  # single source of truth
 
-        # Legacy format: qa(passed): / qa(…)  — kept for backward compatibility.
-        if last_msg.startswith("qa(passed)"):
-            return _QA_PASSED, f"qa passed on {branch!r} — ready to merge"
-        if last_msg.startswith("qa("):
-            return "coder", f"qa reviewed {branch!r} with issues: {last_msg!r}"
+    if last_commit == LastCommit.QA_PASSED:
+        reason = f"qa approved on {branch!r} — ready to merge"
+    elif last_commit == LastCommit.CODER_DONE:
+        reason = f"coder finished {branch!r}, awaiting review"
+    elif last_commit == LastCommit.QA_OTHER:
+        # Preserve "rejected" keyword when the structured exit action is "reject".
+        parsed = _parse_exit_scope(last_msg or "")
+        if parsed is not None and parsed[1] == "reject":
+            reason = f"qa rejected {branch!r}: {last_msg!r}"
+        else:
+            reason = f"qa reviewed {branch!r} with issues: {last_msg!r}"
+    else:
+        reason = f"coder has uncommitted work on {branch!r} — not yet signalled done"
 
-    return "coder", f"coder has uncommitted work on {branch!r} — not yet signalled done"
+    return action, reason  # type: ignore[return-value]
 
 
 def _derive_state_from_git() -> tuple[str, str]:

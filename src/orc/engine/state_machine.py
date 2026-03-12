@@ -34,9 +34,10 @@ extends this guarantee to N concurrent tasks; see below.
 
 Architecture note
 -----------------
-``route()`` mirrors the imperative logic in :func:`orc.git._derive_task_state`
-and :func:`orc.workflow.determine_next_agent`.  Keeping them in sync is
-enforced by parametrised cross-check tests in ``tests/test_state_machine.py``.
+``route()`` is the **authoritative** routing function.
+:func:`orc.git.core._derive_task_state` delegates to ``route()`` after
+collecting live git state, ensuring there is a single source of truth.
+Cross-check tests in ``tests/test_state_machine.py`` verify consistency.
 """
 
 from __future__ import annotations
@@ -161,9 +162,8 @@ def route(state: WorldState) -> str | None:
         The workflow is terminal — either complete (nothing left to do) or
         hard-blocked (waiting for a human).
 
-    The logic here mirrors :func:`orc.git._derive_task_state` and
-    :func:`orc.workflow.determine_next_agent`.  Any change to those functions
-    must be reflected here (and vice-versa) to keep the formal model current.
+    :func:`orc.git.core._derive_task_state` delegates its routing decision to
+    this function, so ``route()`` is the single source of truth.
     """
     # Hard block: stop entirely, wait for human.
     if state.block == BlockState.HARD:
