@@ -1,32 +1,47 @@
 ## Exit states
 
-After completing your review, make the git commit described above, then write
-**one** status message to the **Telegram chat** using the format below, then stop.
-Use `orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
-
 | State | When to use |
 |-------|-------------|
-| `passed` | No Critical or Major issues found; work can proceed to the planner |
-| `failed` | One or more Critical or Major issues found; coder must fix before proceeding |
+| `approve` | No Critical or Major issues found; work can proceed |
+| `reject` | One or more Critical or Major issues found; coder must fix before proceeding |
 | `blocked` | You cannot complete the review without human input |
 
-**Message format:**
+### Signalling `approve`
 
-```
-[qa](state) YYYY-MM-DDTHH:MM:SSZ: <message>
-```
+When the task passes review, run:
 
-Example (passed):
-```
-[qa](passed) 2026-03-01T13:00:00Z: Reviewed plan 0002. No issues found.
+```bash
+.orc/agent_tools/qa/approve_task.sh <agent-id> <task-code> "<message>"
 ```
 
-Example (failed):
-```
-[qa](failed) 2026-03-01T13:05:00Z: Reviewed plan 0002. Found 1 critical issue:
-[CRIT] Step 4 (server endpoint) is missing – GET /modules/{id}/inventory not implemented.
-Coder must address [CRIT] before proceeding.
+Example:
+```bash
+.orc/agent_tools/qa/approve_task.sh qa-1 0002 "all tests green; no critical issues"
 ```
 
-The Telegram message is informational only — the orchestrator routes based on
-your git commit prefix, not this message.
+### Signalling `reject`
+
+Stage your feedback file(s) first, then run:
+
+```bash
+git add orc/work/<task-file>.md   # or wherever you wrote your feedback
+.orc/agent_tools/qa/reject_task.sh <agent-id> <task-code> "<message>"
+```
+
+Example:
+```bash
+git add orc/work/0003-foo.md
+.orc/agent_tools/qa/reject_task.sh qa-2 0003 "missing tests for error paths; see task file"
+```
+
+Both scripts commit all changes and produce a structured commit the orchestrator
+uses to route the task. Do **not** craft the commit message by hand.
+
+### Signalling `blocked`
+
+Write **one** message to the **Telegram chat**, then stop. Use
+`orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
+
+```
+[qa](blocked) YYYY-MM-DDTHH:MM:SSZ: <what you need from a human>
+```
