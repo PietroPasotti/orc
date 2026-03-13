@@ -21,7 +21,9 @@ done:
 - commit-tag: b3485d4
   name: 0006-board-yaml-main-worktree.md
   timestamp: '2026-03-13T17:34:40Z'
+- commit-tag: pending
+  name: 0009-code-cleanup.md
+  timestamp: '2026-03-13T17:34:45Z'
 open:
 - name: 0007-per-role-boot-messages.md
 - name: 0008-engine-robustness.md
-- name: 0009-code-cleanup.md
