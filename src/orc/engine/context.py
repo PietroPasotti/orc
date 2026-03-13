@@ -215,10 +215,24 @@ def _scan_todos(root: Path) -> list[dict]:
     Returns a list of ``{"file": str, "line": int, "tag": str, "text": str}``
     dicts, one per matching line.  Returns an empty list when *root* is not a
     git repository or when the command fails for any other reason.
+
+    The ``.orc/`` directory is excluded — it contains orc infrastructure files
+    (role prompts, board, config) that mention ``#TODO`` / ``#FIXME`` as
+    documentation text rather than real action items in user code.
     """
     try:
         result = subprocess.run(
-            ["git", "grep", "-n", "-I", "--no-color", "-E", r"#\s*(TODO|FIXME)"],
+            [
+                "git",
+                "grep",
+                "-n",
+                "-I",
+                "--no-color",
+                "-E",
+                r"#\s*(TODO|FIXME)",
+                "--",
+                ":!.orc/",
+            ],
             cwd=root,
             capture_output=True,
             text=True,
