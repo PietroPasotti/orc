@@ -67,7 +67,7 @@ def main() -> None:
     task_title: str = args.task_title
 
     if not BOARD_FILE.exists():
-        print(f"Error: board file not found at {BOARD_FILE}", file=sys.stderr)
+        print(f"Error: board file not found at {BOARD_FILE}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
     board = yaml.safe_load(BOARD_FILE.read_text()) or {}
@@ -91,7 +91,7 @@ def main() -> None:
     tmp.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
     tmp.replace(BOARD_FILE)
 
-    print(str(task_file))
+    print(str(task_file))  # noqa: T201
 
 
 if __name__ == "__main__":

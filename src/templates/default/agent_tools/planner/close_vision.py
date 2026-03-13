@@ -44,7 +44,7 @@ def main() -> None:
 
     vision_path = Path(args.vision_file)
     if not vision_path.exists():
-        print(f"Error: vision file not found at {vision_path}", file=sys.stderr)
+        print(f"Error: vision file not found at {vision_path}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
     vision_name = vision_path.stem
@@ -62,8 +62,8 @@ def main() -> None:
 
     vision_path.unlink()
 
-    print(f"Closed vision: {vision_name}")
-    print(f"Updated changelog: {CHANGELOG_FILE}")
+    print(f"Closed vision: {vision_name}")  # noqa: T201
+    print(f"Updated changelog: {CHANGELOG_FILE}")  # noqa: T201
 
 
 if __name__ == "__main__":

@@ -34,9 +34,9 @@ status *args:
     uv run orc --project-dir {{repo_root}} status {{args}}
 
 # Rebase dev on main and fast-forward merge into main
-merge:
-    uv run orc --project-dir {{repo_root}} merge
+merge *args:
+    uv run orc --project-dir {{repo_root}} merge {{args}}
 
 # List available squad profiles and their composition
-squads:
-    uv run orc --project-dir {{repo_root}} squads
+squads *args:
+    uv run orc --project-dir {{repo_root}} squads {{args}}

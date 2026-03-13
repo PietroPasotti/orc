@@ -458,6 +458,8 @@ class Dispatcher:
                 continue
 
             if token == CLOSE_BOARD:
+                # FIXME: this could fail! Wrap in a try/except and log.
+                #  Do the same for all calls out of _dispatch, this is a critical path.
                 self.cb.do_close_board(task_name)
                 continue
 
