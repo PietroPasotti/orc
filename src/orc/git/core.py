@@ -35,6 +35,14 @@ class MergeConflictError(Exception):
         super().__init__(f"merge conflict on {branch!r} in {worktree}")
 
 
+class UntrackedFilesWouldBeOverwrittenError(Exception):
+    """Raised when ``git merge --ff-only`` refuses because untracked files would be overwritten."""
+
+    def __init__(self, files: list[str]) -> None:
+        self.files = files
+        super().__init__(f"untracked files would be overwritten by merge: {files}")
+
+
 def _default_branch() -> str:
     """Return the repo's default branch name (e.g. 'main' or 'master')."""
     result = subprocess.run(
@@ -453,16 +461,43 @@ def _complete_merge() -> bool:
     checkout is needed before or after the merge.
 
     Returns True if a merge was performed, False if already up to date.
+
+    Raises:
+        UntrackedFilesWouldBeOverwrittenError: if git refuses because untracked
+            files in the main worktree would be overwritten.
+        subprocess.CalledProcessError: for any other git failure.
     """
     cfg = _cfg.get()
     result = subprocess.run(
         ["git", "merge", "--ff-only", cfg.work_dev_branch],
         cwd=cfg.repo_root,
-        check=True,
         capture_output=True,
         text=True,
     )
-    return "Already up to date" not in result.stdout
+    if result.returncode == 0:
+        return "Already up to date" not in result.stdout
+
+    combined = result.stderr + result.stdout
+    if "would be overwritten" in combined:
+        files: list[str] = []
+        in_file_list = False
+        for line in combined.splitlines():
+            stripped = line.strip()
+            if "would be overwritten" in stripped:
+                in_file_list = True
+                continue
+            if in_file_list:
+                if (
+                    not stripped
+                    or stripped.lower().startswith("please")
+                    or stripped.lower().startswith("aborting")
+                ):
+                    break
+                files.append(stripped)
+        raise UntrackedFilesWouldBeOverwrittenError(files)
+
+    result.check_returncode()
+    return False  # unreachable
 
 
 def _conflict_status(worktree: Path) -> str:

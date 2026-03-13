@@ -207,3 +207,48 @@ class TestMergeCommand:
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1
+
+    def test_auto_untracked_files_exits_with_clear_message(self, monkeypatch, tmp_path):
+        """With --auto: if main worktree has untracked files that would be overwritten,
+        exit non-zero with a message naming the files."""
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        from orc.git.core import UntrackedFilesWouldBeOverwrittenError
+
+        monkeypatch.setattr(
+            _git,
+            "_complete_merge",
+            lambda: (_ for _ in ()).throw(UntrackedFilesWouldBeOverwrittenError(["board.yaml"])),
+        )
+
+        result = runner.invoke(m.app, ["merge", "--auto"])
+        assert result.exit_code != 0
+        assert "board.yaml" in result.output
+
+    def test_manual_instructions_use_repo_root_not_dev_worktree(self, monkeypatch, tmp_path):
+        """Without --auto: the printed git instructions use repo_root, not dev worktree."""
+        self._setup(monkeypatch, tmp_path)
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path / "dev_wt")
+        monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
+
+        def fake_run(cmd, cwd=None, check=False, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            return r
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        result = runner.invoke(m.app, ["merge"])
+        assert result.exit_code == 0
+        # Must NOT suggest checking out in the dev worktree
+        assert "checkout main" not in result.output
+        # Must use merge --ff-only
+        assert "merge --ff-only" in result.output

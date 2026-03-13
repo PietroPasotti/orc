@@ -400,6 +400,54 @@ class TestGitCoverage:
             result = _git._complete_merge()
         assert result is False
 
+    def test_complete_merge_raises_on_untracked_files(self, tmp_path, monkeypatch):
+        """_complete_merge raises UntrackedFilesWouldBeOverwrittenError when
+        git refuses because untracked files would be overwritten."""
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev", repo_root=tmp_path)
+        )
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 1
+            r.stdout = ""
+            r.stderr = (
+                "error: The following untracked working tree files would be overwritten by merge:\n"
+                "\tboard.yaml\n"
+                "Please move or remove them before you merge.\n"
+                "Aborting\n"
+            )
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            import pytest
+
+            with pytest.raises(_git.UntrackedFilesWouldBeOverwrittenError) as exc_info:
+                _git._complete_merge()
+        assert "board.yaml" in exc_info.value.files
+
+    def test_complete_merge_raises_subprocess_error_on_other_failure(self, tmp_path, monkeypatch):
+        """_complete_merge re-raises CalledProcessError for non-untracked-file failures."""
+        import subprocess as _sp
+
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev", repo_root=tmp_path)
+        )
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 128
+            r.stdout = ""
+            r.stderr = "fatal: not a git repository\n"
+            r.check_returncode = lambda: (_ for _ in ()).throw(_sp.CalledProcessError(128, cmd))
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            import pytest
+
+            with pytest.raises(_sp.CalledProcessError):
+                _git._complete_merge()
+
     def test_conflict_status_returns_output(self, tmp_path):
         """Lines 256-262: _conflict_status returns git status output."""
 

@@ -12,6 +12,7 @@ import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.cli import _check_env_or_exit, app
+from orc.git.core import UntrackedFilesWouldBeOverwrittenError
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, SquadConfig
 
@@ -73,10 +74,20 @@ def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
     _rebase_dev_on_main(messages)
-    dev_worktree = _git._ensure_dev_worktree()
+    _git._ensure_dev_worktree()
 
     if auto:
-        merged = _git._complete_merge()
+        try:
+            merged = _git._complete_merge()
+        except UntrackedFilesWouldBeOverwrittenError as exc:
+            files_list = "\n".join(f"  - {f}" for f in exc.files)
+            typer.echo(
+                f"✗ Fast-forward merge aborted: the following untracked files in the main\n"
+                f"  worktree would be overwritten by the merge:\n{files_list}\n\n"
+                f"  Remove or move those files and re-run `orc merge --auto`.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
         if merged:
             typer.echo("✓ dev merged into main.")
         else:
@@ -85,11 +96,11 @@ def _merge(auto: bool = False) -> None:
         if _status._dev_ahead_of_main() == 0:
             typer.echo("Nothing to merge — dev has no commits ahead of main.")
             return
+        cfg = _cfg.get()
         typer.echo(
             f"✓ dev is up-to-date with main and ready to merge.\n"
             f"  Run the following to merge manually:\n\n"
-            f"    git -C {dev_worktree} checkout main\n"
-            f"    git -C {dev_worktree} merge --ff-only {_cfg.get().work_dev_branch}\n\n"
+            f"    git -C {cfg.repo_root} merge --ff-only {cfg.work_dev_branch}\n\n"
             f"  Or re-run with --auto to let orc do it."
         )
 
