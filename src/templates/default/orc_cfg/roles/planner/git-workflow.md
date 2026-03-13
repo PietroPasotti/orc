@@ -6,7 +6,7 @@ You are the **only agent that commits directly to `dev`**. After creating a task
 commit it using the provided tool:
 
 ```bash
-.orc/agent_tools/planner/publish_task.py planner-1 .orc/work/NNNN-title.md
+.orc/agent_tools/planner/publish_task.py planner-1 NNNN-title
 ```
 
 Do **not** craft the commit message by hand. All `git` commands must be run

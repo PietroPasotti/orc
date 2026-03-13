@@ -11,8 +11,8 @@ Example:
   .orc/agent_tools/planner/create_task.py add-user-auth
 
 This script:
-1. Resolves the board location from .orc/config.yaml (supports orc-cache-dir
-   and project-id for XDG-based cache, falls back to .orc/work/)
+1. Resolves the board location from .orc/config.yaml (reads project-id and
+   orc-cache-dir; defaults to ~/.cache/orc/projects/<project-id>/)
 2. Reads the current counter from board.yaml
 3. Formats the task ID as a 4-digit zero-padded string (e.g. 0005)
 4. Creates ${TASK_ID}-${TASK_TITLE}.md from template

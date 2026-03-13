@@ -4,7 +4,7 @@ This folder contains vision documents for the project.
 
 Vision documents are the source of truth for _what_ to build. The planner agent
 reads them and translates each piece of work into either an ADR (`docs/adr/`) or
-a task (`.orc/work/`).
+a task (stored in the project cache alongside this directory).
 
 In principle this is the only place you need to provide input to the system.
 

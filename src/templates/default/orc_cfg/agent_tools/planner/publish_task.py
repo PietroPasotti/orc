@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""publish_task.py — commit a newly created task file to dev.
+"""publish_task.py — commit a newly created task to dev.
 
 Usage:
-  .orc/agent_tools/planner/publish_task.py <agent-id> <task-file>
+  .orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
 
 Arguments:
   agent-id    Your agent identifier, e.g. planner-1
-  task-file   Path to the new task markdown, e.g. .orc/work/0003-add-foo.md
+  task-name   Task filename or name, e.g. 0003-add-foo or 0003-add-foo.md
+  extra-file  Optional extra files to stage (e.g. ADR docs you created)
 
 Example:
-  .orc/agent_tools/planner/publish_task.py planner-1 .orc/work/0003-add-foo.md
+  .orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo
+  .orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo docs/adr/0042-foo.md
 
-Stages the task file and commits it to the dev branch.  The board.yaml is
-NOT staged — it lives in the project cache, not in git.
+The task file and board.yaml live in the project cache — they are NOT staged for
+git.  Any extra-files you pass (e.g. ADRs) ARE staged before the commit.
+
+The board is already updated by create_task.py (status: planned).  This commit
+records the planner's work in the git history and acts as the hand-off signal.
 """
 
 from __future__ import annotations
@@ -27,17 +32,19 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="publish_task.py",
-        description="Commit a newly created task file to dev.",
+        description="Commit a newly created task to dev.",
     )
     parser.add_argument("agent_id", help="Your agent identifier, e.g. planner-1")
-    parser.add_argument("task_file", help="Path to the new task markdown")
+    parser.add_argument("task_name", help="Task name, e.g. 0003-add-foo or 0003-add-foo.md")
+    parser.add_argument("extra_files", nargs="*", help="Extra files to stage (e.g. ADR docs)")
     args = parser.parse_args()
 
-    task_name = Path(args.task_file).stem
+    task_name = Path(args.task_name).stem
 
-    result = subprocess.run(["git", "add", args.task_file])
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    if args.extra_files:
+        result = subprocess.run(["git", "add", "--"] + args.extra_files)
+        if result.returncode != 0:
+            sys.exit(result.returncode)
 
     commit_msg = f"chore({args.agent_id}): add task {task_name}"
     env = {

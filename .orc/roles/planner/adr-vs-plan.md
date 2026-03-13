@@ -15,4 +15,4 @@ Add them to `docs/adr/README.md`. Commit with `docs(adr): add ADR-NNNN <title>`.
 - a refactor or migration,
 - or a bug fix that requires multiple coordinated steps.
 
-Plans go in `.orc/work/NNNN-short-title.md`. Number them sequentially.
+Plans go in task files created by `create_task.py`. Number them sequentially.

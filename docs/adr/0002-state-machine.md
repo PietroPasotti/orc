@@ -28,9 +28,9 @@ The canonical implementation of this function is:
 dispatcher._dispatch()
   └─ workflow.determine_next_agent(messages)
        ├─ workflow._has_unresolved_block(messages)   # Telegram scan
-       └─ git._derive_state_from_git()
-            ├─ board._active_task_name()             # board YAML
-            └─ git._derive_task_state(task)          # git queries
+       └─ git._derive_task_state(task)               # board status + git queries
+            ├─ board._active_task_name()             # board YAML (project cache)
+            └─ board status field                    # planned/coding/review/approved/rejected
 ```
 
 A **formal model** (`state_machine.py`) mirrors this logic in pure Python and
@@ -267,7 +267,7 @@ parametrised tests that:
 | File | Role |
 |------|------|
 | `src/orc/state_machine.py` | Formal model (`TaskState`, `WorldState`, `route`, `successors`, `SystemState`, `system_route`, `system_successors`) + coarse enum (`WorkflowState`, `WorkflowStateMachine`) |
-| `src/orc/git.py` | Imperative implementation (`_derive_task_state`, `_derive_state_from_git`) |
+| `src/orc/git.py` | Imperative implementation (`_derive_task_state` — reads board status) |
 | `src/orc/workflow.py` | Top-level routing (`determine_next_agent`, `_has_unresolved_block`) |
 | `src/orc/dispatcher.py` | Parallel scheduler (`_dispatch`, sentinel handling) |
 | `src/orc/board.py` | Board YAML CRUD (`_active_task_name`) |

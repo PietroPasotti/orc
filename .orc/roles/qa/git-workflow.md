@@ -16,26 +16,27 @@ git diff main..HEAD
 ```
 
 **Do NOT merge the feature branch yourself.** The orchestrator handles the merge
-automatically once it detects your `qa(passed):` commit.
+automatically once you signal approval via `approve_task.py`.
 
-### Signalling your verdict via a git commit
+### Signalling your verdict
 
-After completing your review, you **must** make a commit on the feature branch.
-This is how the orchestrator knows your verdict — it checks the last commit message
-prefix on the branch.
+After completing your review, use the provided tools to signal your verdict.
+The tools update the board status and make a commit — the orchestrator reads
+the board to route the task.
 
 **If passed** — no Critical or Major issues:
+
 ```bash
-git commit --allow-empty -m "qa(passed): <one-line summary>"
+.orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<one-line summary>"
 ```
 
 **If failed** — one or more Critical or Major issues found:
-1. Append an issues section to the task `.md` file in `.orc/work/` (see format below).
-2. Then commit that change:
+
+1. Append an issues section to the task `.md` file (see format below).
+2. Then run:
+
 ```bash
-git add .orc/work/NNNN-task-title.md
-git commit -m "qa(failed): <one-line summary of the blocking issue>"
+.orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<one-line summary>"
 ```
 
-The commit message must start with exactly `qa(passed):` or `qa(failed):` — the
-orchestrator matches on this prefix.
+Do **not** craft the commit message by hand.
