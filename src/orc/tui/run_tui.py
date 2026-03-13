@@ -60,7 +60,7 @@ class AgentData:
     """Current status string, e.g. ``running``."""
 
     task_name: str | None
-    """Board task the agent is working on, or ``None`` for planners."""
+    """Board task the agent is working on, or ``refining`` for planners."""
 
     worktree: str
     """Path to the agent's git worktree (as a string for display)."""
@@ -116,9 +116,10 @@ def _elapsed(started_at: float) -> str:
 def _agent_card(row: AgentData) -> rich.panel.Panel:
     """Render a single agent as a :class:`rich.panel.Panel`."""
     worktree_base = os.path.basename(row.worktree) or row.worktree
+    task_name = row.task_name or "refining" if row.role == AgentRole.PLANNER else "—"
     body = (
         f"status:  {row.status}\n"
-        f"task:    {row.task_name or '—'}\n"
+        f"task:    {task_name}\n"
         f"wt:      {worktree_base}\n"
         f"elapsed: {_elapsed(row.started_at)}"
     )

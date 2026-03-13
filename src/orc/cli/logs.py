@@ -56,9 +56,9 @@ def _logs(
     elif agent == "orc":
         files = [log_dir / "orc.log"]
     elif agent in AgentRole:
-        files = sorted(log_dir.glob(f"{agent}-*.log")) if log_dir.is_dir() else []
+        files = sorted((log_dir / "agents").glob(f"{agent}-*.log")) if log_dir.is_dir() else []
     else:
-        files = [log_dir / f"{agent}.log"]
+        files = [log_dir / "agents" / f"{agent}.log"]
 
     existing = [f for f in files if f.exists()]
     missing = [f for f in files if not f.exists()]
