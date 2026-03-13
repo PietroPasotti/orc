@@ -793,7 +793,7 @@ class TestDispatcherInternalCoverage:
         assert result == 0
 
     def test_dispatch_queues_pending_reviews_for_merge(self, tmp_path, monkeypatch):
-        """_dispatch adds unmerged feat/* branches to the merge queue, not a planner."""
+        """_dispatch adds unmerged feat/* branches to the merge queue (no agent spawned)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = _make_services(
             tmp_path,
@@ -803,7 +803,7 @@ class TestDispatcherInternalCoverage:
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
         result = d._dispatch([], 100)
-        assert result == 1
+        assert result == 0  # merge-queue additions don't count as agent spawns
         assert "0001-foo.md" in d._merge_queue
 
     def test_dispatch_deduplicates_pending_reviews(self, tmp_path, monkeypatch):

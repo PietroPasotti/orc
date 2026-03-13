@@ -312,7 +312,8 @@ class TestStatusCoverage:
         """Lines 197-200: pending visions section printed when visions exist."""
         self._setup(monkeypatch, ahead=0)
         monkeypatch.setattr(_st, "_pending_visions", lambda: ["feature-x.md", "feature-y.md"])
-        monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
+        monkeypatch.setattr(_st, "_get_wip_branches", lambda: [])
+        monkeypatch.setattr(_st, "_get_approved_branches", lambda: [])
         result = runner.invoke(m.app, ["status"])
         assert "Pending visions" in result.output
         assert "feature-x.md" in result.output
@@ -327,6 +328,39 @@ class TestStatusCoverage:
         result = runner.invoke(m.app, ["status"])
         assert "Awaiting review" in result.output
         assert "feat/0001-foo" in result.output
+
+    def test_status_shows_approved_branches(self, tmp_path, monkeypatch):
+        """Lines 280-287: approved-pending-merge section printed when QA-approved branches exist."""
+        self._setup(monkeypatch, ahead=0)
+        monkeypatch.setattr(_st, "_pending_visions", lambda: [])
+        monkeypatch.setattr(_st, "_get_wip_branches", lambda: [])
+        monkeypatch.setattr(_st, "_get_approved_branches", lambda: ["feat/0002-bar"])
+        monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "chore: approve")
+        result = runner.invoke(m.app, ["status"])
+        assert "Approved, pending merge" in result.output
+        assert "feat/0002-bar" in result.output
+
+    def test_get_wip_branches_filters_coder_done(self, monkeypatch, tmp_path):
+        """Lines 103-106: _get_wip_branches returns only CODER_DONE branches."""
+        from orc.git.core import LastCommit
+
+        monkeypatch.setattr(_st, "_unmerged_feature_branches", lambda: ["feat/0001-foo"])
+        monkeypatch.setattr(
+            _st._git, "_last_feature_commit_message", lambda b: "chore(c-1.done.1):"
+        )
+        monkeypatch.setattr(_st._git, "_classify_last_commit", lambda m: LastCommit.CODER_DONE)
+        assert _st._get_wip_branches() == ["feat/0001-foo"]
+
+    def test_get_approved_branches_filters_qa_passed(self, monkeypatch, tmp_path):
+        """Lines 117-120: _get_approved_branches returns only QA_PASSED branches."""
+        from orc.git.core import LastCommit
+
+        monkeypatch.setattr(_st, "_unmerged_feature_branches", lambda: ["feat/0001-foo"])
+        monkeypatch.setattr(
+            _st._git, "_last_feature_commit_message", lambda b: "chore(qa-1.approve.1):"
+        )
+        monkeypatch.setattr(_st._git, "_classify_last_commit", lambda m: LastCommit.QA_PASSED)
+        assert _st._get_approved_branches() == ["feat/0001-foo"]
 
     def test_status_tui_launched_when_isatty(self, monkeypatch):
         """status() launches the TUI when stdout is a TTY."""
