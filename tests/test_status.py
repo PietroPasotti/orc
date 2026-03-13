@@ -149,6 +149,21 @@ class TestStatusCoverage:
         )
         _st._status()
 
+    def test_status_soft_block_with_open_tasks(self, tmp_path, monkeypatch):
+        """Lines 210-211: soft-block planner note shown when tasks exist."""
+        squad = SquadConfig(
+            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+        )
+        self._setup(
+            monkeypatch,
+            squad_cfg=squad,
+            open_tasks=["0001-foo.md"],
+            blocked=("coder-1", "soft-blocked"),
+            ahead=0,
+        )
+        result = _st._status()
+        assert result is None  # just ensure it runs without error
+
     def test_status_open_tasks_with_branches(self, tmp_path, monkeypatch):
         squad = SquadConfig(
             planner=1, coder=2, qa=1, timeout_minutes=30, name="default", description="", _models={}
@@ -313,8 +328,8 @@ class TestStatusCoverage:
         """Lines 271-278: awaiting-review section printed when WIP branches exist."""
         self._setup(monkeypatch, ahead=0)
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
-        monkeypatch.setattr(_st, "_get_wip_branches", lambda: ["feat/0001-foo"])
-        monkeypatch.setattr(_st, "_get_approved_branches", lambda: [])
+        monkeypatch.setattr(_st, "_get_wip_branches", lambda b=None: ["feat/0001-foo"])
+        monkeypatch.setattr(_st, "_get_approved_branches", lambda b=None: [])
         monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "fix: something")
         result = runner.invoke(m.app, ["status"])
         assert "Awaiting review" in result.output
@@ -324,8 +339,8 @@ class TestStatusCoverage:
         """Lines 280-287: approved-pending-merge section printed when QA-approved branches exist."""
         self._setup(monkeypatch, ahead=0)
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
-        monkeypatch.setattr(_st, "_get_wip_branches", lambda: [])
-        monkeypatch.setattr(_st, "_get_approved_branches", lambda: ["feat/0002-bar"])
+        monkeypatch.setattr(_st, "_get_wip_branches", lambda b=None: [])
+        monkeypatch.setattr(_st, "_get_approved_branches", lambda b=None: ["feat/0002-bar"])
         monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "chore: approve")
         result = runner.invoke(m.app, ["status"])
         assert "Approved, pending merge" in result.output

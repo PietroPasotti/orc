@@ -26,3 +26,12 @@ orc-dev-branch: dev
 #   absolute path (e.g. ~/.cache/orc) if you prefer external logs.
 #   The ORC_LOG_DIR and ORC_LOG_FILE environment variables take precedence.
 # orc-log-dir: .orc/logs
+
+# orc-todo-scan-exclude: paths excluded when orc scans for #TODO / #FIXME
+#   comments.  Each entry is a git pathspec (relative to the repo root).
+#   The default excludes the .orc/ directory so that role prompts, board
+#   YAML, and other orc infrastructure files are not mistaken for action
+#   items in your source code.  Add any other directories you want to
+#   skip (e.g. vendor/, third-party/, docs/).
+# orc-todo-scan-exclude:
+#   - .orc

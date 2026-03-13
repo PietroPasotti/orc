@@ -40,6 +40,8 @@ class Config:
     work_dev_branch: str
     branch_prefix: str
     log_dir: Path
+    todo_scan_exclude: tuple[str, ...]
+    """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
 
 
 _config: Config | None = None
@@ -68,6 +70,8 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
     log_dir = Path(raw_log_dir).expanduser().resolve()
     work_dir = orc_dir / "work"
+    raw_exclude = orc_yaml.get("orc-todo-scan-exclude", [".orc"])
+    todo_scan_exclude = tuple(raw_exclude) if isinstance(raw_exclude, list) else (raw_exclude,)
 
     _config = Config(
         orc_dir=orc_dir,
@@ -81,6 +85,7 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         work_dev_branch=work_dev_branch,
         branch_prefix=branch_prefix,
         log_dir=log_dir,
+        todo_scan_exclude=todo_scan_exclude,
     )
     return _config
 

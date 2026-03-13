@@ -216,10 +216,13 @@ def _scan_todos(root: Path) -> list[dict]:
     dicts, one per matching line.  Returns an empty list when *root* is not a
     git repository or when the command fails for any other reason.
 
-    The ``.orc/`` directory is excluded — it contains orc infrastructure files
-    (role prompts, board, config) that mention ``#TODO`` / ``#FIXME`` as
-    documentation text rather than real action items in user code.
+    Paths listed in ``Config.todo_scan_exclude`` (YAML key
+    ``orc-todo-scan-exclude``, default ``[".orc"]``) are excluded so that orc
+    infrastructure files (role prompts, board, config) are not reported as
+    action items.
     """
+    exclude = _cfg.get().todo_scan_exclude
+    pathspecs = [f":!{p}" for p in exclude]
     try:
         result = subprocess.run(
             [
@@ -231,7 +234,7 @@ def _scan_todos(root: Path) -> list[dict]:
                 "-E",
                 r"#\s*(TODO|FIXME)",
                 "--",
-                ":!.orc/",
+                *pathspecs,
             ],
             cwd=root,
             capture_output=True,

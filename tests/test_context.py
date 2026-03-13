@@ -521,6 +521,33 @@ class TestScanTodos:
         )
         assert _ctx._scan_todos(tmp_path) == []
 
+    def test_exclude_paths_passed_as_pathspecs(self, tmp_path, monkeypatch):
+        """orc-todo-scan-exclude entries become :!<path> pathspecs in the git grep command."""
+        import orc.config as _cfg
+
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                repo_root=tmp_path,
+                todo_scan_exclude=(".orc", "vendor"),
+            ),
+        )
+        captured: list[list[str]] = []
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda cmd, **kw: (
+                captured.append(cmd) or type("R", (), {"stdout": "", "returncode": 1})()
+            ),
+        )
+        _ctx._scan_todos(tmp_path)
+        assert len(captured) == 1
+        cmd = captured[0]
+        assert ":!.orc" in cmd
+        assert ":!vendor" in cmd
+
 
 # ---------------------------------------------------------------------------
 # _format_todos

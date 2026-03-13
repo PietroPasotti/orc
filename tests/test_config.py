@@ -316,3 +316,20 @@ class TestLoadOrcConfig:
         (orc_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
         _init_config(orc_dir)
         assert _cfg.get().log_dir == custom_log_dir.resolve()
+
+    def test_init_todo_scan_exclude_defaults_to_orc(self, tmp_path, monkeypatch, _init_config):
+        """todo_scan_exclude defaults to ('.orc',) when orc-todo-scan-exclude is absent."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
+        assert _cfg.get().todo_scan_exclude == (".orc",)
+
+    def test_init_todo_scan_exclude_from_config(self, tmp_path, monkeypatch, _init_config):
+        """todo_scan_exclude is read from orc-todo-scan-exclude in config.yaml."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        (orc_dir / "config.yaml").write_text(
+            "orc-todo-scan-exclude:\n  - .orc\n  - vendor\n  - docs\n"
+        )
+        _init_config(orc_dir)
+        assert _cfg.get().todo_scan_exclude == (".orc", "vendor", "docs")
