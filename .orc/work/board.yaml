@@ -1,4 +1,4 @@
-counter: 9
+counter: 10
 done:
 - commit-tag: 402c12b
   name: 0001-live-tui-status-view.md
@@ -12,19 +12,9 @@ done:
 - commit-tag: 345343b
   name: 0004-orc-status-plain-flag.md
   timestamp: '2026-03-13T17:23:50Z'
-- commit-tag: pending
-  name: 0005-orc-merge-auto-worktree-fix.md
-  timestamp: '2026-03-13T17:28:07Z'
-- commit-tag: pending
-  name: 0006-board-yaml-main-worktree.md
-  timestamp: '2026-03-13T17:28:08Z'
-- commit-tag: pending
-  name: 0007-per-role-boot-messages.md
-  timestamp: '2026-03-13T17:28:09Z'
-- commit-tag: ea5da50
-  name: 0005-orc-merge-auto-worktree-fix.md
-  timestamp: '2026-03-13T17:28:26Z'
-- commit-tag: pending
-  name: 0008-engine-robustness.md
-  timestamp: '2026-03-13T17:28:31Z'
-open: []
+open:
+- name: 0005-orc-merge-auto-worktree-fix.md
+- name: 0006-board-yaml-main-worktree.md
+- name: 0007-per-role-boot-messages.md
+- name: 0008-engine-robustness.md
+- name: 0009-code-cleanup.md
