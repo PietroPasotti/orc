@@ -30,6 +30,7 @@ class TestStatusCoverage:
         feature_branch=None,
         feature_branch_exists=None,
         last_commit=None,
+        open_todos=None,
     ):
         monkeypatch.setattr(_st.tg, "get_messages", lambda: [])
         monkeypatch.setattr(_st._wf, "_has_unresolved_block", lambda msgs: blocked)
@@ -50,7 +51,7 @@ class TestStatusCoverage:
         )
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
-        monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: [])
+        monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: open_todos or [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
         monkeypatch.setattr(_st, "_dev_log_since_main", lambda: dev_log or [])
         if derive_task_state:
@@ -381,3 +382,58 @@ class TestStatusCoverage:
 
         assert result.exit_code == 0
         assert launched == ["default"]
+
+    def test_echo_wrapped_short_line_unchanged(self, monkeypatch):
+        """_echo_wrapped passes through lines shorter than terminal width."""
+        echoed: list[str] = []
+        monkeypatch.setattr(_st.typer, "echo", lambda s: echoed.append(s))
+        with patch("orc.cli.status.shutil.get_terminal_size", return_value=MagicMock(columns=80)):
+            _st._echo_wrapped("hello")
+        assert echoed == ["hello"]
+
+    def test_echo_wrapped_truncates_long_line(self, monkeypatch):
+        """_echo_wrapped truncates lines that exceed terminal width."""
+        echoed: list[str] = []
+        monkeypatch.setattr(_st.typer, "echo", lambda s: echoed.append(s))
+        with patch("orc.cli.status.shutil.get_terminal_size", return_value=MagicMock(columns=10)):
+            _st._echo_wrapped("a" * 20)
+        assert echoed == ["a" * 10]
+
+    def test_echo_wrapped_handles_embedded_newlines(self, monkeypatch):
+        """_echo_wrapped truncates each visual line independently."""
+        echoed: list[str] = []
+        monkeypatch.setattr(_st.typer, "echo", lambda s: echoed.append(s))
+        with patch("orc.cli.status.shutil.get_terminal_size", return_value=MagicMock(columns=5)):
+            _st._echo_wrapped("abcdefgh\n12345678")
+        assert echoed == ["abcde\n12345"]
+
+    def test_status_shows_todos_fixmes(self, tmp_path, monkeypatch):
+        """TODOs/FIXMEs section is printed after pending visions when items exist."""
+        todos = [
+            {"file": "src/foo.py", "line": 42, "tag": "TODO", "text": "fix this"},
+            {"file": "src/bar.py", "line": 7, "tag": "FIXME", "text": "broken"},
+        ]
+        self._setup(monkeypatch, ahead=0, open_todos=todos)
+        result = runner.invoke(m.app, ["status"])
+        assert "TODOs / FIXMEs" in result.output
+        assert "src/foo.py:42" in result.output
+        assert "fix this" in result.output
+        assert "src/bar.py:7" in result.output
+        assert "FIXME" in result.output
+
+    def test_status_todos_capped_at_five(self, tmp_path, monkeypatch):
+        """TODOs/FIXMEs section shows at most 5 items."""
+        todos = [
+            {"file": f"src/f{i}.py", "line": i, "tag": "TODO", "text": f"item {i}"}
+            for i in range(8)
+        ]
+        self._setup(monkeypatch, ahead=0, open_todos=todos)
+        result = runner.invoke(m.app, ["status"])
+        assert "8" in result.output  # shows total count
+        assert result.output.count("[TODO]") == 5
+
+    def test_status_no_todos_section_when_empty(self, tmp_path, monkeypatch):
+        """TODOs/FIXMEs section is absent when there are no items."""
+        self._setup(monkeypatch, ahead=0, open_todos=[])
+        result = runner.invoke(m.app, ["status"])
+        assert "TODOs" not in result.output
