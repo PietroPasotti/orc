@@ -6,7 +6,6 @@ import pytest
 from typer.testing import CliRunner
 
 import orc.board as _board
-import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
@@ -39,7 +38,7 @@ class TestRunBareRaise:
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda msgs, squad: None)
         monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
         monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
@@ -61,7 +60,7 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_cfg, "validate_env", lambda: [])
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
     monkeypatch.setattr(tg, "get_messages", lambda: [])
-    monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+    monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda msgs, squad: None)
     monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
     # Return a non-empty task list so initial_work.any_work() is True.
@@ -152,7 +151,7 @@ class TestTuiPath:
                 },
             )(),
         )
-        monkeypatch.setattr(_run_mod, "_safe_dev_ahead", lambda: 0)
+        monkeypatch.setattr(_run_mod, "_safe_features_done", lambda: 0)
         monkeypatch.setattr(_disp.Dispatcher, "__init__", capturing_init)
         _patch_run_deps(monkeypatch, tmp_path)
 
@@ -223,24 +222,24 @@ class TestEarlyExit:
         )
 
 
-class TestSafeDevAhead:
+class TestSafeFeaturesDone:
     def test_returns_zero_on_exception(self, monkeypatch):
-        """_safe_dev_ahead returns 0 when _dev_ahead_of_main raises."""
-        import orc.cli.status as _status_mod
+        """_safe_features_done returns 0 when _count_features_done raises."""
+        import orc.git.core as _git
 
         monkeypatch.setattr(
-            _status_mod,
-            "_dev_ahead_of_main",
+            _git,
+            "_count_features_done",
             lambda: (_ for _ in ()).throw(RuntimeError("git error")),
         )
-        assert _run_mod._safe_dev_ahead() == 0
+        assert _run_mod._safe_features_done() == 0
 
     def test_returns_value_on_success(self, monkeypatch):
-        """_safe_dev_ahead returns the git count on success."""
-        import orc.cli.status as _status_mod
+        """_safe_features_done returns the feature count on success."""
+        import orc.git.core as _git
 
-        monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
-        assert _run_mod._safe_dev_ahead() == 3
+        monkeypatch.setattr(_git, "_count_features_done", lambda: 3)
+        assert _run_mod._safe_features_done() == 3
 
 
 class TestServiceAdapters:

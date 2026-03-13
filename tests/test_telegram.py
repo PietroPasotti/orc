@@ -235,3 +235,16 @@ class TestTelegramCoverage:
         msg = tg.format_agent_message("coder-1", "done", "Task complete.")
         assert "coder-1" in msg
         assert "done" in msg
+
+    def test_get_log_file_uses_log_dir(self, tmp_path, monkeypatch):
+        """_get_log_file returns a path inside log_dir, not orc_dir."""
+        from dataclasses import replace as _replace
+
+        import orc.config as _cfg
+
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), log_dir=log_dir))
+        monkeypatch.setattr(tg, "_LOG_FILE", None)
+        result = tg._get_log_file()
+        assert result == log_dir / "chat.log"

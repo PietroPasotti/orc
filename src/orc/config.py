@@ -66,7 +66,6 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     branch_prefix = orc_yaml.get("orc-branch-prefix", "")
     raw_base = orc_yaml.get("orc-worktree-base", str(orc_dir / "worktrees"))
     worktree_base = Path(raw_base).expanduser().resolve()
-    # TODO: move chat.log into logs too
     raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
     log_dir = Path(raw_log_dir).expanduser().resolve()
     work_dir = orc_dir / "work"

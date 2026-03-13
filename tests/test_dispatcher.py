@@ -12,7 +12,6 @@ from conftest import FakePopen, make_msg
 from typer.testing import CliRunner
 
 import orc.ai.invoke as inv
-import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.engine.context as _ctx
@@ -209,7 +208,7 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(
             inv,
             "spawn",
@@ -235,7 +234,7 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def fake_spawn(*a, **kw):
@@ -284,7 +283,7 @@ class TestBlockedResumption:
             lambda name, msgs, **kw: invocations.append(name) or ("model", "ctx"),
         )
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Here's the fix.")
         monkeypatch.setattr(
@@ -303,7 +302,7 @@ class TestBlockedResumption:
         """After a hard-block reply, the dispatcher routes to the correct role."""
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_ctx, "wait_for_human_reply", lambda msgs, **kw: "Help.")
         monkeypatch.setattr(
@@ -390,7 +389,7 @@ class TestBlockedResumption:
         sent: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda t: sent.append(t))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def _timeout(msgs, **kw):
@@ -426,7 +425,7 @@ class TestBlockedResumption:
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
         monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 

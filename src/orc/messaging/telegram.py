@@ -28,8 +28,8 @@ Local log
 ---------
 Because the Telegram Bot API's ``getUpdates`` only returns *incoming* messages
 (not messages the bot itself sends), outbound ``send_message`` calls are also
-appended to a local JSONL log at ``{ORC_DIR}/chat.log`` (i.e. inside the
-project's ``.orc/`` config directory).  ``get_messages`` merges both sources
+appended to a local JSONL log at ``{log_dir}/chat.log`` (i.e. inside the
+configured log directory).  ``get_messages`` merges both sources
 so the state machine always sees the full history.
 """
 
@@ -81,7 +81,7 @@ def _get_log_file() -> Path:
     if _LOG_FILE is None:
         from orc import config  # import here to avoid circular-import at module level
 
-        _LOG_FILE = config.get().orc_dir / "chat.log"
+        _LOG_FILE = config.get().log_dir / "chat.log"
     _LOG_FILE.touch(exist_ok=True)
     return _LOG_FILE
 
