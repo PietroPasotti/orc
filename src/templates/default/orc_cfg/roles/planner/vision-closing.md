@@ -2,8 +2,9 @@
 
 ## When to close a vision
 
-Inspect `.orc/vision/` each run.  A vision is ready to close when every
-feature it describes has been implemented and merged.
+Inspect the "Pending visions" section in your shared context each run.
+A vision is ready to close when every feature it describes has been
+implemented and merged.
 
 ## How to close
 
@@ -12,7 +13,7 @@ feature it describes has been implemented and merged.
 ```
 
 The tool appends a changelog entry to `.orc/orc-CHANGELOG.md`, deletes the
-vision file, and prints a confirmation.
+vision file from the project cache, and prints a confirmation.
 
 ## When you are done
 

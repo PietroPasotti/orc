@@ -8,4 +8,4 @@
 - Push directly to `dev` or `main`. Work exclusively on your feature branch.
 
 **You SHOULD NOT:**
-- Read the vision documents in `.orc/vision/`. The planner has already distilled the vision into tasks and ADRs; go directly to those.
+- Read the vision documents. The planner has already distilled the vision into tasks and ADRs; go directly to those.

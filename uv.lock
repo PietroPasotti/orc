@@ -624,6 +624,7 @@ name = "qorc"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
+    { name = "filelock" },
     { name = "httpx" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -647,6 +648,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "certifi", specifier = ">=2024.0" },
+    { name = "filelock", specifier = ">=3.25.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },

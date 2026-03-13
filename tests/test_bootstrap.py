@@ -1,11 +1,28 @@
 """Tests for orc/cli/bootstrap.py."""
 
+from pathlib import Path
+
+import pytest
 import yaml
 from typer.testing import CliRunner
 
+import orc.cli.bootstrap as _boot
 import orc.main as m
 
 runner = CliRunner()
+
+
+def _cache_dir(project_root: Path, orc_cache_root: Path) -> Path:
+    """Return the project cache dir by reading project-id from config.yaml."""
+    cfg = yaml.safe_load((project_root / ".orc" / "config.yaml").read_text()) or {}
+    return orc_cache_root / str(cfg["project-id"])
+
+
+@pytest.fixture(autouse=True)
+def patch_cache_root(tmp_path, monkeypatch):
+    """Redirect _orc_cache_root to a temp dir so tests don't pollute ~/.cache."""
+    cache_root = tmp_path / "orc_cache"
+    monkeypatch.setattr(_boot, "_orc_cache_root", lambda: cache_root)
 
 
 # ---------------------------------------------------------------------------
@@ -18,8 +35,11 @@ class TestBootstrap:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(m.app, ["bootstrap"])
         assert result.exit_code == 0
-        for subdir in ("roles", "squads", "vision", "work"):
-            assert (tmp_path / ".orc" / subdir).is_dir()
+        assert (tmp_path / ".orc" / "roles").is_dir()
+        assert (tmp_path / ".orc" / "squads").is_dir()
+        cache = _cache_dir(tmp_path, tmp_path / "orc_cache")
+        assert (cache / "vision").is_dir()
+        assert (cache / "work").is_dir()
 
     def test_copies_bundled_roles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -49,7 +69,7 @@ class TestBootstrap:
     def test_creates_vision_readme(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        readme = tmp_path / ".orc" / "vision" / "README.md"
+        readme = _cache_dir(tmp_path, tmp_path / "orc_cache") / "vision" / "README.md"
         assert readme.exists()
         assert "vision" in readme.read_text().lower()
 
@@ -63,14 +83,14 @@ class TestBootstrap:
     def test_creates_work_readme(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        readme = tmp_path / ".orc" / "work" / "README.md"
+        readme = _cache_dir(tmp_path, tmp_path / "orc_cache") / "work" / "README.md"
         assert readme.exists()
         assert len(readme.read_text()) > 0
 
     def test_creates_empty_board(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board = _cache_dir(tmp_path, tmp_path / "orc_cache") / "work" / "board.yaml"
         assert board.exists()
         data = yaml.safe_load(board.read_text())
         assert data["counter"] == 1
@@ -122,6 +142,19 @@ class TestBootstrap:
         result = runner.invoke(m.app, ["bootstrap"])
         assert "Skipped" in result.output
 
+    def test_output_skipped_absolute_path_outside_project(
+        self, tmp_path, tmp_path_factory, monkeypatch
+    ):
+        """Skipped paths outside the project root (e.g. cache) print absolute paths."""
+        monkeypatch.chdir(tmp_path)
+        # Put the cache root outside tmp_path so relative_to() raises ValueError
+        outside_cache = tmp_path_factory.mktemp("outside_cache")
+        monkeypatch.setattr(_boot, "_orc_cache_root", lambda: outside_cache)
+        runner.invoke(m.app, ["bootstrap"])
+        result = runner.invoke(m.app, ["bootstrap"])
+        assert "Skipped" in result.output
+        assert str(outside_cache) in result.output
+
 
 # ---------------------------------------------------------------------------
 # bootstrap --upgrade
@@ -152,7 +185,8 @@ class TestBootstrapUpgrade:
     def test_upgrade_preserves_vision(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        vision_doc = tmp_path / ".orc" / "vision" / "my-feature.md"
+        cache = _cache_dir(tmp_path, tmp_path / "orc_cache")
+        vision_doc = cache / "vision" / "my-feature.md"
         vision_doc.write_text("# vision")
         runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
         assert vision_doc.exists()
@@ -161,7 +195,8 @@ class TestBootstrapUpgrade:
     def test_upgrade_preserves_work(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        board = tmp_path / ".orc" / "work" / "board.yaml"
+        cache = _cache_dir(tmp_path, tmp_path / "orc_cache")
+        board = cache / "work" / "board.yaml"
         board.write_text("counter: 5\nopen: []\ndone: []\n")
         runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
         assert board.read_text() == "counter: 5\nopen: []\ndone: []\n"
@@ -197,7 +232,8 @@ class TestBootstrapUpgrade:
     def test_upgrade_reports_preserved_paths(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
+        changelog = tmp_path / ".orc" / "orc-CHANGELOG.md"
+        changelog.write_text("# history\n")
         result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
         assert "Preserved" in result.output
-        assert "vision" in result.output
-        assert "work" in result.output
+        assert "orc-CHANGELOG.md" in result.output

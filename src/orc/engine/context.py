@@ -268,30 +268,6 @@ def _format_todos(todos: list[dict]) -> str:
     return "\n".join(rows)
 
 
-def _has_planner_work() -> bool:
-    """Return ``True`` if the planner has anything to do.
-
-    The planner has work when either:
-    - there are pending vision documents (present in ``ORC_DIR/vision/`` but
-      not yet tracked on the kanban board), **or**
-    - the codebase contains ``#TODO`` / ``#FIXME`` comments.
-    """
-    vision_dir = _cfg.get().orc_dir / "vision"
-    if vision_dir.is_dir():
-        board = _board._read_board()
-        all_task_stems = {
-            (t["name"] if isinstance(t, dict) else str(t))
-            for tasks in (board.get("open", []), board.get("done", []))
-            for t in tasks
-        }
-        for f in sorted(vision_dir.glob("*.md")):
-            if f.name.lower().startswith(".") or f.name.lower() == "readme.md":
-                continue
-            if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
-                return True
-    return bool(_scan_todos(_cfg.get().repo_root))
-
-
 def _strip_frontmatter(raw: str) -> str:
     """Strip YAML frontmatter (delimited by ``---``) from *raw* text."""
     if raw.startswith("---"):

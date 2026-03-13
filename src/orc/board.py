@@ -1,59 +1,45 @@
-"""orc – board YAML CRUD operations."""
+"""orc – board YAML CRUD operations.
+
+All public functions delegate to the module-level :data:`_manager` singleton
+(:class:`~orc.board_manager.FileBoardManager`).  Call :func:`init_manager`
+once (done automatically by :func:`orc.config.init`).
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import structlog
-import yaml
 
 import orc.config as _cfg
 
 logger = structlog.get_logger(__name__)
 
+_manager = None
 
-def _dev_board_file() -> Path:
-    """Return the board.yaml that is currently authoritative."""
-    try:
-        cfg = _cfg.get()
-        rel = cfg.orc_dir.relative_to(cfg.repo_root)
-    except ValueError:
-        rel = Path(_cfg.get().orc_dir.name)
-    cfg = _cfg.get()
-    candidate = cfg.dev_worktree / rel / "work" / "board.yaml"
-    return candidate if candidate.exists() else cfg.board_file
+
+def init_manager() -> None:
+    """Initialise (or reinitialise) the module-level BoardManager from Config."""
+    global _manager
+    from orc.board_manager import FileBoardManager  # noqa: PLC0415
+
+    _manager = FileBoardManager(_cfg.get().cache_dir)
+
+
+def _get_manager():
+    global _manager
+    from orc.board_manager import FileBoardManager  # noqa: PLC0415
+
+    work_dir = _cfg.get().work_dir
+    if _manager is None or _manager._work_dir != work_dir:
+        _manager = FileBoardManager(work_dir.parent)
+    return _manager
 
 
 def _read_board() -> dict:
-    """Parse board.yaml and return its full structure (empty dict on error)."""
-    path = _dev_board_file()
-    if not path.exists():
-        return {"counter": 0, "open": [], "done": []}
-    try:
-        data = yaml.safe_load(path.read_text()) or {}
-        data.setdefault("open", [])
-        data.setdefault("done", [])
-        return data
-    except Exception:
-        logger.debug("_read_board: failed to parse board file", path=str(path), exc_info=True)
-        return {"counter": 0, "open": [], "done": []}
+    return _get_manager().read_board()
 
 
 def _write_board(board: dict) -> None:
-    """Persist *board* to the authoritative board.yaml path.
-
-    Uses an atomic write (temp file + ``rename``) so a crash during the write
-    never leaves board.yaml in a partially-written state.
-    """
-    path = _dev_board_file()
-    content = yaml.dump(board, default_flow_style=False, allow_unicode=True)
-    tmp = path.with_suffix(".yaml.tmp")
-    try:
-        tmp.write_text(content)
-        tmp.replace(path)
-    except OSError:
-        tmp.unlink(missing_ok=True)
-        raise
+    _get_manager().write_board(board)
 
 
 def get_open_tasks() -> list[dict]:
@@ -68,12 +54,29 @@ def get_open_tasks() -> list[dict]:
     return result
 
 
+def get_task(task_name: str) -> dict | None:
+    """Return the board entry for *task_name*, or ``None`` if absent."""
+    return _get_manager().get_task(task_name)
+
+
+def set_task_status(task_name: str, status: str) -> None:
+    """Set the ``status`` field of *task_name* in board.yaml."""
+    _get_manager().set_task_status(task_name, status)
+
+
+def add_task_comment(task_name: str, author: str, text: str) -> None:
+    """Append a comment to *task_name*'s ``comments`` list."""
+    _get_manager().add_task_comment(task_name, author, text)
+
+
 def assign_task(task_name: str, agent_id: str) -> None:
-    """Write ``assigned_to: {agent_id}`` for *task_name* in board.yaml."""
+    """Write ``assigned_to: {agent_id}`` for *task_name* and set status to ``coding``."""
     board = _read_board()
     for t in board.get("open", []):
         if isinstance(t, dict) and t.get("name") == task_name:
             t["assigned_to"] = agent_id
+            if t.get("status") in (None, "", "planned", "rejected"):
+                t["status"] = "coding"
             _write_board(board)
             logger.debug("task assigned", task=task_name, agent_id=agent_id)
             return
@@ -119,31 +122,20 @@ def _active_task_name() -> str | None:
 def _read_work(*, active_only: str | None = None) -> str:
     """Return a human-readable summary of the kanban board + open task files.
 
-    When *active_only* is provided (a task filename such as ``0001-task.md``),
-    only that task's full content is included; other open tasks are listed by
-    name only.  This dramatically reduces token cost for coder/QA agents that
-    work on a single task.
+    When *active_only* is provided only that task's full content is included;
+    others are listed by name only to reduce token cost.
     """
+    mgr = _get_manager()
     parts: list[str] = []
 
-    board_path = _dev_board_file()
+    board_path = mgr.board_path
     if board_path.exists():
-        parts.append(f"### orc/work/board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
+        parts.append(f"### board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
 
-    work_dir = board_path.parent if board_path.exists() else _cfg.get().work_dir
-    for task_file in sorted(work_dir.glob("*.md")):
-        if task_file.name.lower() == "readme.md":
-            continue
+    for task_file in mgr.list_task_files():
         if active_only and task_file.name != active_only:
             parts.append(f"### {task_file.name} _(summary only)_")
         else:
             parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
 
     return "\n\n".join(parts) if parts else "_No active work._"
-
-
-if __name__ == "__main__":  # pragma: no cover
-    from orc.config import init
-
-    init(Path("/home/pietro/hacking/orc/.orc"))
-    print(_dev_board_file().read_text())  # noqa: T201

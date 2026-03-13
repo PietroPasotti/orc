@@ -33,6 +33,7 @@ dependencies = [
     "certifi>=2024.0",
     "rich>=13",
     "textual>=8.1.1",
+    "filelock>=3.25.1",
 ]
 
 [project.scripts]

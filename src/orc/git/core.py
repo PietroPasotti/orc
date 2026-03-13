@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
-import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
-import yaml
 
 import orc.board as _board
 import orc.config as _cfg
@@ -19,6 +16,19 @@ from orc.engine.state_machine import route as _route
 from orc.squad import AgentRole
 
 logger = structlog.get_logger(__name__)
+
+
+# Map board task status → LastCommit enum for state machine routing.
+_STATUS_TO_LAST_COMMIT: dict[str, LastCommit] = {
+    "planned": LastCommit.CODER_WORK,
+    "coding": LastCommit.CODER_WORK,
+    "review": LastCommit.CODER_DONE,
+    "approved": LastCommit.QA_PASSED,
+    "rejected": LastCommit.QA_OTHER,
+    "blocked": LastCommit.CODER_WORK,
+    "soft-blocked": LastCommit.CODER_WORK,
+    "merged": LastCommit.QA_PASSED,
+}
 
 
 class MergeConflictError(Exception):
@@ -169,26 +179,15 @@ def _ensure_feature_worktree(task_name: str) -> Path:
     return wt_path
 
 
-def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pending") -> None:
-    """Move *task_name* from ``open`` to ``done`` in board.yaml and delete its .md file."""
-    cfg = _cfg.get()
-    try:
-        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
-    except ValueError:
-        config_rel = Path(cfg.orc_dir.name)
-    board_path = dev_wt / config_rel / "work" / "board.yaml"
-    if not board_path.exists():
-        logger.warning("board.yaml not found in dev worktree, skipping board update")
-        return
-
-    board = yaml.safe_load(board_path.read_text()) or {}
-    board.setdefault("open", [])
-    board.setdefault("done", [])
-
+def _close_task_on_board(task_name: str, commit_tag: str = "pending") -> None:
+    """Move *task_name* from ``open`` to ``done`` in the board and delete its task file."""
+    board = _board._read_board()
     board["open"] = [
-        t for t in board["open"] if (t["name"] if isinstance(t, dict) else str(t)) != task_name
+        t
+        for t in board.get("open", [])
+        if (t["name"] if isinstance(t, dict) else str(t)) != task_name
     ]
-
+    board.setdefault("done", [])
     board["done"].append(
         {
             "name": task_name,
@@ -196,62 +195,12 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
             "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
     )
-
-    board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
-
-    task_md = dev_wt / config_rel / "work" / task_name
-    if task_md.exists():
-        task_md.unlink()
-        logger.info("deleted task file", path=str(task_md))
-
-
-def _commit_board_recovery(task_name: str, dev_wt: Path) -> None:
-    """Commit board changes in *dev_wt* after a crash-recovery board close.
-
-    Stages the work directory, then commits only if there are staged changes
-    (guards against re-running recovery when the commit already happened).
-    """
-    cfg = _cfg.get()
-    try:
-        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
-    except ValueError:
-        config_rel = Path(cfg.orc_dir.name)
-    board_path = dev_wt / config_rel / "work" / "board.yaml"
-    if not board_path.exists():
-        return
-    git_env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "orc",
-        "GIT_AUTHOR_EMAIL": "orc@orc.local",
-        "GIT_COMMITTER_NAME": "orc",
-        "GIT_COMMITTER_EMAIL": "orc@orc.local",
-    }
-    subprocess.run(
-        ["git", "add", str(config_rel / "work")],
-        cwd=dev_wt,
-        check=True,
-        capture_output=True,
-    )
-    has_staged = (
-        subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=dev_wt,
-            capture_output=True,
-        ).returncode
-        != 0
-    )
-    if has_staged:
-        subprocess.run(
-            ["git", "commit", "-m", f"chore(orc): close task {Path(task_name).stem} (recovery)"],
-            cwd=dev_wt,
-            check=True,
-            capture_output=True,
-            env=git_env,
-        )
+    _board._write_board(board)
+    _board._get_manager().delete_task_file(task_name)
 
 
 def _merge_feature_into_dev(task_name: str) -> None:
-    """Merge the feature branch into dev, close the task in board.yaml, and clean up.
+    """Merge the feature branch into dev, close the task on the board, and clean up.
 
     Before merging, if the dev worktree has uncommitted changes (e.g. from a
     previously aborted merge), they are discarded with ``git reset --hard HEAD``
@@ -299,30 +248,8 @@ def _merge_feature_into_dev(task_name: str) -> None:
         check=True,
     ).stdout.strip()
 
-    _close_task_on_board(task_name, dev_wt, commit_tag=merge_sha)
-    try:
-        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
-    except ValueError:
-        config_rel = Path(cfg.orc_dir.name)
-    board_path = dev_wt / config_rel / "work" / "board.yaml"
-    if board_path.exists():
-        subprocess.run(
-            ["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True, capture_output=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", f"chore(orc): close task {Path(task_name).stem}"],
-            cwd=dev_wt,
-            check=True,
-            capture_output=True,
-            env={
-                **os.environ,
-                "GIT_AUTHOR_NAME": "orc",
-                "GIT_AUTHOR_EMAIL": "orc@orc.local",
-                "GIT_COMMITTER_NAME": "orc",
-                "GIT_COMMITTER_EMAIL": "orc@orc.local",
-            },
-        )
-        logger.info("board updated and committed", task=task_name, commit_tag=merge_sha)
+    _close_task_on_board(task_name, commit_tag=merge_sha)
+    logger.info("board updated", task=task_name, commit_tag=merge_sha)
 
     if wt_path.exists():
         logger.info("removing feature worktree", path=str(wt_path))
@@ -372,71 +299,12 @@ def _feature_branch_exists(branch: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def _last_feature_commit_message(branch: str) -> str | None:
-    """Return the subject line of the most recent commit on *branch*, or None."""
-    result = subprocess.run(
-        ["git", "log", "-1", "--format=%s", branch],
-        cwd=_cfg.get().repo_root,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() or None
-
-
-_EXIT_SCOPE_RE = re.compile(
-    r"^chore\((?P<agent_id>[a-z]+-\d+)\.(?P<action>[a-z]+)\.(?P<task_code>\d{4})\):"
-)
-"""Regex for the structured exit-commit scope: ``chore(<agent-id>.<action>.<task-code>):``."""
-
-
-def _parse_exit_scope(subject: str) -> tuple[str, str, str] | None:
-    """Parse a structured exit commit subject into ``(agent_id, action, task_code)``.
-
-    Returns ``None`` for subjects that do not match the exit-commit format.
-
-    Examples
-    --------
-    >>> _parse_exit_scope("chore(coder-1.done.0002): finished task")
-    ('coder-1', 'done', '0002')
-    >>> _parse_exit_scope("chore(qa-2.approve.0003): all green")
-    ('qa-2', 'approve', '0003')
-    >>> _parse_exit_scope("feat: add something")
-    None
-    """
-    m = _EXIT_SCOPE_RE.match(subject)
-    if m is None:
-        return None
-    return m.group("agent_id"), m.group("action"), m.group("task_code")
-
-
-def _classify_last_commit(last_msg: str | None) -> LastCommit:
-    """Map a raw commit subject to a :class:`~orc.engine.state_machine.LastCommit` value.
-
-    This is the canonical commit classifier — :func:`_derive_task_state` uses it
-    so that :func:`~orc.engine.state_machine.route` remains the single
-    source of truth for routing decisions.
-    """
-    if not last_msg:
-        return LastCommit.CODER_WORK
-
-    parsed = _parse_exit_scope(last_msg)
-    if parsed is not None:
-        _, action, _ = parsed
-        if action == "approve":
-            return LastCommit.QA_PASSED
-        if action == "reject":
-            return LastCommit.QA_OTHER
-        if action == "done":
-            return LastCommit.CODER_DONE
-
-    return LastCommit.CODER_WORK
-
-
 def _derive_task_state(task_name: str) -> tuple[str, str]:
-    """Inspect the git tree for *task_name* and return ``(token, reason)``.
+    """Inspect the git tree + board for *task_name* and return ``(token, reason)``.
 
-    Collects live git state, then delegates the routing decision to
-    :func:`~orc.engine.state_machine.route` — the single source of truth.
+    Git branch checks determine whether work has started and completed.
+    Routing is delegated to :func:`~orc.engine.state_machine.route` —
+    the single source of truth.  Task status is read from the board.
     """
     branch = _feature_branch(task_name)
 
@@ -446,57 +314,38 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     )
 
     if not branch_exists:
-        logger.debug("derive_task_state: branch absent — dispatch coder", task=task_name)
         return AgentRole.CODER, f"feature branch {branch!r} does not exist yet"
 
     has_commits = _feature_has_commits_ahead_of_main(branch)
-    logger.debug(
-        "derive_task_state: commits ahead of main",
-        task=task_name,
-        branch=branch,
-        has_commits=has_commits,
-    )
-
     if not has_commits:
         if _feature_merged_into_dev(branch):
             logger.info(
-                "derive_task_state: branch exists but already merged into dev — closing board",
+                "derive_task_state: already merged into dev — closing board",
                 task=task_name,
                 branch=branch,
             )
             return _CLOSE_BOARD, f"branch {branch!r} already merged into dev but board not updated"
         return AgentRole.CODER, f"feature branch {branch!r} has no commits ahead of main"
 
-    last_msg = _last_feature_commit_message(branch)
-    logger.debug("derive_task_state: last commit", task=task_name, branch=branch, last_msg=last_msg)
-
-    last_commit = _classify_last_commit(last_msg)
-    world_state = WorldState(
-        has_open_task=True,
-        branch_exists=True,
-        commits_ahead=True,
-        last_commit=last_commit,
+    task_data = _board.get_task(task_name)
+    status = (task_data or {}).get("status") or "coding"
+    last_commit = _STATUS_TO_LAST_COMMIT.get(status, LastCommit.CODER_WORK)
+    logger.debug(
+        "derive_task_state: board status", task=task_name, status=status, last_commit=last_commit
     )
-    action = _route(world_state)  # single source of truth
 
-    if last_commit == LastCommit.QA_PASSED:
-        reason = f"qa approved on {branch!r} — ready to merge"
-    elif last_commit == LastCommit.CODER_DONE:
-        reason = f"coder finished {branch!r}, awaiting review"
-    elif last_commit == LastCommit.QA_OTHER:
-        reason = f"qa rejected {branch!r}: {last_msg!r}"
-    else:
-        reason = f"coder has uncommitted work on {branch!r} — not yet signalled done"
+    world_state = WorldState(
+        has_open_task=True, branch_exists=True, commits_ahead=True, last_commit=last_commit
+    )
+    action = _route(world_state)
 
+    _REASONS = {
+        "review": f"coder finished {branch!r}, awaiting QA",
+        "approved": f"qa approved {branch!r} — ready to merge",
+        "rejected": f"qa rejected {branch!r} — back to coder",
+    }
+    reason = _REASONS.get(status, f"{branch!r} status={status!r}")
     return action, reason  # type: ignore[return-value]
-
-
-def _derive_state_from_git() -> tuple[str, str]:
-    """Derive the next-agent token from git for the currently active task."""
-    active_task = _board._active_task_name()
-    if not active_task:
-        return AgentRole.PLANNER, "no open tasks on board"
-    return _derive_task_state(active_task)
 
 
 def _rebase_in_progress(worktree: Path) -> bool:

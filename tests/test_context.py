@@ -17,46 +17,25 @@ import orc.messaging.telegram as tg
 
 
 class TestBootMessageBody:
-    def test_single_open_task(self, tmp_path, monkeypatch):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
-        )
+    def _board_file(self, tmp_path):
+        return tmp_path / ".orc" / "work" / "board.yaml"
+
+    def test_single_open_task(self, tmp_path):
+        self._board_file(tmp_path).write_text("counter: 2\nopen:\n  - name: 0002-foo.md\n")
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md."
 
-    def test_multiple_open_tasks(self, tmp_path, monkeypatch):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+    def test_multiple_open_tasks(self, tmp_path):
+        self._board_file(tmp_path).write_text(
+            "counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n"
         )
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md, work/0003-bar.md."
 
-    def test_no_open_tasks(self, tmp_path, monkeypatch):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 2\nopen: []\n")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
-        )
+    def test_no_open_tasks(self, tmp_path):
+        self._board_file(tmp_path).write_text("counter: 2\nopen: []\n")
         assert _ctx._boot_message_body() == "no open tasks on board."
 
-    def test_missing_board(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                board_file=tmp_path / "nonexistent.yaml",
-                dev_worktree=tmp_path / "dev-wt",
-            ),
-        )
+    def test_missing_board(self):
+        # board.yaml not created → read_board returns default empty board
         assert _ctx._boot_message_body() == "no open tasks on board."
 
 
@@ -567,75 +546,6 @@ class TestFormatTodos:
         assert "10" in result
         assert "`TODO`" in result
         assert "# TODO: do it" in result
-
-
-# ---------------------------------------------------------------------------
-# _has_planner_work
-# ---------------------------------------------------------------------------
-
-
-class TestHasPlannerWork:
-    def _patch(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                orc_dir=tmp_path / ".orc",
-                repo_root=tmp_path,
-                dev_worktree=tmp_path / "dev-wt",
-            ),
-        )
-        board = tmp_path / ".orc" / "work" / "board.yaml"
-        (tmp_path / ".orc" / "work").mkdir(parents=True, exist_ok=True)
-        board.write_text("counter: 1\nopen: []\ndone: []\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
-
-    def test_returns_true_when_pending_vision_exists(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True, exist_ok=True)
-        (vision_dir / "0001-idea.md").write_text("# Vision\n")
-        monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
-        assert _ctx._has_planner_work() is True
-
-    def test_returns_false_when_vision_already_on_board(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        board = tmp_path / ".orc" / "work" / "board.yaml"
-        board.write_text("counter: 2\nopen:\n  - name: 0001-idea.md\ndone: []\n")
-        vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True, exist_ok=True)
-        (vision_dir / "0001-idea.md").write_text("# Vision\n")
-        monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
-        assert _ctx._has_planner_work() is False
-
-    def test_returns_true_when_todos_present(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        monkeypatch.setattr(
-            _ctx,
-            "_scan_todos",
-            lambda root: [{"file": "a.py", "line": 1, "tag": "TODO", "text": "# TODO: x"}],
-        )
-        assert _ctx._has_planner_work() is True
-
-    def test_returns_false_when_nothing(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
-        assert _ctx._has_planner_work() is False
-
-    def test_skips_readme_and_dotfiles_in_vision(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True, exist_ok=True)
-        (vision_dir / "README.md").write_text("# Index\n")
-        (vision_dir / ".hidden.md").write_text("# Hidden\n")
-        monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
-        assert _ctx._has_planner_work() is False
-
-    def test_returns_false_when_no_vision_dir(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, tmp_path)
-        monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
-        assert _ctx._has_planner_work() is False
 
 
 # ---------------------------------------------------------------------------

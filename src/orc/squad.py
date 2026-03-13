@@ -69,7 +69,7 @@ class AgentRole(StrEnum):
 
 # Package-bundled squads directory (fallback when project-level squad not found).
 # Lives inside the default template so there is a single source of truth.
-_PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
+_PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "orc_cfg" / "squads"
 
 _VALID_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 _DEFAULT_TIMEOUT_MINUTES = 120

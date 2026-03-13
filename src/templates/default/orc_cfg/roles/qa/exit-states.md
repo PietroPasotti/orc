@@ -11,32 +11,21 @@
 When the task passes review, run:
 
 ```bash
-.orc/agent_tools/qa/approve_task.py --help
-```
-
-for usage, then execute with your agent ID, task code, and message:
-
-```bash
 .orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<message>"
 ```
 
+This sets the board status to `approved` and commits on the feature branch.
+
 ### Signalling `reject`
 
-Stage your feedback file(s) first, then run:
-
-```bash
-git add .orc/work/<task-file>.md   # or wherever you wrote your feedback
-.orc/agent_tools/qa/reject_task.py --help
-```
-
-for usage, then execute with your agent ID, task code, and message:
+Stage any feedback files first, then run:
 
 ```bash
 .orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<message>"
 ```
 
-Both scripts commit all changes and produce a structured commit the orchestrator
-uses to route the task. Do **not** craft the commit message by hand.
+This sets the board status to `rejected`, adds a comment with the rejection
+reason, and commits. Do **not** craft the commit message by hand.
 
 ### Signalling `blocked`
 

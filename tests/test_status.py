@@ -61,7 +61,7 @@ class TestStatusCoverage:
         if feature_branch_exists is not None:
             monkeypatch.setattr(_st._git, "_feature_branch_exists", lambda b: feature_branch_exists)
         if last_commit:
-            monkeypatch.setattr(_st._git, "_last_feature_commit_message", last_commit)
+            pass  # _last_feature_commit_message removed; board-status-based routing now
         monkeypatch.setattr(_st._ctx, "_role_symbol", lambda role: "")
 
     def test_dev_ahead_of_main_parses_stdout(self):
@@ -239,7 +239,11 @@ class TestStatusCoverage:
         (vision_dir / ".hidden.md").write_text("")
         (vision_dir / "feature-a.md").write_text("")
         (vision_dir / "feature-b.md").write_text("")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), orc_dir=tmp_path, vision_dir=vision_dir),
+        )
         monkeypatch.setattr(
             _st._board,
             "_read_board",
@@ -331,7 +335,6 @@ class TestStatusCoverage:
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
         monkeypatch.setattr(_st, "_get_wip_branches", lambda b=None: ["feat/0001-foo"])
         monkeypatch.setattr(_st, "_get_approved_branches", lambda b=None: [])
-        monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "fix: something")
         result = runner.invoke(m.app, ["status"])
         assert "Awaiting review" in result.output
         assert "feat/0001-foo" in result.output
@@ -342,31 +345,36 @@ class TestStatusCoverage:
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
         monkeypatch.setattr(_st, "_get_wip_branches", lambda b=None: [])
         monkeypatch.setattr(_st, "_get_approved_branches", lambda b=None: ["feat/0002-bar"])
-        monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "chore: approve")
         result = runner.invoke(m.app, ["status"])
         assert "Approved, pending merge" in result.output
         assert "feat/0002-bar" in result.output
 
     def test_get_wip_branches_filters_coder_done(self, monkeypatch, tmp_path):
-        """Lines 103-106: _get_wip_branches returns only CODER_DONE branches."""
-        from orc.git.core import LastCommit
-
-        monkeypatch.setattr(_st, "_unmerged_feature_branches", lambda: ["feat/0001-foo"])
+        """_get_wip_branches returns branches for open tasks with status=review."""
         monkeypatch.setattr(
-            _st._git, "_last_feature_commit_message", lambda b: "chore(c-1.done.1):"
+            _st._board,
+            "get_open_tasks",
+            lambda: [{"name": "0001-foo.md", "status": "review"}],
         )
-        monkeypatch.setattr(_st._git, "_classify_last_commit", lambda m: LastCommit.CODER_DONE)
+        monkeypatch.setattr(
+            _st._git,
+            "_feature_branch",
+            lambda name: "feat/0001-foo",
+        )
         assert _st._get_wip_branches() == ["feat/0001-foo"]
 
     def test_get_approved_branches_filters_qa_passed(self, monkeypatch, tmp_path):
-        """Lines 117-120: _get_approved_branches returns only QA_PASSED branches."""
-        from orc.git.core import LastCommit
-
-        monkeypatch.setattr(_st, "_unmerged_feature_branches", lambda: ["feat/0001-foo"])
+        """_get_approved_branches returns branches for open tasks with status=approved."""
         monkeypatch.setattr(
-            _st._git, "_last_feature_commit_message", lambda b: "chore(qa-1.approve.1):"
+            _st._board,
+            "get_open_tasks",
+            lambda: [{"name": "0001-foo.md", "status": "approved"}],
         )
-        monkeypatch.setattr(_st._git, "_classify_last_commit", lambda m: LastCommit.QA_PASSED)
+        monkeypatch.setattr(
+            _st._git,
+            "_feature_branch",
+            lambda name: "feat/0001-foo",
+        )
         assert _st._get_approved_branches() == ["feat/0001-foo"]
 
     def test_status_tui_launched_when_isatty(self, monkeypatch):

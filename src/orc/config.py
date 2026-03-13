@@ -21,7 +21,20 @@ logger = structlog.get_logger(__name__)
 # ── Package-relative constants (truly static, safe at import time) ─────────
 _PACKAGE_DIR = Path(__file__).parent
 _PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"
-_TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "default"
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+_ORC_CFG_TEMPLATE = _TEMPLATES_DIR / "default" / "orc_cfg"
+_WORK_STATE_TEMPLATE = _TEMPLATES_DIR / "work_state"
+
+
+def _xdg_cache_home() -> Path:
+    """Return XDG_CACHE_HOME, defaulting to ``~/.cache``."""
+    env = os.environ.get("XDG_CACHE_HOME", "").strip()
+    return Path(env).expanduser().resolve() if env else Path.home() / ".cache"
+
+
+def _orc_cache_root() -> Path:
+    """Return the root directory for all orc project caches."""
+    return _xdg_cache_home() / "orc" / "projects"
 
 
 # ── Immutable config object ───────────────────────────────────────────────
@@ -33,6 +46,9 @@ class Config:
     repo_root: Path
     work_dir: Path
     board_file: Path
+    vision_dir: Path
+    """Directory containing vision documents.  Points into the project cache
+    when *project_id* is set; falls back to ``orc_dir/vision`` otherwise."""
     roles_dir: Path
     env_file: Path
     dev_worktree: Path
@@ -42,6 +58,17 @@ class Config:
     log_dir: Path
     todo_scan_exclude: tuple[str, ...]
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
+    project_id: str = ""
+    """Stable UUID stored in ``.orc/config.yaml`` under ``project-id``.
+    Empty string when not yet set (board falls back to ``orc_dir/work/``)."""
+    cache_dir: Path = Path()
+    """Per-project cache root.  Resolution order:
+
+    1. ``orc-cache-dir`` in ``config.yaml`` (explicit override, any path).
+    2. ``~/.cache/orc/projects/{project-id}`` when *project_id* is set
+       (respects ``$XDG_CACHE_HOME``).
+    3. ``orc_dir`` when neither is configured (legacy in-tree layout).
+    """
 
 
 _config: Config | None = None
@@ -58,6 +85,12 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     ``.env`` is always resolved relative to ``Path.cwd()`` so that orc reads
     the credentials of the project you are running it *from*, regardless of
     where the config dir lives.
+
+    When ``project-id`` is present in ``config.yaml`` the mutable state
+    (board, visions, task files) is stored under
+    ``~/.cache/orc/projects/{project_id}/`` rather than inside ``.orc/``.
+    Projects without a ``project-id`` continue to use the old in-tree layout
+    for backward compatibility.
     """
     global _config
 
@@ -69,15 +102,26 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     # TODO: move chat.log into logs too
     raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
     log_dir = Path(raw_log_dir).expanduser().resolve()
-    work_dir = orc_dir / "work"
     raw_exclude = orc_yaml.get("orc-todo-scan-exclude", [".orc"])
     todo_scan_exclude = tuple(raw_exclude) if isinstance(raw_exclude, list) else (raw_exclude,)
+
+    project_id = str(orc_yaml.get("project-id", ""))
+    raw_cache_dir = orc_yaml.get("orc-cache-dir", "").strip()
+    if raw_cache_dir:
+        cache_dir = Path(raw_cache_dir).expanduser().resolve()
+    elif project_id:
+        cache_dir = _orc_cache_root() / project_id
+    else:
+        cache_dir = orc_dir
+    work_dir = cache_dir / "work"
+    vision_dir = cache_dir / "vision"
 
     _config = Config(
         orc_dir=orc_dir,
         repo_root=(repo_root or orc_dir.parent).resolve(),
         work_dir=work_dir,
         board_file=work_dir / "board.yaml",
+        vision_dir=vision_dir,
         roles_dir=orc_dir / "roles",
         env_file=Path.cwd() / ".env",
         dev_worktree=worktree_base / work_dev_branch,
@@ -86,7 +130,13 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         branch_prefix=branch_prefix,
         log_dir=log_dir,
         todo_scan_exclude=todo_scan_exclude,
+        project_id=project_id,
+        cache_dir=cache_dir,
     )
+    # Reinitialise the board manager to match the new config.
+    import orc.board as _board  # noqa: PLC0415
+
+    _board.init_manager()
     return _config
 
 
@@ -142,7 +192,7 @@ def load_orc_config(orc_dir: Path) -> dict:
 def _load_placeholders() -> frozenset[str]:
     """Read unfilled placeholder values from .env.example (cached)."""
     values: set[str] = {""}
-    env_example = _TEMPLATES_DIR / ".env.example"
+    env_example = _ORC_CFG_TEMPLATE / ".env.example"
     for line in env_example.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):

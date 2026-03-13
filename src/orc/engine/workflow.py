@@ -72,12 +72,10 @@ def _post_boot_message(agent_id: str, body: str) -> None:
 
 
 def _do_close_board(task_name: str) -> None:
-    """Crash-recovery: close *task_name* on board and commit via dev worktree."""
-    dev_wt = _git._ensure_dev_worktree()
+    """Crash-recovery: close *task_name* on the board (cache write, no git commit)."""
     logger.warning("crash recovery: closing board for merged branch", task=task_name)
     typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
-    _git._close_task_on_board(task_name, dev_wt)
-    _git._commit_board_recovery(task_name, dev_wt)
+    _git._close_task_on_board(task_name)
 
 
 def _make_context_builder(

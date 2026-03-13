@@ -17,7 +17,6 @@ import orc.engine.workflow as _wf
 import orc.git.core as _git
 from orc.cli import app
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
-from orc.engine.state_machine import LastCommit as _LastCommit
 from orc.engine.work import Work
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, load_squad
@@ -52,7 +51,7 @@ def _dev_ahead_of_main() -> int:
 
 def _pending_visions() -> list[str]:
     """Return vision .md filenames (excl. README.md) with no matching board task."""
-    vision_dir = _cfg.get().orc_dir / "vision"
+    vision_dir = _cfg.get().vision_dir
     if not vision_dir.is_dir():
         return []
     board = _board._read_board()
@@ -106,41 +105,30 @@ _pending_reviews = _unmerged_feature_branches
 
 
 def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
-    """Return feature branches where the coder has made their exit commit.
+    """Return feature branches for open tasks in ``review`` status (awaiting QA).
 
-    These branches have a ``chore(coder-N.done.NNNN):`` tip commit — the coder
-    is finished but QA has not yet run.  They represent work *in progress*
-    (awaiting review) from the dispatcher's perspective.
-
-    When *branches* is provided, it is used instead of calling
-    :func:`_unmerged_feature_branches`, avoiding a redundant git query.
+    When *branches* is provided, only branches in that list are included.
     """
-    if branches is None:
-        branches = _unmerged_feature_branches()
     result = []
-    for branch in branches:
-        last_msg = _git._last_feature_commit_message(branch)
-        if _git._classify_last_commit(last_msg) == _LastCommit.CODER_DONE:
-            result.append(branch)
+    for task in _board.get_open_tasks():
+        if task.get("status") == "review":
+            branch = _git._feature_branch(task["name"])
+            if branches is None or branch in branches:
+                result.append(branch)
     return result
 
 
 def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
-    """Return feature branches that QA has approved and are ready to merge.
+    """Return feature branches for open tasks in ``approved`` status (QA passed).
 
-    These branches have a ``chore(qa-N.approve.NNNN):`` tip commit — QA passed
-    and the branch should be merged into dev.
-
-    When *branches* is provided, it is used instead of calling
-    :func:`_unmerged_feature_branches`, avoiding a redundant git query.
+    When *branches* is provided, only branches in that list are included.
     """
     result = []
-    if branches is None:
-        branches = _unmerged_feature_branches()
-    for branch in branches:
-        last_msg = _git._last_feature_commit_message(branch)
-        if _git._classify_last_commit(last_msg) == _LastCommit.QA_PASSED:
-            result.append(branch)
+    for task in _board.get_open_tasks():
+        if task.get("status") == "approved":
+            branch = _git._feature_branch(task["name"])
+            if branches is None or branch in branches:
+                result.append(branch)
     return result
 
 
@@ -276,10 +264,10 @@ def _status(squad: str = "default") -> None:
         _echo_wrapped("\nPending tasks:")
         for task in work.open_tasks:
             name = task["name"] if isinstance(task, dict) else str(task)
+            status = task.get("status", "coding") if isinstance(task, dict) else "coding"
             branch = _git._feature_branch(name)
             if _git._feature_branch_exists(branch):
-                last = _git._last_feature_commit_message(branch) or ""
-                _echo_wrapped(f"  • {name}  ({branch})  last: {last}")
+                _echo_wrapped(f"  • {name}  ({branch})  status: {status}")
             else:
                 _echo_wrapped(f"  • {name}  (no branch yet)")
 
@@ -308,8 +296,7 @@ def _status(squad: str = "default") -> None:
         shown_w = wip[:5]
         _echo_wrapped(f"\nAwaiting review ({len(shown_w)} of {len(wip)}):")
         for branch in shown_w:
-            last = _git._last_feature_commit_message(branch) or ""
-            _echo_wrapped(f"  🔍 {branch}  last: {last}")
+            _echo_wrapped(f"  🔍 {branch}")
 
     # --- Branches approved by QA, pending merge ------------------------------
     approved = _get_approved_branches(work.open_PRs)
@@ -317,8 +304,7 @@ def _status(squad: str = "default") -> None:
         shown_a = approved[:5]
         _echo_wrapped(f"\nApproved, pending merge ({len(shown_a)} of {len(approved)}):")
         for branch in shown_a:
-            last = _git._last_feature_commit_message(branch) or ""
-            _echo_wrapped(f"  🔀 {branch}  last: {last}")
+            _echo_wrapped(f"  🔀 {branch}")
 
     # --- Last completed tasks (newest first, capped at 5) --------------------
     if done_tasks:

@@ -1,11 +1,9 @@
 """Tests for orc/workflow.py."""
 
-from dataclasses import replace as _replace
 from unittest.mock import patch
 
 from conftest import make_msg
 
-import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
 import orc.messaging.telegram as tg
@@ -141,72 +139,28 @@ class TestPostResolved:
 
 class TestWorkflowCoverage:
     def test_do_close_board_crash_recovery(self, tmp_path, monkeypatch):
-        """Lines 74-81: crash-recovery closes board and commits."""
-        from unittest.mock import MagicMock
-        from unittest.mock import patch as _patch
+        """_do_close_board moves task from open to done in the board (cache write, no git)."""
+        import yaml
 
         import orc.engine.workflow as _wf
 
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
+        board_file = tmp_path / ".orc" / "work" / "board.yaml"
+        board_file.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
 
-        dev_wt = tmp_path / "dev"
-        orc_work = dev_wt / ".orc" / "work"
-        orc_work.mkdir(parents=True, exist_ok=True)
-        (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
+        _wf._do_close_board("0001-foo.md")
 
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        runs: list[list] = []
+        board = yaml.safe_load(board_file.read_text())
+        open_names = [(t["name"] if isinstance(t, dict) else str(t)) for t in board.get("open", [])]
+        done_names = [(t["name"] if isinstance(t, dict) else str(t)) for t in board.get("done", [])]
+        assert "0001-foo.md" not in open_names
+        assert "0001-foo.md" in done_names
 
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            runs.append(cmd)
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        with _patch("orc.engine.workflow.subprocess.run", fake_run):
-            _wf._do_close_board("0001-foo.md")
-
-        cmds = [" ".join(c) for c in runs]
-        assert any("add" in c for c in cmds)
-        assert any("commit" in c for c in cmds)
-
-    def test_do_close_board_crash_recovery_agents_outside_root(self, tmp_path, monkeypatch):
-        """Lines 81-82: ValueError except branch when ORC_DIR is outside REPO_ROOT."""
-        from unittest.mock import MagicMock
-        from unittest.mock import patch as _patch
-
+    def test_do_close_board_task_not_on_board_does_not_raise(self, tmp_path):
+        """_do_close_board is a no-op (no crash) when task isn't on the open list."""
         import orc.engine.workflow as _wf
 
-        repo_root = tmp_path / "repo"
-        repo_root.mkdir(exist_ok=True)
-        orc_dir = tmp_path / "other" / ".orc"
-        orc_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=orc_dir, repo_root=repo_root)
-        )
-
-        dev_wt = tmp_path / "dev"
-        orc_work = dev_wt / ".orc" / "work"
-        orc_work.mkdir(parents=True, exist_ok=True)
-        (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
-
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        runs: list[list] = []
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            runs.append(cmd)
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        with _patch("orc.engine.workflow.subprocess.run", fake_run):
-            _wf._do_close_board("0001-foo.md")
-
-        cmds = [" ".join(c) for c in runs]
-        assert any("add" in c for c in cmds)
-        assert any("commit" in c for c in cmds)
+        # board.yaml not created → empty board → no crash
+        _wf._do_close_board("0001-missing.md")
 
 
 class TestMakeMergeFeatureFn:

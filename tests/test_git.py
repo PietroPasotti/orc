@@ -11,7 +11,7 @@ import orc.git.core as _git
 from orc.board import _active_task_name
 from orc.git.core import (
     _close_task_on_board,
-    _derive_state_from_git,
+    _derive_task_state,
     _ensure_feature_worktree,
     _feature_branch,
     _feature_worktree_path,
@@ -19,7 +19,7 @@ from orc.git.core import (
 )
 
 # ---------------------------------------------------------------------------
-# _derive_state_from_git
+# _derive_task_state
 # ---------------------------------------------------------------------------
 
 
@@ -32,7 +32,7 @@ class TestDeriveStateFromGit:
         branch_exists,
         has_commits,
         is_merged=False,
-        last_commit_msg=None,
+        board_status=None,
     ):
         monkeypatch.setattr("orc.board._active_task_name", lambda: active_task)
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
@@ -40,13 +40,11 @@ class TestDeriveStateFromGit:
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
         )
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
-        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
-
-    def test_no_open_tasks_returns_planner(self, monkeypatch):
-        self._patch(monkeypatch, active_task=None, branch_exists=False, has_commits=False)
-        agent, reason = _derive_state_from_git()
-        assert agent == "planner"
-        assert "no open tasks" in reason
+        if board_status is not None and active_task:
+            monkeypatch.setattr(
+                "orc.board.get_task",
+                lambda name: {"name": name, "status": board_status},
+            )
 
     def test_no_feature_branch_returns_coder(self, monkeypatch):
         self._patch(
@@ -55,7 +53,7 @@ class TestDeriveStateFromGit:
             branch_exists=False,
             has_commits=False,
         )
-        agent, reason = _derive_state_from_git()
+        agent, reason = _derive_task_state("0003-foo.md")
         assert agent == "coder"
         assert "does not exist" in reason
 
@@ -67,7 +65,7 @@ class TestDeriveStateFromGit:
             branch_exists=False,
             has_commits=False,
         )
-        agent, reason = _derive_state_from_git()
+        agent, reason = _derive_task_state("0003-foo.md")
         assert agent == "coder"
         assert "does not exist" in reason
 
@@ -80,7 +78,7 @@ class TestDeriveStateFromGit:
             has_commits=False,
             is_merged=False,
         )
-        agent, reason = _derive_state_from_git()
+        agent, reason = _derive_task_state("0003-foo.md")
         assert agent == "coder"
         assert "no commits" in reason
 
@@ -93,35 +91,34 @@ class TestDeriveStateFromGit:
             has_commits=False,
             is_merged=True,
         )
-        agent, reason = _derive_state_from_git()
+        agent, reason = _derive_task_state("0003-foo.md")
         from orc.engine.dispatcher import CLOSE_BOARD
 
         assert agent == CLOSE_BOARD
         assert "merged" in reason
 
     def test_coder_commits_returns_coder(self, monkeypatch):
-        """Ordinary coder commit (no close_task.sh) → route back to coder, still working."""
+        """Board status 'coding' → route back to coder."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
             branch_exists=True,
             has_commits=True,
-            last_commit_msg="feat: implement ResourceType enum",
+            board_status="coding",
         )
-        agent, reason = _derive_state_from_git()
+        agent, reason = _derive_task_state("0003-foo.md")
         assert agent == "coder"
-        assert "not yet signalled done" in reason
+        assert "coding" in reason
 
-    def test_no_last_commit_message_returns_coder(self, monkeypatch):
-        """No commit message (e.g. git error) → treat as coder still working, route to coder."""
+    def test_no_board_status_defaults_to_coding_returns_coder(self, monkeypatch):
+        """No board status defaults to 'coding' → treat as coder still working."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
             branch_exists=True,
             has_commits=True,
-            last_commit_msg=None,
         )
-        agent, _ = _derive_state_from_git()
+        agent, _ = _derive_task_state("0003-foo.md")
         assert agent == "coder"
 
     def test_reason_includes_branch_name(self, monkeypatch):
@@ -130,9 +127,9 @@ class TestDeriveStateFromGit:
             active_task="0003-resource-type-enum.md",
             branch_exists=True,
             has_commits=True,
-            last_commit_msg="feat: add enum",
+            board_status="coding",
         )
-        _, reason = _derive_state_from_git()
+        _, reason = _derive_task_state("0003-resource-type-enum.md")
         assert "feat/0003-resource-type-enum" in reason
 
 
@@ -155,7 +152,7 @@ class TestBoardReconciliation:
         )
         board_path.write_text("counter: 2\nopen:\n  - name: 0003-foo.md\n" + existing_done)
 
-        _close_task_on_board("0003-foo.md", tmp_path, commit_tag="deadbeef")
+        _close_task_on_board("0003-foo.md", commit_tag="deadbeef")
 
         board = yaml.safe_load(board_path.read_text())
         names_open = [t["name"] if isinstance(t, dict) else str(t) for t in board["open"]]
@@ -176,7 +173,7 @@ class TestBoardReconciliation:
         task_md = tmp_path / ".orc" / "work" / "0003-foo.md"
         task_md.write_text("# Task\n")
 
-        _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc123")
+        _close_task_on_board("0003-foo.md", commit_tag="abc123")
 
         assert not task_md.exists()
 
@@ -185,7 +182,7 @@ class TestBoardReconciliation:
             _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
-        _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
+        _close_task_on_board("0003-foo.md", commit_tag="abc")
 
     def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -198,7 +195,7 @@ class TestBoardReconciliation:
             "counter: 3\nopen:\n  - name: 0003-foo.md\n  - name: 0004-bar.md\ndone: []\n"
         )
 
-        _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
+        _close_task_on_board("0003-foo.md", commit_tag="abc")
 
         board = yaml.safe_load(board_path.read_text())
         names_open = [t["name"] if isinstance(t, dict) else str(t) for t in board["open"]]
@@ -231,33 +228,17 @@ class TestFeatureWorktree:
         assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
     def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 2\nopen:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        (tmp_path / ".orc" / "work" / "board.yaml").write_text(
+            "counter: 2\nopen:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n"
         )
         assert _active_task_name() == "0001-foo.md"
 
     def test_active_task_name_returns_none_when_empty(self, monkeypatch, tmp_path):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
-        )
+        (tmp_path / ".orc" / "work" / "board.yaml").write_text("counter: 1\nopen: []\n")
         assert _active_task_name() is None
 
-    def test_active_task_name_returns_none_when_no_board(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(), board_file=tmp_path / "missing.yaml", dev_worktree=tmp_path / "dev-wt"
-            ),
-        )
+    def test_active_task_name_returns_none_when_no_board(self):
+        # board.yaml doesn't exist → returns None
         assert _active_task_name() is None
 
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):
@@ -339,13 +320,12 @@ class TestGitCoverage:
         assert any("worktree" in " ".join(c) for c in runs)
 
     def test_close_task_on_board_missing_board(self, tmp_path, monkeypatch):
-        """Lines 142-148: board.yaml not found in dev worktree → warns and returns."""
+        """No board.yaml → close_task_on_board creates done entry (no crash)."""
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
-        dev_wt = tmp_path / "dev"
-        dev_wt.mkdir(exist_ok=True)
-        _git._close_task_on_board("0001-foo.md", dev_wt)  # no board → no crash
+        # board does not exist — should not raise
+        _git._close_task_on_board("0001-foo.md")
 
     def test_rebase_in_progress_false(self, tmp_path):
         """Lines 235-244: _rebase_in_progress with real git dir returns False."""
@@ -412,87 +392,29 @@ class TestGitCoverage:
             result = _git._conflict_status(tmp_path)
         assert "conflict" in result
 
-    def test_close_task_orc_dir_not_relative_to_repo_root(self, tmp_path, monkeypatch):
-        """Lines 86-87: ORC_DIR outside REPO_ROOT uses basename fallback."""
+    def test_merge_feature_updates_board(self, tmp_path, monkeypatch):
+        """_merge_feature_into_dev updates board (moves task to done) without a git commit."""
         import orc.config as _cfg
         import orc.git.core as _git
 
-        orc_dir = tmp_path / "other" / "orc"
-        orc_dir.mkdir(parents=True, exist_ok=True)
-        repo_root = tmp_path / "repo"
-        repo_root.mkdir(exist_ok=True)
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=orc_dir, repo_root=repo_root)
-        )
-        dev_wt = tmp_path / "dev"
-        dev_wt.mkdir()
-        # board.yaml not in dev_wt → function returns early (warning path)
-        _git._close_task_on_board("0001-task.md", dev_wt)
+        orc_dir = tmp_path / ".orc"
+        work_dir = orc_dir / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        board_yaml = work_dir / "board.yaml"
+        board_yaml.write_text("counter: 1\nopen:\n  - name: 0001-task.md\ndone: []\n")
 
-    def test_merge_feature_commits_board_when_board_exists(self, tmp_path, monkeypatch):
-        """Lines 142-148: _merge_feature_into_dev commits board when board.yaml present."""
-        import orc.config as _cfg
-        import orc.git.core as _git
-
-        # Set up minimal git-shaped directory structure
-        dev_wt = tmp_path / "dev"
-        (dev_wt / ".orc" / "work").mkdir(parents=True, exist_ok=True)
-        (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir(exist_ok=True)
-
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
-            ),
-        )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
-
-        from unittest.mock import MagicMock
-
-        runs = []
-
-        def fake_run(cmd, **kw):
-            runs.append(cmd)
-            r = MagicMock()
-            r.returncode = 0
-            r.stdout = "abc1234\n"
-            return r
-
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._merge_feature_into_dev("0001-task.md")
-
-        cmds_str = [" ".join(c) for c in runs]
-        assert any("commit" in c for c in cmds_str)
-
-    def test_merge_feature_commits_board_agents_outside_root(self, tmp_path, monkeypatch):
-        """Lines 308-309: except ValueError when ORC_DIR is outside REPO_ROOT."""
-        import orc.config as _cfg
-        import orc.git.core as _git
-
-        repo_root = tmp_path / "repo"
-        repo_root.mkdir(exist_ok=True)
         dev_wt = tmp_path / "dev"
-        (dev_wt / ".orc" / "work").mkdir(parents=True, exist_ok=True)
-        (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
-        feat_wt = tmp_path / "feat"
-        feat_wt.mkdir()
+        dev_wt.mkdir(exist_ok=True)
 
-        # ORC_DIR is outside REPO_ROOT → triggers except ValueError
         monkeypatch.setattr(
             _cfg,
             "_config",
-            _replace(
-                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=repo_root, work_dev_branch="dev"
-            ),
+            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
         )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
-
-        from unittest.mock import MagicMock
 
         runs = []
 
@@ -506,8 +428,16 @@ class TestGitCoverage:
         with patch("orc.git.core.subprocess.run", fake_run):
             _git._merge_feature_into_dev("0001-task.md")
 
+        # Board updated: task moved from open to done
+        board = yaml.safe_load(board_yaml.read_text())
+        assert board["open"] == []
+        assert any(t.get("name") == "0001-task.md" for t in board.get("done", []))
+
+        # No board-commit: git commands are merge/worktree/branch only
         cmds_str = [" ".join(c) for c in runs]
-        assert any("commit" in c for c in cmds_str)
+        assert not any("commit" in c and ".orc" in c for c in cmds_str), (
+            "board must not be committed to git: " + str(cmds_str)
+        )
 
     def test_merge_feature_raises_merge_conflict_error_on_conflict(self, tmp_path, monkeypatch):
         """When git merge fails, MergeConflictError is raised (no --abort) so coder can resolve."""
@@ -633,93 +563,53 @@ class TestGitCoverage:
         with patch("orc.git.core.subprocess.run", fake_run):
             assert _git._merge_in_progress(tmp_path) is False
 
-
-# ---------------------------------------------------------------------------
-# _parse_exit_scope
-# ---------------------------------------------------------------------------
-
-
-class TestParseExitScope:
-    """Unit tests for _parse_exit_scope — the structured exit-commit parser."""
-
-    def test_coder_done(self):
-        result = _git._parse_exit_scope("chore(coder-1.done.0002): implemented auth; tests green")
-        assert result == ("coder-1", "done", "0002")
-
-    def test_qa_approve(self):
-        result = _git._parse_exit_scope("chore(qa-2.approve.0003): all checks green")
-        assert result == ("qa-2", "approve", "0003")
-
-    def test_qa_reject(self):
-        result = _git._parse_exit_scope("chore(qa-1.reject.0007): missing error-path tests")
-        assert result == ("qa-1", "reject", "0007")
-
-    def test_returns_none_for_conventional_commit(self):
-        assert _git._parse_exit_scope("feat: add ResourceType enum") is None
-
-    def test_returns_none_for_non_chore(self):
-        assert _git._parse_exit_scope("fix(coder-1.done.0002): oops") is None
-
-    def test_returns_none_for_missing_task_code(self):
-        assert _git._parse_exit_scope("chore(coder-1.done): message") is None
-
-    def test_returns_none_for_empty_string(self):
-        assert _git._parse_exit_scope("") is None
-
-    def test_high_agent_number(self):
-        result = _git._parse_exit_scope("chore(coder-12.done.0099): done")
-        assert result == ("coder-12", "done", "0099")
-
-
-# ---------------------------------------------------------------------------
-# _derive_task_state — new exit-commit routing
-# ---------------------------------------------------------------------------
-
-
-class TestDeriveTaskStateExitCommits:
-    """Tests for the new chore(<id>.<action>.<code>): routing in _derive_task_state."""
-
-    def _patch(self, monkeypatch, *, last_commit_msg):
-        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
-        monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
-        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
-
-    def test_coder_done_routes_to_qa(self, monkeypatch):
-        self._patch(monkeypatch, last_commit_msg="chore(coder-1.done.0002): all tests green")
-        agent, reason = _git._derive_task_state("0002-foo.md")
-        assert agent == "qa"
-        assert "awaiting review" in reason
-
-    def test_qa_approve_routes_to_qa_passed(self, monkeypatch):
-        from orc.engine.dispatcher import QA_PASSED
-
-        self._patch(monkeypatch, last_commit_msg="chore(qa-2.approve.0002): no critical issues")
-        agent, reason = _git._derive_task_state("0002-foo.md")
-        assert agent == QA_PASSED
-        assert "ready to merge" in reason
-
-    def test_qa_reject_routes_to_coder(self, monkeypatch):
-        self._patch(monkeypatch, last_commit_msg="chore(qa-2.reject.0003): missing tests")
-        agent, reason = _git._derive_task_state("0003-foo.md")
-        assert agent == "coder"
-        assert "rejected" in reason
-
-    def test_unknown_action_falls_through_to_coder(self, monkeypatch):
-        """A structured exit commit with an unknown action routes to coder (still working)."""
-        self._patch(monkeypatch, last_commit_msg="chore(coder-1.unknown.0002): weird action")
-        agent, _ = _git._derive_task_state("0002-foo.md")
-        assert agent == "coder"
-
     def test_feature_merged_into_dev_returns_true(self, monkeypatch):
-        """_feature_merged_into_dev uses subprocess; verify it parses returncode correctly."""
-        from unittest.mock import MagicMock
-
         with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=0)):
             assert _git._feature_merged_into_dev("feat/0001-foo") is True
 
     def test_feature_merged_into_dev_returns_false(self, monkeypatch):
-        from unittest.mock import MagicMock
-
         with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=1)):
             assert _git._feature_merged_into_dev("feat/0001-foo") is False
+
+
+# ---------------------------------------------------------------------------
+# _derive_task_state — board status routing
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveTaskStateBoardStatus:
+    """Tests for board-status-based routing in _derive_task_state."""
+
+    def _patch(self, monkeypatch, *, board_status):
+        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
+        monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
+        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr(
+            "orc.board.get_task",
+            lambda name: {"name": name, "status": board_status},
+        )
+
+    def test_review_status_routes_to_qa(self, monkeypatch):
+        self._patch(monkeypatch, board_status="review")
+        agent, reason = _git._derive_task_state("0002-foo.md")
+        assert agent == "qa"
+        assert "awaiting QA" in reason
+
+    def test_approved_status_routes_to_qa_passed(self, monkeypatch):
+        from orc.engine.dispatcher import QA_PASSED
+
+        self._patch(monkeypatch, board_status="approved")
+        agent, reason = _git._derive_task_state("0002-foo.md")
+        assert agent == QA_PASSED
+        assert "ready to merge" in reason
+
+    def test_rejected_status_routes_to_coder(self, monkeypatch):
+        self._patch(monkeypatch, board_status="rejected")
+        agent, reason = _git._derive_task_state("0002-foo.md")
+        assert agent == "coder"
+        assert "rejected" in reason
+
+    def test_coding_status_routes_to_coder(self, monkeypatch):
+        self._patch(monkeypatch, board_status="coding")
+        agent, _ = _git._derive_task_state("0002-foo.md")
+        assert agent == "coder"

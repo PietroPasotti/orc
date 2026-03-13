@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import shutil
+import uuid
 from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from orc import logger as _obs
 from orc.cli import app
-from orc.config import _TEMPLATES_DIR
+from orc.config import _ORC_CFG_TEMPLATE, _WORK_STATE_TEMPLATE, _orc_cache_root
 
 _SPACE = "    "
 _BRANCH = "│   "
@@ -18,14 +20,27 @@ _TEE = "├── "
 _LAST = "└── "
 
 # Paths (relative to .orc/) that --upgrade must never touch.
-_UPGRADE_PRESERVE: frozenset[str] = frozenset(
-    ["orc-CHANGELOG.md", "vision", "work", "worktrees", "logs"]
-)
+_UPGRADE_PRESERVE: frozenset[str] = frozenset(["orc-CHANGELOG.md", "worktrees", "logs"])
 
 
 def _is_preserved(rel: Path) -> bool:
     """Return True if *rel* (relative to the .orc target) should survive --upgrade."""
     return rel.parts[0] in _UPGRADE_PRESERVE
+
+
+def _ensure_project_id(config_path: Path) -> str:
+    """Read or create project-id in config.yaml; return the UUID string."""
+    cfg: dict = {}
+    if config_path.exists():
+        cfg = yaml.safe_load(config_path.read_text()) or {}
+    project_id = str(cfg.get("project-id", "")).strip()
+    if not project_id:
+        project_id = str(uuid.uuid4())
+        cfg["project-id"] = project_id
+        tmp = config_path.with_suffix(".yaml.tmp")
+        tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
+        tmp.replace(config_path)
+    return project_id
 
 
 def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> None:
@@ -38,10 +53,7 @@ def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> 
 
 
 def _tree(dir_path: Path, prefix: str = ""):
-    """A recursive generator, given a directory Path object
-    will yield a visual tree structure line by line
-    with each line prefixed by the same characters
-    """
+    """Yield visual tree lines for *dir_path*."""
     contents = list(dir_path.iterdir())
     pointers = [_TEE] * (len(contents) - 1) + [_LAST]
     for pointer, path in zip(pointers, contents):
@@ -49,6 +61,32 @@ def _tree(dir_path: Path, prefix: str = ""):
         if path.is_dir():
             extension = _BRANCH if pointer == _TEE else _SPACE
             yield from _tree(path, prefix=prefix + extension)
+
+
+def _copy_tree(
+    src_root: Path,
+    dst_root: Path,
+    created: list[str],
+    skipped: list[str],
+    copy_fn: ...,
+    *,
+    special: dict[str, Path] | None = None,
+) -> None:
+    """Recursively copy *src_root* into *dst_root*, honouring *special* path overrides."""
+    for src in sorted(src_root.rglob("*")):
+        if not src.is_file():
+            continue
+        rel = src.relative_to(src_root)
+        if special and rel.parts[0] in special:
+            dst = (
+                special[rel.parts[0]] / Path(*rel.parts[1:])
+                if len(rel.parts) > 1
+                else special[rel.parts[0]]
+            )
+        else:
+            dst = dst_root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        copy_fn(src, dst, created, skipped)
 
 
 def _bootstrap(force: bool = False) -> None:
@@ -60,39 +98,45 @@ def _bootstrap(force: bool = False) -> None:
     created: list[str] = []
     skipped: list[str] = []
 
-    if force:
+    _copy = (lambda s, d, c, sk: (shutil.copy2(s, d), c.append(str(d)))) if force else _copy_file  # type: ignore[assignment]
 
-        def _copy(src: Path, dst: Path, c: list, s: list) -> None:
-            shutil.copy2(src, dst)
-            c.append(str(dst))
-    else:
-        _copy = _copy_file  # type: ignore[assignment]
+    # ── .orc/ content (git-tracked config + tooling) ─────────────────────────
+    _copy_tree(
+        _ORC_CFG_TEMPLATE,
+        target,
+        created,
+        skipped,
+        _copy,
+        special={".env.example": project_root / ".env.example"},
+    )
 
-    # ── copy every file from the template tree ────────────────────────────────
-    for src in sorted(_TEMPLATES_DIR.rglob("*")):
-        if not src.is_file():
-            continue
-        rel = src.relative_to(_TEMPLATES_DIR)
-        if rel.parts[0] == ".env.example":
-            dst = project_root / ".env.example"
-        else:
-            dst = target / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        _copy(src, dst, created, skipped)
+    # ── project cache (board + vision docs) ──────────────────────────────────
+    config_path = target / "config.yaml"
+    project_id = _ensure_project_id(config_path)
+    cache_dir = _orc_cache_root() / project_id
+    cache_created: list[str] = []
+    _copy_tree(_WORK_STATE_TEMPLATE, cache_dir, cache_created, skipped, _copy)
 
     # ── summary ───────────────────────────────────────────────────────────────
-    rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
-
     if created:
         typer.echo("\nBootstrapped:")
         typer.echo(target)
         for line in _tree(target):
             typer.echo(f"    {line}")
 
+    if cache_created:
+        typer.echo(f"\nProject cache ({project_id[:8]}…):")
+        typer.echo(str(cache_dir))
+        for line in _tree(cache_dir):
+            typer.echo(f"    {line}")
+
     if skipped:
         typer.echo("\n⚠ Skipped (already exists):")
         for f in skipped:
-            typer.echo(f"    {rel_path(f)}")
+            try:
+                typer.echo(f"    {Path(f).relative_to(project_root)}")
+            except ValueError:
+                typer.echo(f"    {f}")
         typer.echo("  Use --force to overwrite.")
 
     typer.echo(
@@ -100,7 +144,8 @@ def _bootstrap(force: bool = False) -> None:
 Next steps
 ──────────
 1. Edit {to}/roles/*/  — customise agent instructions for your project.
-2. Add vision docs to {to}/vision/  — describe what you want to build.
+2. Add vision docs to the project cache at:
+      {cache_dir / "vision"}
 3. Copy .env.example → .env and fill in your credentials.
 4. Add to your root justfile:
 
@@ -116,7 +161,8 @@ Next steps
 def _upgrade(*, yes: bool = False) -> None:
     """Overwrite bundled template files in an existing .orc/ installation.
 
-    Preserves: orc-CHANGELOG.md, vision/, work/.
+    Preserves: orc-CHANGELOG.md, worktrees/, logs/.
+    vision/ and work/ are in the project cache and are never touched here.
     Everything else (roles/, squads/, agent_tools/, justfile, config.yaml, …)
     is replaced with the version shipped in the currently installed package.
     """
@@ -139,12 +185,11 @@ def _upgrade(*, yes: bool = False) -> None:
     updated: list[str] = []
     skipped: list[str] = []
 
-    for src in sorted(_TEMPLATES_DIR.rglob("*")):
+    for src in sorted(_ORC_CFG_TEMPLATE.rglob("*")):
         if not src.is_file():
             continue
-        rel = src.relative_to(_TEMPLATES_DIR)
+        rel = src.relative_to(_ORC_CFG_TEMPLATE)
         if rel.parts[0] == ".env.example":
-            # .env.example lives at project root, not inside .orc/
             dst = project_root / ".env.example"
         else:
             if _is_preserved(rel):
@@ -154,6 +199,9 @@ def _upgrade(*, yes: bool = False) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
         updated.append(str(dst))
+
+    # Ensure project-id is present after upgrade
+    _ensure_project_id(target / "config.yaml")
 
     rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
 

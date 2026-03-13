@@ -141,8 +141,3 @@ def route(state: WorldState) -> str | None:
 
     # Ordinary coder commit (CODER_WORK or unknown) — coder is still working.
     return AgentRole.CODER
-
-
-def is_terminal(state: WorldState) -> bool:
-    """Return True if the workflow has reached a terminal state (nothing to do or hard-blocked)."""
-    return route(state) is None

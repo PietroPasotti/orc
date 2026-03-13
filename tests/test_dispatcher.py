@@ -193,15 +193,14 @@ class TestBootMessageSentBeforeInvoke:
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
         monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
     def test_boot_message_sent(self, tmp_path, monkeypatch):
         """Orchestrator sends (boot) message before invoking the agent."""
-        board = tmp_path / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         sent: list[str] = []
@@ -225,9 +224,9 @@ class TestBootMessageSentBeforeInvoke:
 
     def test_boot_message_precedes_invoke(self, tmp_path, monkeypatch):
         """Boot message must be sent BEFORE spawn is called."""
-        board = tmp_path / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         call_order: list[str] = []
@@ -263,14 +262,13 @@ class TestBlockedResumption:
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
         monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
     def test_blocked_agent_resumes_after_reply(self, monkeypatch, tmp_path):
-        board = tmp_path / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         blocked = self._blocked_msgs("coder-1")
@@ -316,8 +314,9 @@ class TestBlockedResumption:
         # The planner-1 case has an empty board.  A vision doc is required so
         # the dispatcher has something for the planner to work on after the
         # hard-block reply; without it the loop would exit with "no pending work".
-        (tmp_path / "vision").mkdir(exist_ok=True)
-        (tmp_path / "vision" / "feature-x.md").write_text("# Feature X\n")
+        vision_dir = tmp_path / ".orc" / "vision"
+        vision_dir.mkdir(parents=True, exist_ok=True)
+        (vision_dir / "feature-x.md").write_text("# Feature X\n")
 
         cases = [
             (
@@ -332,25 +331,24 @@ class TestBlockedResumption:
                     "_feature_branch_exists": False,
                     "_feature_has_commits_ahead_of_main": False,
                     "_feature_merged_into_dev": False,
-                    "_last_feature_commit_message": None,
                 },
             ),
             (
                 "qa-1",
-                "counter: 1\nopen:\n  - name: 0001-foo.md\n",
+                "counter: 1\nopen:\n  - name: 0001-foo.md\n    status: review\n",
                 {
                     "_feature_branch_exists": True,
                     "_feature_has_commits_ahead_of_main": True,
                     "_feature_merged_into_dev": False,
-                    "_last_feature_commit_message": "chore(coder-1.done.0001): finished task",
                 },
             ),
         ]
 
         for agent_id, board_content, git_map in cases:
-            board = tmp_path / "board.yaml"
+            board = tmp_path / ".orc" / "work" / "board.yaml"
+            board.parent.mkdir(parents=True, exist_ok=True)
             board.write_text(board_content)
-            monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
+            monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
             monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
             monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
             for attr, val in git_map.items():
@@ -374,15 +372,13 @@ class TestBlockedResumption:
             )
 
     def test_timeout_posts_telegram_message_and_exits(self, monkeypatch, tmp_path):
-        board = tmp_path / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
-        )
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
         monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
@@ -406,20 +402,19 @@ class TestBlockedResumption:
 
     def test_planner_done_is_not_blocked(self, monkeypatch, tmp_path):
         """planner(done) is not a blocked state — git routes to planner (no tasks)."""
-        board = tmp_path / "board.yaml"
+        board = tmp_path / ".orc" / "work" / "board.yaml"
+        board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
-        )
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
 
         # A vision doc gives the planner something to plan (otherwise no dispatch).
-        (tmp_path / "vision").mkdir(exist_ok=True)
-        (tmp_path / "vision" / "feature-x.md").write_text("# Feature X\n")
+        vision_dir = tmp_path / ".orc" / "vision"
+        vision_dir.mkdir(parents=True, exist_ok=True)
+        (vision_dir / "feature-x.md").write_text("# Feature X\n")
 
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(_git, "_last_feature_commit_message", lambda b: None)
         monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 

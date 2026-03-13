@@ -2,9 +2,10 @@
 
 ### 1. Find the active task
 
-Look in `.orc/work/board.yaml` under the `open` list. Implement tasks one at
-a time, starting with the lowest-numbered file. Read the task file fully before
-touching any code.
+Look in the **Board** section of your shared context under `open`. Implement
+tasks one at a time, starting with the lowest-numbered file. Read the task
+file fully before touching any code. Check the `comments` field for any
+prior clarifications from the planner or user.
 
 ### 2. Follow the TDD loop
 

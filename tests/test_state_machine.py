@@ -12,7 +12,6 @@ from orc.engine.state_machine import (
     BlockState,
     LastCommit,
     WorldState,
-    is_terminal,
     route,
 )
 
@@ -32,7 +31,7 @@ class TestRoute:
 
     def test_no_task_no_vision_is_terminal(self):
         s = WorldState(has_open_task=False, has_pending_vision=False)
-        assert is_terminal(s)
+        assert route(s) is None
         assert s.block != BlockState.HARD
 
     def test_no_task_with_vision_routes_to_planner(self):
@@ -128,11 +127,10 @@ class TestSentinelAlignment:
 
 
 class TestRouteMatchesImplementation:
-    """Verify route() agrees with the real git.py implementation.
+    """Verify route() agrees with _derive_task_state (board-status based).
 
-    These tests parametrise over key (branch_exists, commits_ahead,
-    merged_into_dev, last_commit) combinations and assert that the formal
-    model and the live _derive_task_state return the same action.
+    Parametrises over (branch_exists, commits_ahead, merged_into_dev, board_status)
+    and asserts the formal model and the live implementation return the same action.
     """
 
     def _patch_git(
@@ -142,44 +140,41 @@ class TestRouteMatchesImplementation:
         branch_exists,
         commits_ahead,
         merged_into_dev,
-        last_commit_msg=None,
+        board_status=None,
     ):
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
         monkeypatch.setattr(
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: commits_ahead
         )
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: merged_into_dev)
-        monkeypatch.setattr("orc.git.core._last_feature_commit_message", lambda b: last_commit_msg)
+        if board_status is not None:
+            monkeypatch.setattr(
+                "orc.board.get_task",
+                lambda name: {"name": name, "status": board_status},
+            )
         monkeypatch.setattr("orc.board._active_task_name", lambda: "0001-foo.md")
 
-    def _last_commit_from_msg(self, msg: str | None) -> LastCommit:
-        if msg is None:
-            return LastCommit.NONE
-        from orc.git.core import _parse_exit_scope
-
-        parsed = _parse_exit_scope(msg)
-        if parsed is not None:
-            _agent_id, action, _task_code = parsed
-            if action == "approve":
-                return LastCommit.QA_PASSED
-            if action == "reject":
-                return LastCommit.QA_OTHER
-            if action == "done":
-                return LastCommit.CODER_DONE
-        return LastCommit.CODER_WORK
+    _STATUS_TO_LAST_COMMIT = {
+        "planned": LastCommit.CODER_WORK,
+        "coding": LastCommit.CODER_WORK,
+        "review": LastCommit.CODER_DONE,
+        "approved": LastCommit.QA_PASSED,
+        "rejected": LastCommit.QA_OTHER,
+        "blocked": LastCommit.CODER_WORK,
+        "soft-blocked": LastCommit.CODER_WORK,
+    }
 
     @pytest.mark.parametrize(
-        "branch_exists,commits_ahead,merged_into_dev,last_commit_msg",
+        "branch_exists,commits_ahead,merged_into_dev,board_status",
         [
             (False, False, False, None),
             (False, False, True, None),
             (True, False, False, None),
             (True, False, True, None),
-            (True, True, False, "feat: add thing"),
-            # Structured exit-commit format.
-            (True, True, False, "chore(coder-1.done.0001): implementation complete"),
-            (True, True, False, "chore(qa-1.approve.0001): all checks green"),
-            (True, True, False, "chore(qa-2.reject.0001): missing error-path tests"),
+            (True, True, False, "coding"),
+            (True, True, False, "review"),
+            (True, True, False, "approved"),
+            (True, True, False, "rejected"),
         ],
     )
     def test_route_matches_derive_task_state(
@@ -188,24 +183,28 @@ class TestRouteMatchesImplementation:
         branch_exists,
         commits_ahead,
         merged_into_dev,
-        last_commit_msg,
+        board_status,
     ):
         self._patch_git(
             monkeypatch,
             branch_exists=branch_exists,
             commits_ahead=commits_ahead,
             merged_into_dev=merged_into_dev,
-            last_commit_msg=last_commit_msg,
+            board_status=board_status,
         )
         impl_token, _ = _git._derive_task_state("0001-foo.md")
 
-        last_commit = self._last_commit_from_msg(last_commit_msg)
+        last_commit = (
+            self._STATUS_TO_LAST_COMMIT.get(board_status, LastCommit.CODER_WORK)
+            if commits_ahead
+            else LastCommit.NONE
+        )
         world = WorldState(
             has_open_task=True,
             branch_exists=branch_exists,
             commits_ahead=commits_ahead,
             merged_into_dev=merged_into_dev,
-            last_commit=last_commit if commits_ahead else LastCommit.NONE,
+            last_commit=last_commit,
         )
         model_action = route(world)
 

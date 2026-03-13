@@ -118,6 +118,10 @@ just fmt          # auto-fix lint + format
 just bump         # semver version bump + CHANGELOG update (maintainers only)
 ```
 
+Search for dead code:
+`uv run --with deadcode deadcode . --exclude=.venv,tests,.orc |> /tmp/deadcode.txt`
+
+
 ---
 
 ## Package layout

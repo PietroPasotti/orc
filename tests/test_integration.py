@@ -43,6 +43,7 @@ from conftest import FakePopen
 from typer.testing import CliRunner
 
 import orc.ai.invoke as inv
+import orc.cli.bootstrap as _boot
 import orc.cli.merge as _merge_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
@@ -58,6 +59,15 @@ runner = CliRunner()
 
 _TASK_NAME = "0001-feature-x.md"
 _VISION_DOC = "# Feature X\n\nBuild feature X.\n"
+
+
+def _project_cache(project_root: Path) -> Path:
+    """Derive the project cache dir from .orc/config.yaml.
+
+    Assumes the cache root was monkeypatched to ``project_root / "orc_cache"``.
+    """
+    cfg = yaml.safe_load((project_root / ".orc" / "config.yaml").read_text()) or {}
+    return project_root / "orc_cache" / str(cfg["project-id"])
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +86,10 @@ def git_project(tmp_path, monkeypatch):
     Returns the project root :class:`~pathlib.Path`.
     """
     monkeypatch.chdir(tmp_path)
+
+    # Redirect cache to a temp dir so tests don't pollute ~/.cache
+    cache_root = tmp_path / "orc_cache"
+    monkeypatch.setattr(_boot, "_orc_cache_root", lambda: cache_root)
 
     # Minimal git setup
     subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
@@ -98,8 +112,11 @@ def git_project(tmp_path, monkeypatch):
     result = runner.invoke(m.app, ["bootstrap"], catch_exceptions=False)
     assert result.exit_code == 0, f"bootstrap failed:\n{result.output}"
 
-    # Add a single dummy vision document
-    (tmp_path / ".orc" / "vision" / "feature-x.md").write_text(_VISION_DOC)
+    # Derive the project cache dir from the generated project-id
+    project_cache = _project_cache(tmp_path)
+
+    # Add a single dummy vision document (goes in the project cache)
+    (project_cache / "vision" / "feature-x.md").write_text(_VISION_DOC)
 
     # Initial commit — required for git worktree operations
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
@@ -126,8 +143,8 @@ def orc_env(git_project, monkeypatch):
     """
     root = git_project
     orc_dir = root / ".orc"
-    # Mirror the default DEV_WORKTREE convention (sibling of repo root)
     dev_wt = root.parent / f"{root.name}-dev"
+    project_cache = _project_cache(root)
 
     monkeypatch.setattr(
         _cfg,
@@ -136,8 +153,8 @@ def orc_env(git_project, monkeypatch):
             _cfg.get(),
             repo_root=root,
             orc_dir=orc_dir,
-            work_dir=orc_dir / "work",
-            board_file=orc_dir / "work" / "board.yaml",
+            work_dir=project_cache / "work",
+            vision_dir=project_cache / "vision",
             roles_dir=orc_dir / "roles",
             env_file=root / ".env",
             dev_worktree=dev_wt,
@@ -189,24 +206,21 @@ def _planner_handler(task_name: str):
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
-        board_path = cwd / ".orc" / "work" / "board.yaml"
-        task_file = cwd / ".orc" / "work" / task_name
+        import orc.config as _orc_cfg
+
+        work_dir = _orc_cfg.get().work_dir
+        work_dir.mkdir(parents=True, exist_ok=True)
+        board_path = work_dir / "board.yaml"
+        task_file = work_dir / task_name
 
         task_file.write_text(f"# {task_name}\n\nImplement feature X per vision doc.\n")
 
-        board = yaml.safe_load(board_path.read_text()) or {}
+        board = yaml.safe_load(board_path.read_text()) if board_path.exists() else {}
+        board = board or {}
         board.setdefault("open", [])
-        board["open"].append({"name": task_name})
+        board["open"].append({"name": task_name, "status": "planned"})
         board["counter"] = 2
         board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
-
-        subprocess.run(["git", "add", ".orc/work/"], cwd=cwd, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", f"chore(orc): add task {task_name}"],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-        )
 
         tg._append_to_log(
             tg.format_agent_message("planner-1", "ready", f"Created task {task_name}.")
@@ -222,17 +236,20 @@ def _coder_handler():
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        import orc.board as _board_mod
+
         impl = cwd / "feature_x.py"
         impl.write_text("# Feature X implementation\n\ndef feature_x():\n    pass\n")
 
         subprocess.run(["git", "add", "feature_x.py"], cwd=cwd, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-m", "chore(coder-1.done.0001): implement feature-x"],
+            ["git", "commit", "-m", "feat: implement feature-x"],
             cwd=cwd,
             check=True,
             capture_output=True,
         )
 
+        _board_mod.set_task_status(_TASK_NAME, "review")
         tg._append_to_log(tg.format_agent_message("coder-1", "done", "Implemented feature X."))
 
     return handler
@@ -241,22 +258,25 @@ def _coder_handler():
 def _qa_handler():
     """Return a callable that simulates a QA agent committing a passed verdict.
 
-    *cwd* is the feature worktree.  A structured ``chore(qa-1.approve.<code>):``
-    commit is required so the orchestrator recognises the QA verdict and triggers a merge.
+    *cwd* is the feature worktree.  Board status is updated to ``approved``
+    so the orchestrator recognises the QA verdict and triggers a merge.
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        import orc.board as _board_mod
+
         qa_note = cwd / "qa_review.txt"
         qa_note.write_text("Reviewed. All checks passed.\n")
 
         subprocess.run(["git", "add", "qa_review.txt"], cwd=cwd, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-m", "chore(qa-1.approve.0001): feature-x reviewed, all tests pass"],
+            ["git", "commit", "-m", "chore(qa): feature-x reviewed, all tests pass"],
             cwd=cwd,
             check=True,
             capture_output=True,
         )
 
+        _board_mod.set_task_status(_TASK_NAME, "approved")
         tg._append_to_log(
             tg.format_agent_message("qa-1", "passed", "Review complete, all tests pass.")
         )
@@ -344,22 +364,25 @@ class TestBootstrap:
 
     def test_creates_expected_structure(self, git_project):
         root = git_project
+        pc = _project_cache(root)
         assert (root / ".orc" / "roles" / "planner" / "_main.md").exists()
         assert (root / ".orc" / "roles" / "coder" / "_main.md").exists()
         assert (root / ".orc" / "roles" / "qa" / "_main.md").exists()
         assert (root / ".orc" / "squads" / "default.yaml").exists()
-        assert (root / ".orc" / "work" / "board.yaml").exists()
-        assert (root / ".orc" / "vision" / "feature-x.md").exists()
+        assert (pc / "work" / "board.yaml").exists()
+        assert (pc / "vision" / "feature-x.md").exists()
         assert (root / ".env.example").exists()
 
     def test_board_starts_empty(self, git_project):
-        board = yaml.safe_load((git_project / ".orc" / "work" / "board.yaml").read_text())
+        pc = _project_cache(git_project)
+        board = yaml.safe_load((pc / "work" / "board.yaml").read_text())
         assert board["open"] == []
         assert board["done"] == []
         assert board["counter"] == 1
 
     def test_vision_doc_content(self, git_project):
-        content = (git_project / ".orc" / "vision" / "feature-x.md").read_text()
+        pc = _project_cache(git_project)
+        content = (pc / "vision" / "feature-x.md").read_text()
         assert content == _VISION_DOC
 
 
@@ -417,8 +440,9 @@ class TestFullWorkflowLoop:
         assert _first("qa-1") < _first("planner-2"), "qa must precede second planner"
 
         # ── Board state after merge ──────────────────────────────────────────
-        dev_wt = orc_env.parent / f"{orc_env.name}-dev"
-        board = yaml.safe_load((dev_wt / ".orc" / "work" / "board.yaml").read_text())
+        pc = _project_cache(orc_env)
+        board_path = pc / "work" / "board.yaml"
+        board = yaml.safe_load(board_path.read_text())
 
         assert board["open"] == [], "Open task list should be empty after the merge"
 
@@ -445,12 +469,13 @@ class TestNoWorkExitsCleanly:
 
         # Remove all vision docs so the project is genuinely idle: no unplanned
         # vision docs, empty board, no open branches.
-        for f in (orc_env / ".orc" / "vision").glob("*.md"):
+        pc = _project_cache(orc_env)
+        for f in (pc / "vision").glob("*.md"):
             if f.name.lower() != "readme.md":
                 f.unlink()
 
         # Guard: confirm the board really is empty before the run.
-        board = yaml.safe_load((orc_env / ".orc" / "work" / "board.yaml").read_text())
+        board = yaml.safe_load((pc / "work" / "board.yaml").read_text())
         assert board["open"] == []
 
         spawn_calls: list = []

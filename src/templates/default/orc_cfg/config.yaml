@@ -1,5 +1,13 @@
 # orc configuration
 #
+# orc-cache-dir: override the cache directory for board, vision, and task files.
+#   By default orc stores mutable state (board.yaml, vision docs, task files)
+#   under ~/.cache/orc/projects/{project-id}/ (XDG-compliant).  Set this to
+#   an absolute path to store the cache elsewhere — useful for shared network
+#   drives, CI environments, or when you prefer everything self-contained.
+#   This takes precedence over the default XDG path even when project-id is set.
+# orc-cache-dir: ~/.cache/orc/projects/my-project
+
 # orc-dev-branch: the name of the branch orc uses as its integration branch.
 #   All feature branches are merged here after QA passes, and `orc merge`
 #   fast-forwards this branch into main.  Change this if your project already
