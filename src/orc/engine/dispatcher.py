@@ -494,8 +494,7 @@ class Dispatcher:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        body = self.messaging.boot_message_body()
-        self.messaging.post_boot_message(agent_id, body)
+        self.messaging.post_boot_message(agent_id)
 
         import structlog.contextvars as _cv
 

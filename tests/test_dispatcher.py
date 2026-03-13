@@ -100,9 +100,8 @@ class _FakeMessaging:
         self.get_messages = get_messages or (lambda: [])
         self.has_unresolved_block = lambda msgs: (None, None)
         self.wait_for_human_reply = wait_for_human_reply or (lambda msgs, **kw: "reply")
-        self.post_boot_message = lambda agent_id, body: None
+        self.post_boot_message = lambda agent_id: None
         self.post_resolved = lambda a, s, r: None
-        self.boot_message_body = lambda: "booting"
 
 
 class _FakeWorkflow:

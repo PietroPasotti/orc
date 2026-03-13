@@ -77,14 +77,11 @@ class _MessagingSvc:
     def wait_for_human_reply(self, messages: list[dict]) -> str:
         return _ctx.wait_for_human_reply(messages)
 
-    def post_boot_message(self, agent_id: str, body: str) -> None:
-        _wf._post_boot_message(agent_id, body)
+    def post_boot_message(self, agent_id: str) -> None:
+        _wf._post_boot_message(agent_id)
 
     def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
         _wf._post_resolved(blocked_agent, blocked_state, resolver)
-
-    def boot_message_body(self) -> str:
-        return _ctx._boot_message_body()
 
 
 class _WorkflowSvc:

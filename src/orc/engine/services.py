@@ -85,16 +85,12 @@ class MessagingService(Protocol):
         """Block until a human replies on Telegram; return the reply text."""
         ...
 
-    def post_boot_message(self, agent_id: str, body: str) -> None:
-        """Send ``[{agent_id}](boot) …`` to Telegram."""
+    def post_boot_message(self, agent_id: str) -> None:
+        """Build and send ``[{agent_id}](boot) …`` to Telegram."""
         ...
 
     def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
         """Send ``[orc](resolved) …`` to Telegram."""
-        ...
-
-    def boot_message_body(self) -> str:
-        """Return the body text for a boot message."""
         ...
 
 
