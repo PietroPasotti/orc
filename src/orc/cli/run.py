@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Annotated
 
 import structlog
@@ -30,6 +31,92 @@ _MAXCALLS_UNLIMITED = sys.maxsize
 logger = structlog.get_logger(__name__)
 
 _DEV_AHEAD_REFRESH_INTERVAL = 30.0  # seconds between git queries
+
+
+# ---------------------------------------------------------------------------
+# Service adapters — satisfy the Protocol contracts using module functions
+# ---------------------------------------------------------------------------
+
+
+class _BoardSvc:
+    def get_open_tasks(self) -> list[dict]:
+        return _board.get_open_tasks()
+
+    def assign_task(self, task_name: str, agent_id: str) -> None:
+        _board.assign_task(task_name, agent_id)
+
+    def unassign_task(self, task_name: str) -> None:
+        _board.unassign_task(task_name)
+
+    def get_pending_visions(self) -> list[str]:
+        return _status_mod._pending_visions()
+
+    def get_pending_reviews(self) -> list[str]:
+        return _status_mod._pending_reviews()
+
+
+class _WorktreeSvc:
+    def ensure_feature_worktree(self, task_name: str) -> Path:
+        return _git._ensure_feature_worktree(task_name)
+
+    def ensure_dev_worktree(self) -> Path:
+        return _git._ensure_dev_worktree()
+
+
+class _MessagingSvc:
+    def get_messages(self) -> list[dict]:
+        return tg.get_messages()
+
+    def has_unresolved_block(self, messages: list[dict]) -> tuple[str | None, str | None]:
+        return _wf._has_unresolved_block(messages)
+
+    def wait_for_human_reply(self, messages: list[dict]) -> str:
+        return _ctx.wait_for_human_reply(messages)
+
+    def post_boot_message(self, agent_id: str, body: str) -> None:
+        _wf._post_boot_message(agent_id, body)
+
+    def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
+        _wf._post_resolved(blocked_agent, blocked_state, resolver)
+
+    def boot_message_body(self) -> str:
+        return _ctx._boot_message_body()
+
+
+class _WorkflowSvc:
+    def __init__(self, squad_cfg) -> None:
+        self._merge = _wf._make_merge_feature_fn(squad_cfg)
+
+    def derive_task_state(self, task_name: str) -> tuple[str, str]:
+        return _git._derive_task_state(task_name)
+
+    def merge_feature(self, task_name: str) -> None:
+        self._merge(task_name)
+
+    def do_close_board(self, task_name: str) -> None:
+        _wf._do_close_board(task_name)
+
+
+class _AgentSvc:
+    def __init__(self, squad_cfg) -> None:
+        self._build = _wf._make_context_builder(squad_cfg)
+
+    def build_context(
+        self,
+        role: str,
+        agent_id: str,
+        messages: list[dict],
+        worktree: Path | None,
+    ) -> tuple[str, str]:
+        return self._build(role, agent_id, messages, worktree)
+
+    def spawn(self, context: str, cwd: Path, model: str | None, log_path: Path | None) -> object:
+        return inv.spawn(context, cwd, model, log_path)
+
+
+# ---------------------------------------------------------------------------
+# Run implementation
+# ---------------------------------------------------------------------------
 
 
 def _run(
@@ -72,62 +159,63 @@ def _run(
 
     _last_dev_refresh: list[float] = [0.0]
 
-    def _on_agent_start(agent: AgentProcess) -> None:
-        assert state is not None
-        state.agents.append(
-            _tui.AgentData(
-                agent_id=agent.agent_id,
-                role=agent.role,
-                model=agent.model,
-                status="running",
-                task_name=agent.task_name,
-                worktree=str(agent.worktree),
-                started_at=agent.started_at,
+    board_svc = _BoardSvc()
+    messaging_svc = _MessagingSvc()
+    workflow_svc = _WorkflowSvc(squad_cfg)
+    agent_svc = _AgentSvc(squad_cfg)
+    worktree_svc = _WorktreeSvc()
+
+    hooks: _disp.DispatchHooks | None = None
+    if use_tui:
+
+        def _on_agent_start(agent: AgentProcess) -> None:
+            assert state is not None
+            state.agents.append(
+                _tui.AgentData(
+                    agent_id=agent.agent_id,
+                    role=agent.role,
+                    model=agent.model,
+                    status="running",
+                    task_name=agent.task_name,
+                    worktree=str(agent.worktree),
+                    started_at=agent.started_at,
+                )
             )
+
+        def _on_agent_done(agent: AgentProcess, rc: int) -> None:
+            assert state is not None
+            state.agents = [r for r in state.agents if r.agent_id != agent.agent_id]
+
+        def _on_orc_status(status: str, task: str | None) -> None:
+            assert state is not None
+            state.orc = _tui.OrcData(agent_id="orc", status=status, task=task)
+
+        hooks = _disp.DispatchHooks(
+            on_agent_start=_on_agent_start,
+            on_agent_done=_on_agent_done,
+            on_orc_status=_on_orc_status,
         )
 
-    def _on_agent_done(agent: AgentProcess, rc: int) -> None:
-        assert state is not None
-        state.agents = [r for r in state.agents if r.agent_id != agent.agent_id]
-
-    def _on_orc_status(status: str, task: str | None) -> None:
-        assert state is not None
-        state.orc = _tui.OrcData(agent_id="orc", status=status, task=task)
-
-    callbacks = _disp.DispatchCallbacks(
-        derive_task_state=_git._derive_task_state,
-        get_open_tasks=_board.get_open_tasks,
-        assign_task=_board.assign_task,
-        unassign_task=_board.unassign_task,
-        ensure_feature_worktree=_git._ensure_feature_worktree,
-        ensure_dev_worktree=_git._ensure_dev_worktree,
-        merge_feature=_wf._make_merge_feature_fn(squad_cfg),
-        do_close_board=_wf._do_close_board,
-        get_messages=tg.get_messages,
-        has_unresolved_block=_wf._has_unresolved_block,
-        wait_for_human_reply=_ctx.wait_for_human_reply,
-        post_boot_message=_wf._post_boot_message,
-        post_resolved=_wf._post_resolved,
-        boot_message_body=_ctx._boot_message_body,
-        build_context=_wf._make_context_builder(squad_cfg),
-        spawn_fn=inv.spawn,
-        get_pending_visions=_status_mod._pending_visions,
-        get_pending_reviews=_status_mod._pending_reviews,
-        on_agent_start=_on_agent_start if use_tui else None,
-        on_agent_done=_on_agent_done if use_tui else None,
-        on_orc_status=_on_orc_status if use_tui else None,
-    )
-
-    if not _disp.Dispatcher.has_pending_work(callbacks, messages):
+    if not _disp.Dispatcher.has_pending_work(board_svc, messaging_svc, messages):
         typer.echo("No pending work. Go write some vision!")
         return
 
     try:
-        dispatcher = _disp.Dispatcher(squad_cfg, callbacks, dry_run=dry_run, only_role=only_role)
+        dispatcher = _disp.Dispatcher(
+            squad_cfg,
+            board=board_svc,
+            worktree=worktree_svc,
+            messaging=messaging_svc,
+            workflow=workflow_svc,
+            agent=agent_svc,
+            hooks=hooks,
+            dry_run=dry_run,
+            only_role=only_role,
+        )
         if use_tui and state is not None:
             # Wrap get_messages to keep state.current_loop and state.dev_ahead
             # fresh; the Textual app reads from state on its own timer.
-            _orig_get_messages = callbacks.get_messages
+            _orig_get_messages = messaging_svc.get_messages
 
             def _updating_get_messages() -> list[dict]:
                 assert state is not None
@@ -138,7 +226,7 @@ def _run(
                     _last_dev_refresh[0] = now
                 return _orig_get_messages()
 
-            callbacks.get_messages = _updating_get_messages
+            messaging_svc.get_messages = _updating_get_messages  # type: ignore[method-assign]
             _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))
         else:
             dispatcher.run(maxcalls=maxcalls)

@@ -1,10 +1,7 @@
 """Service protocols for the orc orchestrator.
 
 Defines structural Protocol types for the domain services consumed by
-:class:`~orc.dispatcher.Dispatcher`.  These protocols replace the flat
-:class:`~orc.dispatcher.DispatchCallbacks` bag as the *canonical* service
-contract while remaining fully backwards-compatible (``DispatchCallbacks``
-satisfies all three protocols).
+:class:`~orc.engine.dispatcher.Dispatcher`.
 
 Having named protocols rather than a single callbacks dataclass improves:
 
@@ -94,4 +91,50 @@ class MessagingService(Protocol):
 
     def boot_message_body(self) -> str:
         """Return the body text for a boot message."""
+        ...
+
+
+@runtime_checkable
+class WorkflowService(Protocol):
+    """Workflow-level operations: task-state routing, merging, and crash-recovery."""
+
+    def derive_task_state(self, task_name: str) -> tuple[str, str]:
+        """Return ``(token, reason)`` for *task_name*.
+
+        *token* is a role name or one of the sentinels ``QA_PASSED`` /
+        ``CLOSE_BOARD`` defined in :mod:`orc.engine.dispatcher`.
+        """
+        ...
+
+    def merge_feature(self, task_name: str) -> None:
+        """Merge the feature branch for *task_name* into dev and close the board task."""
+        ...
+
+    def do_close_board(self, task_name: str) -> None:
+        """Crash-recovery: close the board entry for a task whose branch already merged."""
+        ...
+
+
+@runtime_checkable
+class AgentService(Protocol):
+    """Context building and agent subprocess spawning."""
+
+    def build_context(
+        self,
+        role: str,
+        agent_id: str,
+        messages: list[dict],
+        worktree: Path | None,
+    ) -> tuple[str, str]:
+        """Return ``(model, context_prompt)`` for an agent."""
+        ...
+
+    def spawn(
+        self,
+        context: str,
+        cwd: Path,
+        model: str | None,
+        log_path: Path | None,
+    ) -> object:
+        """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
         ...

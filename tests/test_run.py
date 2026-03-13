@@ -43,7 +43,7 @@ class TestRunBareRaise:
         monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(
-            _disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: True)
+            _disp.Dispatcher, "has_pending_work", staticmethod(lambda board, messaging, msgs: True)
         )
 
         def boom(*a, **kw):
@@ -66,7 +66,11 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
     monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-    monkeypatch.setattr(_disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: True))
+    monkeypatch.setattr(
+        _disp.Dispatcher,
+        "has_pending_work",
+        staticmethod(lambda board, messaging, msgs: True),
+    )
     if dispatcher_run is not None:
         monkeypatch.setattr(_disp.Dispatcher, "run", dispatcher_run)
     else:
@@ -125,13 +129,15 @@ class TestTuiPath:
         from orc.engine.pool import AgentProcess
 
         tui_called = []
-        captured_callbacks: list = []
+        captured_hooks: list = []
+        captured_messaging: list = []
 
         original_init = _disp.Dispatcher.__init__
 
-        def capturing_init(self, squad, callbacks, **kw):
-            captured_callbacks.append(callbacks)
-            original_init(self, squad, callbacks, **kw)
+        def capturing_init(self, squad, **kw):
+            captured_hooks.append(kw.get("hooks"))
+            captured_messaging.append(kw.get("messaging"))
+            original_init(self, squad, **kw)
 
         def fake_run_tui(state, run_fn):
             tui_called.append(True)
@@ -160,9 +166,11 @@ class TestTuiPath:
 
         assert tui_called == [True]
 
-        # Exercise the closures registered in callbacks.
-        assert captured_callbacks
-        cb = captured_callbacks[0]
+        # Exercise the closures registered via hooks and messaging service.
+        assert captured_hooks
+        hooks = captured_hooks[0]
+        assert captured_messaging
+        messaging_svc = captured_messaging[0]
 
         # _on_agent_start
         fake_agent = AgentProcess(
@@ -176,16 +184,16 @@ class TestTuiPath:
             log_fh=None,
             context_tmp=None,
         )
-        cb.on_agent_start(fake_agent)
+        hooks.on_agent_start(fake_agent)
 
         # _on_agent_done
-        cb.on_agent_done(fake_agent, 0)
+        hooks.on_agent_done(fake_agent, 0)
 
         # _on_orc_status
-        cb.on_orc_status("running", "checking pending work")
+        hooks.on_orc_status("running", "checking pending work")
 
         # _updating_get_messages (the wrapped get_messages)
-        result = cb.get_messages()
+        result = messaging_svc.get_messages()
         assert isinstance(result, list)
 
     def test_no_tui_flag_in_cli(self, tmp_path, monkeypatch):
@@ -207,7 +215,7 @@ class TestEarlyExit:
         """_run() exits early without creating a Dispatcher when has_pending_work is False."""
         _patch_run_deps(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            _disp.Dispatcher, "has_pending_work", staticmethod(lambda cb, msgs: False)
+            _disp.Dispatcher, "has_pending_work", staticmethod(lambda board, messaging, msgs: False)
         )
         dispatcher_run_called = []
         monkeypatch.setattr(
@@ -239,6 +247,31 @@ class TestSafeDevAhead:
 
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
         assert _run_mod._safe_dev_ahead() == 3
+
+
+class TestServiceAdapters:
+    """Tests for the service adapter classes created in _run()."""
+
+    def test_messaging_svc_post_resolved_delegates(self, monkeypatch):
+        """_MessagingSvc.post_resolved delegates to _wf._post_resolved."""
+        import orc.engine.workflow as _wf
+
+        called = []
+        monkeypatch.setattr(_wf, "_post_resolved", lambda a, s, r: called.append((a, s, r)))
+        svc = _run_mod._MessagingSvc()
+        svc.post_resolved("agent-1", "blocked", "human-reply")
+        assert called == [("agent-1", "blocked", "human-reply")]
+
+    def test_workflow_svc_do_close_board_delegates(self, monkeypatch):
+        """_WorkflowSvc.do_close_board delegates to _wf._do_close_board."""
+        import orc.engine.workflow as _wf
+
+        called = []
+        monkeypatch.setattr(_wf, "_do_close_board", lambda t: called.append(t))
+        monkeypatch.setattr(_wf, "_make_merge_feature_fn", lambda squad: lambda t: None)
+        svc = _run_mod._WorkflowSvc(_minimal_squad())
+        svc.do_close_board("0001-foo.md")
+        assert called == ["0001-foo.md"]
 
 
 class TestMaxcallsCliValidation:

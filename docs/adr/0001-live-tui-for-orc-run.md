@@ -72,17 +72,18 @@ returns a configured `rich.live.Live` instance.
 All rendering logic lives in `tui.py` and is tested without touching the
 terminal (mock `rich.live.Live` or use `rich.console.Console(file=...)`).
 
-### 3. State updates: callbacks injected into `Dispatcher`
+### 3. State updates: lifecycle hooks injected into `Dispatcher`
 
-The `Dispatcher` already accepts a `DispatchCallbacks` bag.  Add two new
-optional callbacks:
+The `Dispatcher` accepts a `DispatchHooks` dataclass with optional lifecycle
+callbacks:
 
 ```python
 on_agent_start: Callable[[AgentProcess], None] | None
 on_agent_done:  Callable[[AgentProcess, int], None] | None
+on_orc_status:  Callable[[str, str | None], None] | None
 ```
 
-The `run` command (or a thin wrapper) creates a `RunState`, passes
+The `run` command creates a `RunState`, passes a `DispatchHooks` instance with
 `on_agent_start` / `on_agent_done` closures that mutate it, and wraps the
 `Dispatcher.run()` call in a `Live` context that refreshes on each poll
 interval.
@@ -107,7 +108,7 @@ is `False`, `--no-tui` is implied.
 - `src/orc/tui.py` is a new module with its own test file `tests/test_tui.py`.
 - `AgentProcess` gains a `model` field — all existing call sites that
   construct `AgentProcess` must pass `model=`.
-- `DispatchCallbacks` gains two optional fields (`on_agent_start`,
-  `on_agent_done`) — backwards-compatible since they default to `None`.
+- `DispatchHooks` gains two optional fields (`on_agent_start`,
+  `on_agent_done`) — both default to `None`.
 - The `run` command's terminal output changes when stdout is a TTY; the
   plain-log path is unchanged otherwise.

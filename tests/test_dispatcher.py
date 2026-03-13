@@ -61,7 +61,63 @@ def _minimal_squad(**kw) -> SquadConfig:
     return SquadConfig(**defaults)
 
 
-def _make_callbacks(
+# ---------------------------------------------------------------------------
+# Fake service objects for testing
+# ---------------------------------------------------------------------------
+
+
+class _FakeBoard:
+    """Mutable fake for BoardService — override attributes freely in tests."""
+
+    def __init__(self, *, get_open_tasks=None, get_pending_visions=None, get_pending_reviews=None):
+        self.get_open_tasks = get_open_tasks or (lambda: [])
+        self.assign_task = lambda task, agent: None
+        self.unassign_task = lambda task: None
+        self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
+        self.get_pending_reviews = get_pending_reviews or (lambda: [])
+
+
+class _FakeWorktree:
+    """Mutable fake for WorktreeService."""
+
+    def __init__(self, tmp_path: Path):
+        self.ensure_dev_worktree = lambda: tmp_path
+        self.ensure_feature_worktree = lambda t: tmp_path
+
+
+class _FakeMessaging:
+    """Mutable fake for MessagingService — override attributes freely in tests."""
+
+    def __init__(self, *, get_messages=None, wait_for_human_reply=None):
+        self.get_messages = get_messages or (lambda: [])
+        self.has_unresolved_block = lambda msgs: (None, None)
+        self.wait_for_human_reply = wait_for_human_reply or (lambda msgs, **kw: "reply")
+        self.post_boot_message = lambda agent_id, body: None
+        self.post_resolved = lambda a, s, r: None
+        self.boot_message_body = lambda: "booting"
+
+
+class _FakeWorkflow:
+    """Mutable fake for WorkflowService."""
+
+    def __init__(self, *, derive_task_state=None):
+        self.derive_task_state = derive_task_state or (lambda t: ("coder", "ready"))
+        self.merge_feature = lambda task: None
+        self.do_close_board = lambda task: None
+
+
+class _FakeAgent:
+    """Mutable fake for AgentService."""
+
+    def __init__(self, tmp_path: Path, *, spawn_fn=None):
+        def _default_spawn(ctx, cwd, model, log):
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        self.build_context = lambda role, agent_id, msgs, wt: ("model", "ctx")
+        self.spawn = spawn_fn or _default_spawn
+
+
+def _make_services(
     tmp_path: Path,
     *,
     get_messages=None,
@@ -71,37 +127,42 @@ def _make_callbacks(
     wait_for_human_reply=None,
     get_pending_visions=None,
     get_pending_reviews=None,
-) -> _disp.DispatchCallbacks:
-    """Return a fully-wired DispatchCallbacks for Dispatcher tests."""
+):
+    """Return a SimpleNamespace of fully-wired fake services for Dispatcher tests."""
+    import types
+
     board_dir = tmp_path / ".orc" / "work"
     board_dir.mkdir(parents=True, exist_ok=True)
     (board_dir / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
 
-    def _spawn(ctx, cwd, model, log):
-        return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+    return types.SimpleNamespace(
+        board=_FakeBoard(
+            get_open_tasks=get_open_tasks,
+            get_pending_visions=get_pending_visions,
+            get_pending_reviews=get_pending_reviews,
+        ),
+        worktree=_FakeWorktree(tmp_path),
+        messaging=_FakeMessaging(
+            get_messages=get_messages,
+            wait_for_human_reply=wait_for_human_reply,
+        ),
+        workflow=_FakeWorkflow(derive_task_state=derive_task_state),
+        agent=_FakeAgent(tmp_path, spawn_fn=spawn_fn),
+    )
 
-    return _disp.DispatchCallbacks(
-        get_messages=get_messages or (lambda: []),
-        get_open_tasks=get_open_tasks or (lambda: []),
-        has_unresolved_block=lambda msgs: (None, None),
-        derive_task_state=derive_task_state or (lambda t: ("coder", "ready")),
-        ensure_dev_worktree=lambda: tmp_path,
-        ensure_feature_worktree=lambda t: tmp_path,
-        build_context=lambda role, agent_id, msgs, wt: ("model", "ctx"),
-        boot_message_body=lambda: "booting",
-        post_boot_message=lambda agent_id, body: None,
-        spawn_fn=spawn_fn or _spawn,
-        assign_task=lambda task, agent: None,
-        unassign_task=lambda task: None,
-        do_close_board=lambda task: None,
-        merge_feature=lambda task: None,
-        wait_for_human_reply=wait_for_human_reply or (lambda msgs, **kw: "reply"),
-        post_resolved=lambda a, s, r: None,
-        # Default to a non-empty pending visions list so that tests which
-        # exercise the "no open tasks → dispatch planner" path continue to
-        # work.  Tests that want truly-no-work behaviour must override this.
-        get_pending_visions=get_pending_visions or (lambda: ["placeholder.md"]),
-        get_pending_reviews=get_pending_reviews or (lambda: []),
+
+def _make_dispatcher(squad, svcs, *, dry_run: bool = False, only_role=None, hooks=None):
+    """Convenience wrapper: construct a Dispatcher from a services namespace."""
+    return Dispatcher(
+        squad,
+        board=svcs.board,
+        worktree=svcs.worktree,
+        messaging=svcs.messaging,
+        workflow=svcs.workflow,
+        agent=svcs.agent,
+        hooks=hooks,
+        dry_run=dry_run,
+        only_role=only_role,
     )
 
 
@@ -388,8 +449,8 @@ class TestDispatcherCoverage:
         import click
 
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs)
 
         def boom(maxcalls):
             raise _disp._ShutdownSignal(2)
@@ -403,26 +464,28 @@ class TestDispatcherCoverage:
     def test_do_merge_failure_logs_error(self, tmp_path, monkeypatch):
         """_do_merge: exception → error logged, no crash."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(tmp_path)
-        cb.merge_feature = lambda task: (_ for _ in ()).throw(RuntimeError("merge conflict"))
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        svcs.workflow.merge_feature = lambda task: (_ for _ in ()).throw(
+            RuntimeError("merge conflict")
+        )
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._do_merge("0001-foo.md")  # should not raise
 
     def test_handle_watchdog_kills_agent(self, tmp_path, monkeypatch):
         """_handle_watchdog kills the agent and unassigns its task."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         unassigned = []
-        cb = _make_callbacks(tmp_path, get_open_tasks=lambda: [])
-        cb.unassign_task = lambda t: unassigned.append(t)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path, get_open_tasks=lambda: [])
+        svcs.board.unassign_task = lambda t: unassigned.append(t)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         agent = _make_agent(tmp_path, role="coder")
         d.pool.add(agent)
         d._handle_watchdog(agent)
         assert "0001-foo.md" in unassigned
 
     def test_spawn_agent_raises_for_non_planner_without_task(self, tmp_path):
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         with pytest.raises(ValueError, match="No worktree"):
             d._spawn_agent("coder", "coder-1", None, [])
 
@@ -437,15 +500,15 @@ class TestDispatcherCoverage:
             captured["log_path"] = log
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
-        cb = _make_callbacks(tmp_path, spawn_fn=_spawn)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path, spawn_fn=_spawn)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._spawn_agent("planner", "planner-1", None, [])
 
         assert captured["log_path"] == log_dir / "agents" / "planner-1.log"
 
     def test_spawn_agent_dry_run_prints(self, tmp_path, capsys):
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb, dry_run=True)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs, dry_run=True)
         d._spawn_agent("planner", "planner-1", None, [])
         captured = capsys.readouterr()
         assert "Would spawn" in captured.out
@@ -453,62 +516,62 @@ class TestDispatcherCoverage:
     def test_dispatch_soft_block_spawns_planner(self, tmp_path, monkeypatch):
         """Soft-blocked state → planner spawned to resolve."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(tmp_path, get_open_tasks=lambda: [{"name": "0001-foo.md"}])
-        cb.has_unresolved_block = lambda msgs: ("coder-1", "soft-blocked")
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path, get_open_tasks=lambda: [{"name": "0001-foo.md"}])
+        svcs.messaging.has_unresolved_block = lambda msgs: ("coder-1", "soft-blocked")
+        d = _make_dispatcher(_minimal_squad(), svcs)
         count = d._dispatch([], 100)
         assert count >= 1
 
     def test_dispatch_skips_assigned_task(self, tmp_path):
         """Task already assigned → skipped."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md", "assigned_to": "coder-1"}],
             derive_task_state=lambda t: ("coder", "reason"),
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         count = d._dispatch([], 100)
         assert count == 0
 
     def test_dispatch_close_board(self, tmp_path):
         """CLOSE_BOARD token → do_close_board called."""
         closed = []
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: (CLOSE_BOARD, "close"),
         )
-        cb.do_close_board = lambda t: closed.append(t)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs.workflow.do_close_board = lambda t: closed.append(t)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._dispatch([], 100)
         assert "0001-foo.md" in closed
 
     def test_dispatch_skips_unknown_token(self, tmp_path):
         """Unknown token → task skipped, dispatch returns 0."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("unknown_token", "reason"),
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         assert d._dispatch([], 1000) == 0
 
     def test_dispatch_skips_when_role_at_capacity(self, tmp_path):
         """Coder at capacity → skip."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "reason"),
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d.pool.add(_make_agent(tmp_path, role="coder"))  # coder-1 already running
         assert d._dispatch([], 1000) == 0
 
     def test_loop_refreshes_messages_after_completion(self, tmp_path, monkeypatch):
         """Line 235: messages refreshed after hard-block handling."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb, dry_run=True)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs, dry_run=True)
 
         block_returned = [False]
 
@@ -518,7 +581,7 @@ class TestDispatcherCoverage:
                 return ("planner-1", "blocked")
             return (None, None)
 
-        d.cb.has_unresolved_block = fake_has_unresolved_block
+        d.messaging.has_unresolved_block = fake_has_unresolved_block
         d._handle_hard_block = MagicMock()
         d._loop(maxcalls=sys.maxsize)
 
@@ -557,37 +620,37 @@ class TestDispatcherCoverage:
             description="",
             _models={},
         )
-        cb = _make_callbacks(tmp_path, spawn_fn=spawn_fn)
-        d = Dispatcher(squad, cb)
+        svcs = _make_services(tmp_path, spawn_fn=spawn_fn)
+        d = _make_dispatcher(squad, svcs)
         d.run(maxcalls=2)
 
     def test_loop_dry_run_stops_after_one_cycle(self, tmp_path, monkeypatch):
         """Dry-run breaks after first dispatch."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb, dry_run=True)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs, dry_run=True)
         d.run(maxcalls=sys.maxsize)
         assert d._total_spawned == 1
         """_handle_hard_block posts resolved after human reply."""
         resolved = []
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             wait_for_human_reply=lambda msgs, **kw: "Here is the answer.",
         )
-        cb.post_resolved = lambda a, s, r: resolved.append((a, s, r))
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs.messaging.post_resolved = lambda a, s, r: resolved.append((a, s, r))
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._handle_hard_block("coder-1", [])
         assert len(resolved) == 1
         assert resolved[0][0] == "coder-1"
 
     def test_dispatch_qa_passed_queues_merge(self, tmp_path, monkeypatch):
         """QA_PASSED token → task added to merge queue."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: (QA_PASSED, "qa passed"),
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._dispatch([], 100)
         assert "0001-foo.md" in d._merge_queue
 
@@ -595,10 +658,10 @@ class TestDispatcherCoverage:
         """After planner resolves soft-block, post_resolved is called."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         resolved = []
-        cb = _make_callbacks(tmp_path)
-        cb.post_resolved = lambda a, s, r: resolved.append((a, s, r))
+        svcs = _make_services(tmp_path)
+        svcs.messaging.post_resolved = lambda a, s, r: resolved.append((a, s, r))
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._resolving_soft_block = ("coder-1", "soft-blocked")
 
         agent = AgentProcess(
@@ -619,9 +682,9 @@ class TestDispatcherCoverage:
     def test_handle_completion_failed_agent_unassigns(self, tmp_path, monkeypatch):
         """Non-zero exit → task unassigned."""
         unassigned = []
-        cb = _make_callbacks(tmp_path)
-        cb.unassign_task = lambda t: unassigned.append(t)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        svcs.board.unassign_task = lambda t: unassigned.append(t)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         agent = _make_agent(tmp_path, role="coder")
         d.pool.add(agent)
         d._handle_completion(agent, 1, [])
@@ -631,9 +694,9 @@ class TestDispatcherCoverage:
         """Merge queue drained in loop."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         merged = []
-        cb = _make_callbacks(tmp_path)
-        cb.merge_feature = lambda t: merged.append(t)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        svcs.workflow.merge_feature = lambda t: merged.append(t)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._merge_queue.append("0001-foo.md")
         d.run(maxcalls=1)
         assert "0001-foo.md" in merged
@@ -647,49 +710,49 @@ class TestDispatcherCoverage:
 class TestDispatcherInternalCoverage:
     def test_has_pending_work_open_tasks_returns_true(self, tmp_path):
         """has_pending_work returns True when open tasks exist."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
         )
-        assert Dispatcher.has_pending_work(cb, []) is True
+        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
 
     def test_has_pending_work_blocked_returns_true(self, tmp_path):
         """has_pending_work returns True when blocked agent exists."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
         )
-        cb.has_unresolved_block = lambda msgs: ("agent-42", "blocked")
-        assert Dispatcher.has_pending_work(cb, []) is True
+        svcs.messaging.has_unresolved_block = lambda msgs: ("agent-42", "blocked")
+        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
 
     def test_has_pending_work_no_work_returns_false(self, tmp_path):
         """has_pending_work returns False when nothing pending."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        cb.has_unresolved_block = lambda msgs: (None, None)
-        assert Dispatcher.has_pending_work(cb, []) is False
+        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
+        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is False
 
     def test_has_pending_work_pending_reviews_returns_true(self, tmp_path):
         """has_pending_work returns True when unmerged feat/* branches exist."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
-        cb.has_unresolved_block = lambda msgs: (None, None)
-        assert Dispatcher.has_pending_work(cb, []) is True
+        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
+        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
 
     def test_kill_all_and_unassign(self, tmp_path):
         """Lines 493-496: _kill_all_and_unassign unassigns tasks and kills agents."""
         unassigned = []
-        cb = _make_callbacks(tmp_path)
-        cb.unassign_task = lambda t: unassigned.append(t)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        svcs.board.unassign_task = lambda t: unassigned.append(t)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         agent = _make_agent(tmp_path, role="coder")
         d.pool.add(agent)
         d._kill_all_and_unassign()
@@ -699,8 +762,8 @@ class TestDispatcherInternalCoverage:
         """Line 499: _shutdown_handler raises _ShutdownSignal."""
         import pytest
 
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         with pytest.raises(_disp._ShutdownSignal):
             d._shutdown_handler(15, None)
 
@@ -719,26 +782,26 @@ class TestDispatcherInternalCoverage:
     def test_dispatch_returns_zero_when_nothing_to_do(self, tmp_path, monkeypatch):
         """_dispatch returns 0 immediately when no tasks or visions (line 318)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         result = d._dispatch([], 100)
         assert result == 0
 
     def test_dispatch_queues_pending_reviews_for_merge(self, tmp_path, monkeypatch):
         """_dispatch adds unmerged feat/* branches to the merge queue, not a planner."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         result = d._dispatch([], 100)
         assert result == 1
         assert "0001-foo.md" in d._merge_queue
@@ -746,13 +809,13 @@ class TestDispatcherInternalCoverage:
     def test_dispatch_deduplicates_pending_reviews(self, tmp_path, monkeypatch):
         """_dispatch doesn't add the same branch twice to the merge queue."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d._dispatch([], 100)
         d._dispatch([], 100)
         assert d._merge_queue.count("0001-foo.md") == 1
@@ -760,14 +823,14 @@ class TestDispatcherInternalCoverage:
     def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
         """run() logs workflow-complete and exits when nothing to dispatch (lines 299-301)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        cb.has_unresolved_block = lambda msgs: (None, None)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d.run(maxcalls=sys.maxsize)
         out = capsys.readouterr().out
         assert "Workflow complete" in out
@@ -783,14 +846,14 @@ class TestDispatchCallbacksOptional:
         def _spawn(ctx, cwd, model, log):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             spawn_fn=_spawn,
         )
-        cb.on_agent_start = lambda agent: started.append(agent.agent_id)
+        hooks = _disp.DispatchHooks(on_agent_start=lambda agent: started.append(agent.agent_id))
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs, hooks=hooks)
         d._spawn_agent("planner", "planner-1", None, [])
         assert started == ["planner-1"]
 
@@ -798,10 +861,12 @@ class TestDispatchCallbacksOptional:
         """on_agent_done receives the completed agent and its exit code."""
         done = []
 
-        cb = _make_callbacks(tmp_path)
-        cb.on_agent_done = lambda agent, rc: done.append((agent.agent_id, rc))
+        svcs = _make_services(tmp_path)
+        hooks = _disp.DispatchHooks(
+            on_agent_done=lambda agent, rc: done.append((agent.agent_id, rc))
+        )
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs, hooks=hooks)
         agent = _make_agent(tmp_path)
         d.pool.add(agent)
         d._handle_completion(agent, 0, [])
@@ -811,10 +876,12 @@ class TestDispatchCallbacksOptional:
         """on_agent_done is called even when the agent exits non-zero."""
         done = []
 
-        cb = _make_callbacks(tmp_path)
-        cb.on_agent_done = lambda agent, rc: done.append((agent.agent_id, rc))
+        svcs = _make_services(tmp_path)
+        hooks = _disp.DispatchHooks(
+            on_agent_done=lambda agent, rc: done.append((agent.agent_id, rc))
+        )
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs, hooks=hooks)
         agent = _make_agent(tmp_path)
         d.pool.add(agent)
         d._handle_completion(agent, 1, [])
@@ -826,18 +893,18 @@ class TestDispatchCallbacksOptional:
         def _spawn(ctx, cwd, model, log):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
-        cb = _make_callbacks(tmp_path, spawn_fn=_spawn)
-        assert cb.on_agent_start is None
+        svcs = _make_services(tmp_path, spawn_fn=_spawn)
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
+        assert d.hooks.on_agent_start is None
         d._spawn_agent("planner", "planner-1", None, [])  # must not raise
 
     def test_on_agent_done_none_is_safe(self, tmp_path):
         """on_agent_done=None (default) does not crash."""
-        cb = _make_callbacks(tmp_path)
-        assert cb.on_agent_done is None
+        svcs = _make_services(tmp_path)
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
+        assert d.hooks.on_agent_done is None
         agent = _make_agent(tmp_path)
         d.pool.add(agent)
         d._handle_completion(agent, 0, [])  # must not raise
@@ -846,26 +913,28 @@ class TestDispatchCallbacksOptional:
         """on_orc_status receives the status and task strings."""
         updates: list[tuple[str, str | None]] = []
 
-        cb = _make_callbacks(tmp_path)
-        cb.on_orc_status = lambda status, task: updates.append((status, task))
+        svcs = _make_services(tmp_path)
+        hooks = _disp.DispatchHooks(
+            on_orc_status=lambda status, task: updates.append((status, task))
+        )
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs, hooks=hooks)
         d._set_orc_status("running", "merging task 0001-foo.md")
         assert updates == [("running", "merging task 0001-foo.md")]
 
     def test_on_orc_status_none_is_safe(self, tmp_path):
         """on_orc_status=None (default) does not crash."""
-        cb = _make_callbacks(tmp_path)
-        assert cb.on_orc_status is None
+        svcs = _make_services(tmp_path)
 
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
+        assert d.hooks.on_orc_status is None
         d._set_orc_status("running", "checking pending work")  # must not raise
 
 
 class TestDispatcherLoopProperty:
     def test_loop_starts_at_zero(self, tmp_path):
-        cb = _make_callbacks(tmp_path)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs = _make_services(tmp_path)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         assert d.total_agent_calls == 0
 
     def test_loop_increments_each_cycle(self, tmp_path, monkeypatch):
@@ -874,12 +943,12 @@ class TestDispatcherLoopProperty:
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
 
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_messages=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         # Run one maxcalls cycle (spawns planner then stops when pool drains).
         d.run(maxcalls=1)
         assert d.total_agent_calls >= 1
@@ -895,7 +964,7 @@ class TestProactivePlanner:
         def _spawn(ctx, cwd, model, log):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             # 1 open task, squad has 2 coders → pipeline has room → spawn planner
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
@@ -903,11 +972,11 @@ class TestProactivePlanner:
             get_pending_visions=lambda: ["vision-001.md"],
             spawn_fn=_spawn,
         )
-        cb.assign_task = lambda t, a: spawned_roles.append(a.split("-")[0])
+        svcs.board.assign_task = lambda t, a: spawned_roles.append(a.split("-")[0])
 
         # Squad with 2 coders so that 1 open task < 2 triggers the proactive path.
         squad = _minimal_squad(coder=2)
-        d = Dispatcher(squad, cb)
+        d = _make_dispatcher(squad, svcs)
         d._dispatch([], 100)
 
         # Should have spawned 1 coder + 1 planner
@@ -916,7 +985,7 @@ class TestProactivePlanner:
 
     def test_no_proactive_planner_when_tasks_meet_coder_capacity(self, tmp_path):
         """No proactive planner when open_tasks >= coder count."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
@@ -924,7 +993,7 @@ class TestProactivePlanner:
         )
         # 2 open tasks, 2 coders → at capacity, no proactive planner
         squad = _minimal_squad(coder=2)
-        d = Dispatcher(squad, cb)
+        d = _make_dispatcher(squad, svcs)
         d._dispatch([], 100)
 
         pool_roles = [a.role for a in d.pool.all_agents()]
@@ -932,14 +1001,14 @@ class TestProactivePlanner:
 
     def test_no_proactive_planner_when_no_pending_visions(self, tmp_path):
         """No proactive planner when there are no pending vision docs to plan."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: [],  # nothing to plan
         )
         squad = _minimal_squad(coder=2)
-        d = Dispatcher(squad, cb)
+        d = _make_dispatcher(squad, svcs)
         d._dispatch([], 100)
 
         pool_roles = [a.role for a in d.pool.all_agents()]
@@ -947,14 +1016,14 @@ class TestProactivePlanner:
 
     def test_no_proactive_planner_when_planner_already_running(self, tmp_path):
         """No second planner spawned when one is already in the pool."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
         squad = _minimal_squad(coder=2)
-        d = Dispatcher(squad, cb)
+        d = _make_dispatcher(squad, svcs)
         # Pre-populate pool with a planner.
         d.pool.add(_make_agent(tmp_path, role="planner", task=""))
         d._dispatch([], 100)
@@ -969,14 +1038,14 @@ class TestMaxcallsUnlimited:
     def test_unlimited_dispatches_agents(self, tmp_path, monkeypatch):
         """run(maxcalls=sys.maxsize) dispatches agents normally (not zero)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        cb.has_unresolved_block = lambda msgs: (None, None)
-        d = Dispatcher(_minimal_squad(), cb)
+        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
+        d = _make_dispatcher(_minimal_squad(), svcs)
         d.run(maxcalls=sys.maxsize)
         # Must not crash; total_agent_calls reflects whatever was dispatched.
         assert d.total_agent_calls >= 0
@@ -987,7 +1056,7 @@ class TestDispatchBudgetExhaustion:
 
     def test_budget_limits_spawns(self, tmp_path):
         """With budget=1 and 2 tasks, only 1 agent is spawned."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [
                 {"name": "0001-foo.md"},
@@ -997,7 +1066,7 @@ class TestDispatchBudgetExhaustion:
         )
         # Squad allows 2 coders, but budget is capped at 1.
         squad = _minimal_squad(coder=2)
-        d = Dispatcher(squad, cb)
+        d = _make_dispatcher(squad, svcs)
         count = d._dispatch([], call_budget=1)
         assert count == 1
         assert len(d.pool.all_agents()) == 1
@@ -1013,26 +1082,26 @@ class TestOnlyRoleFiltering:
 
     def test_only_coder_skips_planner(self, tmp_path):
         """With only_role='coder', planner is not dispatched even when visions exist."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role="coder")
         count = d._dispatch([], call_budget=10)
         assert count == 0
         assert d.pool.is_empty()
 
     def test_only_planner_dispatches_planner(self, tmp_path):
         """With only_role='planner' and pending visions, a planner is spawned."""
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role="planner")
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role="planner")
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1043,14 +1112,14 @@ class TestOnlyRoleFiltering:
         """With only_role='coder', coder tasks are dispatched but QA tasks are skipped."""
         tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role="coder")
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1060,14 +1129,14 @@ class TestOnlyRoleFiltering:
         """With only_role='qa', QA tasks are dispatched but coder tasks are skipped."""
         tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role="qa")
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role="qa")
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1077,14 +1146,14 @@ class TestOnlyRoleFiltering:
         """Without only_role, both coder and QA tasks are dispatched."""
         tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role=None)
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role=None)
         count = d._dispatch([], call_budget=10)
         assert count == 2
         roles = {a.role for a in d.pool.all_agents()}
@@ -1093,12 +1162,12 @@ class TestOnlyRoleFiltering:
     def test_only_role_idle_exits_when_no_work_for_role(self, tmp_path, monkeypatch):
         """Dispatcher stops when only_role is set and no work for that role exists."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        cb = _make_callbacks(
+        svcs = _make_services(
             tmp_path,
             get_open_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )
-        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        d = _make_dispatcher(_minimal_squad(), svcs, only_role="coder")
         d.run(maxcalls=5)
         assert d.total_agent_calls == 0

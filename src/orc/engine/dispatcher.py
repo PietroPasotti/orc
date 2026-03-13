@@ -7,13 +7,21 @@ agents concurrently according to a :class:`~orc.squad.SquadConfig`.
 Architecture
 ------------
 The dispatcher owns no domain knowledge about git, board YAML, or context
-building.  All domain operations are provided by the caller (``main.py``)
-through a :class:`DispatchCallbacks` dataclass.  This keeps the dispatcher
-testable in isolation.
+building.  All domain operations are provided by the caller through five
+Protocol-typed services defined in :mod:`orc.engine.services`:
+
+* :class:`~orc.engine.services.BoardService` — kanban board + pending-work queries
+* :class:`~orc.engine.services.WorktreeService` — git worktree lifecycle
+* :class:`~orc.engine.services.MessagingService` — Telegram messaging
+* :class:`~orc.engine.services.WorkflowService` — task-state routing, merges
+* :class:`~orc.engine.services.AgentService` — context building + process spawn
+
+Optional TUI lifecycle hooks are provided via :class:`DispatchHooks`.
 
 Sentinel values
 ~~~~~~~~~~~~~~~
-``derive_task_state()`` may return these sentinel strings instead of a role:
+``derive_task_state()`` (on :class:`~orc.engine.services.WorkflowService`) may
+return these sentinel strings instead of a role:
 
 ``QA_PASSED``
     QA committed a ``qa(passed):`` verdict — the dispatcher queues a merge.
@@ -48,13 +56,19 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
 import structlog
 import typer
 
 import orc.config as _cfg
 from orc.engine.pool import AgentPool, AgentProcess
+from orc.engine.services import (
+    AgentService,
+    BoardService,
+    MessagingService,
+    WorkflowService,
+    WorktreeService,
+)
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, SquadConfig
 
@@ -72,93 +86,16 @@ _POLL_INTERVAL = 5.0
 
 
 # ---------------------------------------------------------------------------
-# Callbacks protocol
+# Optional TUI lifecycle hooks
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class DispatchCallbacks:
-    """Domain operations provided by ``main.py`` to the :class:`Dispatcher`.
+class DispatchHooks:
+    """Optional lifecycle hooks for the :class:`Dispatcher`.
 
-    Every callable is a module-level function (or bound method) from
-    ``main.py``.  The dispatcher never imports from ``main`` directly,
-    which avoids circular imports.
+    These are wired by the TUI layer and default to ``None`` for plain-log runs.
     """
-
-    # -- Task / board operations -----------------------------------------
-
-    derive_task_state: Callable[[str], tuple[str, str]]
-    """Return ``(token, reason)`` for *task_name* where *token* is a role name
-    or one of the sentinels :data:`QA_PASSED` / :data:`CLOSE_BOARD`."""
-
-    get_open_tasks: Callable[[], list[dict]]
-    """Return the list of open task dicts from board.yaml."""
-
-    assign_task: Callable[[str, str], None]
-    """Write ``assigned_to: {agent_id}`` for *task_name* in board.yaml."""
-
-    unassign_task: Callable[[str], None]
-    """Clear ``assigned_to`` for *task_name* in board.yaml."""
-
-    # -- Worktree operations ---------------------------------------------
-
-    ensure_feature_worktree: Callable[[str], Path]
-    """Ensure the feature worktree for *task_name* exists; return its path."""
-
-    ensure_dev_worktree: Callable[[], Path]
-    """Ensure the dev worktree exists; return its path."""
-
-    # -- Merge / close ---------------------------------------------------
-
-    merge_feature: Callable[[str], None]
-    """Merge the feature branch for *task_name* into dev and close the board task."""
-
-    do_close_board: Callable[[str], None]
-    """Crash-recovery: close the board entry for a task whose branch already merged."""
-
-    # -- Telegram --------------------------------------------------------
-
-    get_messages: Callable[[], list[dict]]
-    """Fetch the latest Telegram message history."""
-
-    has_unresolved_block: Callable[[list[dict]], tuple[str | None, str | None]]
-    """Return ``(agent_id, state)`` if there is an unresolved block, else
-    ``(None, None)``."""
-
-    wait_for_human_reply: Callable[[list[dict]], str]
-    """Block until a human replies on Telegram; return the reply text."""
-
-    post_boot_message: Callable[[str, str], None]
-    """Send ``[{agent_id}](boot) …`` to Telegram."""
-
-    post_resolved: Callable[[str, str, str], None]
-    """Send ``[orc](resolved) …`` to Telegram."""
-
-    boot_message_body: Callable[[], str]
-    """Return the body text for a boot message (lists open tasks)."""
-
-    # -- Context building ------------------------------------------------
-
-    build_context: Callable[[str, str, list[dict], Path | None], tuple[str, str]]
-    """Return ``(model, context_prompt)`` for an agent.
-    Signature: ``(role, agent_id, messages, worktree) → (model, context)``."""
-
-    # -- Spawn -----------------------------------------------------------
-
-    spawn_fn: Callable
-    """``invoke.spawn(context, cwd, model, log_path) → (Popen, log_fh)``."""
-
-    # -- Pending-work queries --------------------------------------------
-
-    get_pending_visions: Callable[[], list[str]]
-    """Return vision .md filenames with no matching board task.
-    Used to decide whether a planner has anything to plan."""
-
-    get_pending_reviews: Callable[[], list[str]]
-    """Return feat/* branches not yet merged into dev.
-    Used to decide whether there is in-flight coding work to review."""
-
-    # -- Optional lifecycle hooks ----------------------------------------
 
     on_agent_start: Callable[[AgentProcess], None] | None = None
     """Called immediately after a new agent is added to the pool."""
@@ -186,8 +123,18 @@ class Dispatcher:
     ----------
     squad:
         The squad configuration (agent counts, watchdog timeout).
-    callbacks:
-        Domain operations provided by the orchestrator.
+    board:
+        Kanban board and pending-work queries.
+    worktree:
+        Git worktree lifecycle management.
+    messaging:
+        Telegram messaging service.
+    workflow:
+        Task-state routing, feature merges, and crash-recovery.
+    agent:
+        Context building and agent subprocess spawning.
+    hooks:
+        Optional TUI lifecycle hooks (default: ``None`` = plain-log mode).
     dry_run:
         When ``True`` the dispatcher prints agent contexts instead of
         spawning subprocesses.
@@ -196,13 +143,23 @@ class Dispatcher:
     def __init__(
         self,
         squad: SquadConfig,
-        callbacks: DispatchCallbacks,
         *,
+        board: BoardService,
+        worktree: WorktreeService,
+        messaging: MessagingService,
+        workflow: WorkflowService,
+        agent: AgentService,
+        hooks: DispatchHooks | None = None,
         dry_run: bool = False,
         only_role: str | None = None,
     ) -> None:
         self.squad = squad
-        self.cb = callbacks
+        self.board = board
+        self.worktree = worktree
+        self.messaging = messaging
+        self.workflow = workflow
+        self.agent = agent
+        self.hooks = hooks or DispatchHooks()
         self.dry_run = dry_run
         self.only_role = only_role
         self.pool = AgentPool()
@@ -224,8 +181,8 @@ class Dispatcher:
 
     def _set_orc_status(self, status: str, task: str | None = None) -> None:
         """Update the orchestrator card via the optional callback."""
-        if self.cb.on_orc_status is not None:
-            self.cb.on_orc_status(status, task)
+        if self.hooks.on_orc_status is not None:
+            self.hooks.on_orc_status(status, task)
 
     def _echo(self, msg: str) -> None:
         """Write *msg* to stdout only when the TUI is not active.
@@ -235,7 +192,7 @@ class Dispatcher:
         In that case the orc card already surfaces the relevant status, so
         the echo is simply skipped.
         """
-        if self.cb.on_orc_status is None:
+        if self.hooks.on_orc_status is None:
             typer.echo(msg)
 
     @property
@@ -273,7 +230,7 @@ class Dispatcher:
             _cv.clear_contextvars()
             _cv.bind_contextvars(cycle=self._loop_count)
             self._set_orc_status("running", "checking pending work")
-            messages = self.cb.get_messages()
+            messages = self.messaging.get_messages()
 
             # 1. Poll for completed agents.
             if not self.pool.is_empty():
@@ -281,13 +238,13 @@ class Dispatcher:
             for agent, rc in self.pool.poll():
                 self._handle_completion(agent, rc, messages)
                 # Refresh messages after completion (agent may have posted).
-                messages = self.cb.get_messages()
+                messages = self.messaging.get_messages()
 
             # 2. Drain merge queue (serialized; one merge per cycle).
             if self._merge_queue:
                 task = self._merge_queue.pop(0)
                 self._do_merge(task)
-                messages = self.cb.get_messages()
+                messages = self.messaging.get_messages()
 
             # 3. Watchdog: kill stuck agents.
             timeout_sec = self.squad.timeout_minutes * 60.0
@@ -295,10 +252,10 @@ class Dispatcher:
                 self._handle_watchdog(agent)
 
             # 4. Check for hard-blocked state (pauses all new dispatches).
-            blocked_agent, blocked_state = self.cb.has_unresolved_block(messages)
+            blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
             if blocked_agent and blocked_state == "blocked":
                 self._handle_hard_block(blocked_agent, messages)
-                messages = self.cb.get_messages()
+                messages = self.messaging.get_messages()
 
             # 5. Dispatch new agents (skip when the call limit is already reached).
             at_limit = self._total_spawned >= maxcalls
@@ -332,7 +289,9 @@ class Dispatcher:
                 # When only_role is set, we can't rely on has_pending_work
                 # because it checks all roles.  If nothing was dispatched for
                 # the filtered role, the workflow is done for that role.
-                if self.only_role is not None or not Dispatcher.has_pending_work(self.cb, messages):
+                if self.only_role is not None or not Dispatcher.has_pending_work(
+                    self.board, self.messaging, messages
+                ):
                     self._set_orc_status("shutting down")
                     if self.only_role is not None:
                         logger.info(
@@ -379,14 +338,14 @@ class Dispatcher:
             return self.only_role is None or self.only_role == role
 
         dispatched = 0
-        open_tasks = self.cb.get_open_tasks()
+        open_tasks = self.board.get_open_tasks()
 
         if not open_tasks:
             # No open tasks — queue any unmerged feat/* branches for merge
             # and/or dispatch a planner for unplanned vision docs.
             # _do_merge handles clean merges automatically; a coder is only
             # spawned if there are conflicts.
-            pending_reviews = self.cb.get_pending_reviews()
+            pending_reviews = self.board.get_pending_reviews()
             for branch in pending_reviews:
                 # Convert branch name → task name.
                 # With a branch prefix (e.g. "orc"), branches look like
@@ -398,7 +357,7 @@ class Dispatcher:
                 if task_name not in self._merge_queue:
                     self._merge_queue.append(task_name)
                     dispatched += 1
-            if not self.cb.get_pending_visions():
+            if not self.board.get_pending_visions():
                 return dispatched
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 dispatched += self._spawn_planner(messages)
@@ -411,12 +370,12 @@ class Dispatcher:
             if (
                 _role_allowed(AgentRole.PLANNER)
                 and len(open_tasks) < self.squad.count(AgentRole.CODER)
-                and self.cb.get_pending_visions()
+                and self.board.get_pending_visions()
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
                 dispatched += _spawn(lambda: self._spawn_planner(messages))
 
-        pending_reviews = self.cb.get_pending_reviews()
+        pending_reviews = self.board.get_pending_reviews()
         for branch in pending_reviews:
             # Convert branch name → task name.
             # With a branch prefix (e.g. "orc"), branches look like
@@ -431,7 +390,7 @@ class Dispatcher:
                 dispatched += 1
 
         # Check for soft-block: route one planner to resolve it.
-        blocked_agent, blocked_state = self.cb.has_unresolved_block(messages)
+        blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
         if blocked_agent and blocked_state == "soft-blocked":
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 self._resolving_soft_block = (blocked_agent, blocked_state)
@@ -449,7 +408,7 @@ class Dispatcher:
             if assigned_to:
                 continue  # already assigned to a running agent
 
-            token, reason = self.cb.derive_task_state(task_name)
+            token, reason = self.workflow.derive_task_state(task_name)
             logger.debug("task state", task=task_name, token=token, reason=reason)
 
             if token == QA_PASSED:
@@ -460,7 +419,7 @@ class Dispatcher:
             if token == CLOSE_BOARD:
                 # FIXME: this could fail! Wrap in a try/except and log.
                 #  Do the same for all calls out of _dispatch, this is a critical path.
-                self.cb.do_close_board(task_name)
+                self.workflow.do_close_board(task_name)
                 continue
 
             if token not in (AgentRole.CODER, AgentRole.QA):
@@ -500,29 +459,27 @@ class Dispatcher:
     ) -> None:
         """Build context and spawn an agent subprocess (or print for dry-run)."""
         if role == AgentRole.PLANNER:
-            worktree = self.cb.ensure_dev_worktree()
+            worktree = self.worktree.ensure_dev_worktree()
         elif task_name:
-            worktree = self.cb.ensure_feature_worktree(task_name)
+            worktree = self.worktree.ensure_feature_worktree(task_name)
         else:
             raise ValueError(f"No worktree: role={role!r} requires task_name")
 
-        model, context = self.cb.build_context(role, agent_id, messages, worktree)
+        model, context = self.agent.build_context(role, agent_id, messages, worktree)
 
         if self.dry_run:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        # TODO: remove cb.boot_message_body and construct the message body instead as
-        #  part of post_boot_message
-        body = self.cb.boot_message_body()
-        self.cb.post_boot_message(agent_id, body)
+        body = self.messaging.boot_message_body()
+        self.messaging.post_boot_message(agent_id, body)
 
         import structlog.contextvars as _cv
 
         _cv.bind_contextvars(agent_id=agent_id)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
-        spawn_result = self.cb.spawn_fn(context, worktree, model, log_path)
+        spawn_result = self.agent.spawn(context, worktree, model, log_path)
 
         agent = AgentProcess(
             agent_id=agent_id,
@@ -536,12 +493,12 @@ class Dispatcher:
             context_tmp=spawn_result.context_tmp,
         )
         self.pool.add(agent)
-        if self.cb.on_agent_start is not None:
-            self.cb.on_agent_start(agent)
+        if self.hooks.on_agent_start is not None:
+            self.hooks.on_agent_start(agent)
         self._set_orc_status("running", f"dispatching {agent_id}")
 
         if task_name:
-            self.cb.assign_task(task_name, agent_id)
+            self.board.assign_task(task_name, agent_id)
 
         logger.info(
             "spawned agent",
@@ -561,8 +518,8 @@ class Dispatcher:
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
         _cleanup_context_tmp(agent.context_tmp)
-        if self.cb.on_agent_done is not None:
-            self.cb.on_agent_done(agent, rc)
+        if self.hooks.on_agent_done is not None:
+            self.hooks.on_agent_done(agent, rc)
 
         if rc != 0:
             logger.error(
@@ -573,19 +530,19 @@ class Dispatcher:
                 f"\n✗ {agent.agent_id} exited with code {rc}. See {agent.log_path} for details."
             )
             if agent.task_name:
-                self.cb.unassign_task(agent.task_name)
+                self.board.unassign_task(agent.task_name)
             return
 
         self._set_orc_status("running", f"{agent.agent_id} completed")
         self._echo(f"\n✓ {agent.agent_id} completed successfully.")
 
         if agent.task_name:
-            self.cb.unassign_task(agent.task_name)
+            self.board.unassign_task(agent.task_name)
 
         # Post [orc](resolved) if this planner was resolving a soft-block.
         if agent.role == AgentRole.PLANNER and self._resolving_soft_block is not None:
             blocked_a, blocked_s = self._resolving_soft_block
-            self.cb.post_resolved(blocked_a, blocked_s, agent.agent_id)
+            self.messaging.post_resolved(blocked_a, blocked_s, agent.agent_id)
             self._resolving_soft_block = None
 
     # ------------------------------------------------------------------
@@ -596,7 +553,7 @@ class Dispatcher:
         self._set_orc_status("running", f"merging task {task_name}")
         self._echo(f"\n⟳ Merging {task_name} into dev…")
         try:
-            self.cb.merge_feature(task_name)
+            self.workflow.merge_feature(task_name)
             self._set_orc_status("running", f"merged {task_name}")
             self._echo(f"✓ {task_name} merged.")
         except Exception as exc:
@@ -625,7 +582,7 @@ class Dispatcher:
         self.pool.remove(agent.agent_id)
         _cleanup_context_tmp(agent.context_tmp)
         if agent.task_name:
-            self.cb.unassign_task(agent.task_name)
+            self.board.unassign_task(agent.task_name)
 
     # ------------------------------------------------------------------
     # Hard-block handling
@@ -636,7 +593,7 @@ class Dispatcher:
         self._echo(f"\n⏸  {blocked_agent_id}(blocked) — waiting for your reply in Telegram…")
         logger.info("hard block detected, waiting for human reply", agent=blocked_agent_id)
         try:
-            human_reply = self.cb.wait_for_human_reply(messages)
+            human_reply = self.messaging.wait_for_human_reply(messages)
         except TimeoutError:
             timeout_h = self.squad.timeout_minutes / 60.0
             timeout_msg = tg.format_agent_message(
@@ -652,25 +609,27 @@ class Dispatcher:
         self._echo(f"\n↩ Reply received: {human_reply[:80]!r}. Resuming…")
         # Post [orc](resolved) so _has_unresolved_block returns (None, None) on
         # the next cycle instead of seeing the block as still active.
-        self.cb.post_resolved(blocked_agent_id, "blocked", "human-reply")
+        self.messaging.post_resolved(blocked_agent_id, "blocked", "human-reply")
 
     # ------------------------------------------------------------------
     # Idle / done detection
     # ------------------------------------------------------------------
 
     @staticmethod
-    def has_pending_work(cb: DispatchCallbacks, messages: list[dict]) -> bool:
+    def has_pending_work(
+        board: BoardService, messaging: MessagingService, messages: list[dict]
+    ) -> bool:
         """Return True if there is any work that *could* be dispatched next cycle.
 
         Exposed as a public static method so callers (e.g. ``orc run``) can
         perform an early-exit check before entering the dispatch loop.
         """
-        if cb.get_open_tasks():
+        if board.get_open_tasks():
             return True
-        if cb.get_pending_visions() or cb.get_pending_reviews():
+        if board.get_pending_visions() or board.get_pending_reviews():
             return True
         # Check if blocked: hard-blocked means work exists but is stalled.
-        blocked_agent, _ = cb.has_unresolved_block(messages)
+        blocked_agent, _ = messaging.has_unresolved_block(messages)
         return blocked_agent is not None
 
     # ------------------------------------------------------------------
@@ -680,7 +639,7 @@ class Dispatcher:
     def _kill_all_and_unassign(self) -> None:
         for agent in self.pool.all_agents():
             if agent.task_name:
-                self.cb.unassign_task(agent.task_name)
+                self.board.unassign_task(agent.task_name)
         self.pool.kill_all()
 
     def _shutdown_handler(self, signum: int, _frame: object) -> None:
