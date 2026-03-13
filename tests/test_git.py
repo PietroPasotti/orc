@@ -771,3 +771,60 @@ class TestDeriveTaskStateExitCommits:
 
         with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=1)):
             assert _git._feature_merged_into_dev("feat/0001-foo") is False
+
+
+class TestRebaseOnMain:
+    """Tests for _rebase_on_main (extracted from merge.py)."""
+
+    def test_rebase_on_main_success(self, monkeypatch):
+        """Returns (True, '') when git rebase exits 0."""
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            ok, conflict = _git._rebase_on_main(MagicMock())
+        assert ok is True
+        assert conflict == ""
+
+    def test_rebase_on_main_conflict(self, monkeypatch, tmp_path):
+        """Returns (False, conflict_status) when git rebase exits non-zero."""
+        call_count = 0
+
+        def fake_run(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            r = MagicMock()
+            # First call: the rebase (fails); second call: git status --short
+            r.returncode = 1 if call_count == 1 else 0
+            r.stdout = "" if call_count == 1 else "UU src/conflict.py"
+            return r
+
+        with patch("orc.git.core.subprocess.run", side_effect=fake_run):
+            ok, conflict = _git._rebase_on_main(tmp_path)
+        assert ok is False
+        assert "UU" in conflict
+
+
+class TestCountFeaturesDone:
+    """Tests for _count_features_done."""
+
+    def test_count_features_done_empty(self, monkeypatch):
+        """Returns 0 when git log returns no output."""
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            assert _git._count_features_done() == 0
+
+    def test_count_features_done_three(self, monkeypatch):
+        """Returns 3 when git log returns 3 merge commits."""
+        log_output = (
+            "abc1234 Merge feat/0001-foo into dev\n"
+            "def5678 Merge feat/0002-bar into dev\n"
+            "ghi9012 Merge feat/0003-baz into dev\n"
+        )
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
+            assert _git._count_features_done() == 3
+
+    def test_count_features_done_git_error(self, monkeypatch):
+        """Returns 0 when git returns non-zero exit code."""
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=128, stdout="")
+            assert _git._count_features_done() == 0

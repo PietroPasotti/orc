@@ -333,3 +333,20 @@ class TestLoadOrcConfig:
         )
         _init_config(orc_dir)
         assert _cfg.get().todo_scan_exclude == (".orc", "vendor", "docs")
+
+    def test_init_chat_log_in_log_dir(self, tmp_path, monkeypatch, _init_config):
+        """chat_log is placed inside log_dir, not orc_dir."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
+        cfg = _cfg.get()
+        assert cfg.chat_log == cfg.log_dir / "chat.log"
+
+    def test_init_chat_log_uses_custom_log_dir(self, tmp_path, monkeypatch, _init_config):
+        """chat_log follows a custom orc-log-dir."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        custom_log_dir = tmp_path / "my-logs"
+        (orc_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
+        _init_config(orc_dir)
+        assert _cfg.get().chat_log == custom_log_dir.resolve() / "chat.log"

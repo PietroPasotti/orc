@@ -6,8 +6,8 @@ shown when ``orc run`` is invoked with a TTY.
 
 Usage::
 
-    state = RunState(agents=[], dev_ahead=0, telegram_ok=True,
-                     backend="copilot", current_loop=0, max_loops=1)
+    state = RunState(agents=[], features_done=0, telegram_ok=True,
+                     backend="copilot", current_calls=0, max_calls=1)
     run_tui(state, lambda: dispatcher.run(maxloops=1))
 """
 
@@ -79,12 +79,8 @@ class RunState:
     orc: OrcData | None = None
     """Orchestrator status, or ``None`` when not yet active."""
 
-    # TODO: instead of dev_ahead, we should count the number of 'completed features' that dev
-    #  has ahead of main = find all commits that merge a feat/NNNN-<feature name> into <dev>.
-    #  then the TUI can show a more meaningful "3 features completed" (and even say which ones!)
-    #  instead of "17 commits ahead"
-    dev_ahead: int = 0
-    """Commits dev is ahead of main."""
+    features_done: int = 0
+    """Number of feature branches merged into dev but not yet in main."""
 
     telegram_ok: bool = False
     """Whether the Telegram bot token is configured."""
@@ -169,7 +165,7 @@ def render(state: RunState) -> RenderableType:
     tg_str = "✓" if state.telegram_ok else "✗"
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
-        f"dev+{state.dev_ahead}  "
+        f"{state.features_done} features done  "
         f"backend={state.backend}  "
         f"telegram={tg_str}"
     )

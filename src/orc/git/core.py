@@ -507,3 +507,50 @@ def _conflict_status(worktree: Path) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _rebase_on_main(worktree: Path) -> tuple[bool, str]:
+    """Attempt to rebase *worktree*'s current branch on top of ``main``.
+
+    Returns ``(True, "")`` on success, or ``(False, conflict_status)`` when
+    the rebase stops with conflicts, where *conflict_status* is the output of
+    ``git status --short`` in *worktree*.
+    """
+    result = subprocess.run(
+        ["git", "rebase", "--autostash", "main"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return True, ""
+    return False, _conflict_status(worktree)
+
+
+def _count_features_done() -> int:
+    """Count feature-merge commits on ``dev`` that are not yet on ``main``.
+
+    A "feature done" commit is a merge commit whose message matches
+    ``Merge feat/NNNN-*``.
+    """
+    cfg = _cfg.get()
+    result = subprocess.run(
+        [
+            "git",
+            "log",
+            cfg.work_dev_branch,
+            "--not",
+            "main",
+            "--merges",
+            "--oneline",
+            "--grep",
+            "^Merge feat/",
+        ],
+        cwd=cfg.repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return 0
+    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
+    return len(lines)
