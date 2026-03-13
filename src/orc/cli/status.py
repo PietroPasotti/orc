@@ -182,6 +182,17 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
+        # FIXME: we should probably fold the 'agent is soft-blocked' case in the Work dataclass:
+        #  that's work which the planner could pick up just like refining visions and todos.
+        #  Something like:
+        #   _planner_pending_work = []
+        #   if work.planner.has_open_visions():
+        #       _planner_pending_work.append("X visions pending")
+        #   if work.planner.agents_soft_blocked():
+        #       _planner_pending_work.append("X agents need help")
+        #   if work.planner.todos_and_fixmes():
+        #       _planner_pending_work.append("X todos and fixmes pending")
+        #   planner_note = ", ".join(_planner_pending_work) if _planner_pending_work else "idle"
         if not _board.has_open_work():
             planner_note = "ready to plan  (board empty)"
         elif blocked_agent and blocked_state == "soft-blocked":
