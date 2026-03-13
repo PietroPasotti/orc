@@ -27,5 +27,7 @@ done:
 - commit-tag: 5c0c7a5
   name: 0007-per-role-boot-messages.md
   timestamp: '2026-03-13T17:34:52Z'
-open:
-- name: 0008-engine-robustness.md
+- commit-tag: 3a39c5b
+  name: 0008-engine-robustness.md
+  timestamp: '2026-03-13T17:35:00Z'
+open: []
