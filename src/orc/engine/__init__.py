@@ -7,6 +7,5 @@ Submodules:
 - :mod:`orc.engine.state_machine`— formal state-machine model
 - :mod:`orc.engine.context`      — agent context building and Telegram integration
 - :mod:`orc.engine.services`     — service protocols (BoardService, etc.)
-- :mod:`orc.engine.metrics`      — in-process operational metrics
 - :mod:`orc.engine.retry`        — exponential-backoff retry decorator
 """
