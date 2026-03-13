@@ -564,6 +564,31 @@ class TestDispatcherCoverage:
         d._dispatch([], 100)
         assert "0001-foo.md" in closed
 
+    def test_dispatch_close_board_failure_is_logged(self, tmp_path, monkeypatch):
+        """do_close_board() failure is logged and does not propagate."""
+        from unittest.mock import patch as _patch
+
+        svcs = _make_services(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            derive_task_state=lambda t: (CLOSE_BOARD, "close"),
+        )
+
+        def _boom(task_name):
+            raise RuntimeError("board exploded")
+
+        svcs.workflow.do_close_board = _boom
+        d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
+
+        with _patch.object(_disp.logger, "exception") as mock_log:
+            result = d._dispatch([], 100)
+
+        mock_log.assert_called_once()
+        call_kwargs = mock_log.call_args
+        assert "do_close_board failed" in call_kwargs[0]
+        assert result == 0  # no agents spawned, but dispatch continued without raising
+
     def test_dispatch_skips_unknown_token(self, tmp_path):
         """Unknown token → task skipped, dispatch returns 0."""
         svcs = _make_services(

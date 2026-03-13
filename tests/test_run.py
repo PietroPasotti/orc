@@ -54,6 +54,31 @@ class TestRunBareRaise:
             with pytest.raises(RuntimeError, match="crashed"):
                 _run_mod._run(maxcalls=1)
 
+    def test_run_keyboard_interrupt_prints_warning(self, tmp_path, monkeypatch, capsys):
+        """KeyboardInterrupt during dispatcher.run() prints warning and exits non-zero."""
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
+        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+        monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
+        monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+        def _interrupt(*a, **kw):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(_disp.Dispatcher, "run", _interrupt)
+        import typer
+
+        with pytest.raises(typer.Exit) as exc_info:
+            _run_mod._run(maxcalls=1)
+
+        assert exc_info.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert "Interrupted" in captured.err
+        assert "orc run" in captured.err
+
 
 def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     """Monkeypatch all external dependencies for _run() tests."""
