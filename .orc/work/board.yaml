@@ -30,5 +30,8 @@ done:
 - commit-tag: 3a39c5b
   name: 0008-engine-robustness.md
   timestamp: '2026-03-13T17:35:00Z'
+- commit-tag: 818c4dc
+  name: 0009-code-cleanup.md
+  timestamp: '2026-03-13T18:09:26Z'
 open:
 - name: 0010-code-cleanup.md
