@@ -120,8 +120,6 @@ class _AgentSvc:
 # ---------------------------------------------------------------------------
 
 
-# TODO: the main run loop should be protected against unintentional ctrl+C.
-#  We should require a confirmation, to avoid leaving half-merged branches and so on.
 def _run(
     maxcalls: int = 1,
     dry_run: bool = False,
@@ -242,6 +240,13 @@ def _run(
             _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))
         else:
             dispatcher.run(maxcalls=maxcalls)
+    except KeyboardInterrupt:
+        typer.echo(
+            "\n⚠ Interrupted. The dev branch and board may be in a partial "
+            "state. Run `orc run` again to resume.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     except Exception:
         logger.exception("orc run loop crashed")
         raise
