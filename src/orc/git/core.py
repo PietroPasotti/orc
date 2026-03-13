@@ -234,9 +234,9 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
     """Move *task_name* from ``open`` to ``done`` in board.yaml and delete its .md file."""
     cfg = _cfg.get()
     try:
-        config_rel = cfg.agents_dir.relative_to(cfg.repo_root)
+        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
-        config_rel = Path(cfg.agents_dir.name)
+        config_rel = Path(cfg.orc_dir.name)
     board_path = dev_wt / config_rel / "work" / "board.yaml"
     if not board_path.exists():
         logger.warning("board.yaml not found in dev worktree, skipping board update")
@@ -311,9 +311,9 @@ def _merge_feature_into_dev(task_name: str) -> None:
 
     _close_task_on_board(task_name, dev_wt, commit_tag=merge_sha)
     try:
-        config_rel = cfg.agents_dir.relative_to(cfg.repo_root)
+        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
-        config_rel = Path(cfg.agents_dir.name)
+        config_rel = Path(cfg.orc_dir.name)
     board_path = dev_wt / config_rel / "work" / "board.yaml"
     if board_path.exists():
         subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)

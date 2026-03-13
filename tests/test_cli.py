@@ -13,10 +13,8 @@ runner = CliRunner()
 
 
 class TestCliInitCoverage:
-    def test_check_env_or_exit_exits_when_agents_dir_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / "nonexistent")
-        )
+    def test_check_env_or_exit_exits_when_orc_dir_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / "nonexistent"))
         result = runner.invoke(m.app, ["run"])
         assert result.exit_code != 0
         assert "orc configuration directory not found" in (result.output or "")

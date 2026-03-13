@@ -16,9 +16,9 @@ def _dev_board_file() -> Path:
     """Return the board.yaml that is currently authoritative."""
     try:
         cfg = _cfg.get()
-        rel = cfg.agents_dir.relative_to(cfg.repo_root)
+        rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
-        rel = Path(_cfg.get().agents_dir.name)
+        rel = Path(_cfg.get().orc_dir.name)
     cfg = _cfg.get()
     candidate = cfg.dev_worktree / rel / "work" / "board.yaml"
     return candidate if candidate.exists() else cfg.board_file

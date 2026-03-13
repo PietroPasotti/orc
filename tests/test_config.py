@@ -34,9 +34,9 @@ class TestConfigCoverage:
         assert result is None
 
     def test_validate_env_missing_env_file(self, tmp_path, monkeypatch):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg,
             "_config",
@@ -48,9 +48,9 @@ class TestConfigCoverage:
     def test_validate_env_all_vars_set(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -64,9 +64,9 @@ class TestConfigCoverage:
     def test_validate_env_missing_vars(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -81,9 +81,9 @@ class TestConfigCoverage:
     def test_validate_env_unsupported_ai_cli(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -96,9 +96,9 @@ class TestConfigCoverage:
     def test_validate_env_claude_missing_key(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -113,9 +113,9 @@ class TestConfigCoverage:
         """No GH_TOKEN, no apps.json, gh auth token fails → error."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -137,9 +137,9 @@ class TestConfigCoverage:
         """Lines 140-141: apps.json empty dict → StopIteration caught silently."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -164,9 +164,9 @@ class TestConfigCoverage:
         """Lines 147-148: gh auth token returns empty string → error added."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -197,9 +197,9 @@ class TestConfigCoverage:
         """Line 134: apps.json has a valid oauth_token → no GitHub error."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -220,9 +220,9 @@ class TestConfigCoverage:
     def test_validate_env_copilot_gh_token_ok(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("")
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _cfg.init(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _cfg.init(orc_dir)
         monkeypatch.setattr(
             _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
         )
@@ -250,69 +250,69 @@ class TestLoadOrcConfig:
         assert result == {}
 
     def test_init_sets_work_dev_branch_from_config(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        (agents_dir / "config.yaml").write_text("orc-dev-branch: my-dev\n")
-        _init_config(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        (orc_dir / "config.yaml").write_text("orc-dev-branch: my-dev\n")
+        _init_config(orc_dir)
         assert _cfg.get().work_dev_branch == "my-dev"
 
     def test_init_defaults_work_dev_branch_to_dev(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _init_config(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
         assert _cfg.get().work_dev_branch == "dev"
 
     def test_init_sets_branch_prefix_from_config(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        (agents_dir / "config.yaml").write_text("orc-branch-prefix: orc\n")
-        _init_config(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        (orc_dir / "config.yaml").write_text("orc-branch-prefix: orc\n")
+        _init_config(orc_dir)
         assert _cfg.get().branch_prefix == "orc"
 
     def test_init_defaults_branch_prefix_to_empty_string(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _init_config(agents_dir)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
         assert _cfg.get().branch_prefix == ""
 
     def test_init_sets_worktree_base_from_config(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
         custom_base = tmp_path / "my-worktrees"
-        (agents_dir / "config.yaml").write_text(f"orc-worktree-base: {custom_base}\n")
-        _init_config(agents_dir)
+        (orc_dir / "config.yaml").write_text(f"orc-worktree-base: {custom_base}\n")
+        _init_config(orc_dir)
         assert _cfg.get().worktree_base == custom_base.resolve()
 
     def test_init_defaults_worktree_base_to_orc_worktrees(
         self, tmp_path, monkeypatch, _init_config
     ):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _init_config(agents_dir)
-        assert _cfg.get().worktree_base == (agents_dir / "worktrees").resolve()
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
+        assert _cfg.get().worktree_base == (orc_dir / "worktrees").resolve()
 
     def test_init_dev_worktree_under_worktree_base(self, tmp_path, monkeypatch, _init_config):
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
         custom_base = tmp_path / "wt"
-        (agents_dir / "config.yaml").write_text(
+        (orc_dir / "config.yaml").write_text(
             f"orc-worktree-base: {custom_base}\norc-dev-branch: staging\n"
         )
-        _init_config(agents_dir, repo_root=tmp_path)
+        _init_config(orc_dir, repo_root=tmp_path)
         assert _cfg.get().dev_worktree == custom_base.resolve() / "staging"
 
     def test_init_log_dir_defaults_to_orc_logs(self, tmp_path, monkeypatch, _init_config):
         """LOG_DIR defaults to .orc/logs/ when orc-log-dir is not in config."""
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
-        _init_config(agents_dir)
-        assert _cfg.get().log_dir == (agents_dir / "logs").resolve()
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
+        assert _cfg.get().log_dir == (orc_dir / "logs").resolve()
 
     def test_init_log_dir_from_config(self, tmp_path, monkeypatch, _init_config):
         """LOG_DIR is set from orc-log-dir in config.yaml."""
-        agents_dir = tmp_path / ".orc"
-        agents_dir.mkdir(exist_ok=True)
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
         custom_log_dir = tmp_path / "my-logs"
-        (agents_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
-        _init_config(agents_dir)
+        (orc_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
+        _init_config(orc_dir)
         assert _cfg.get().log_dir == custom_log_dir.resolve()

@@ -10,11 +10,11 @@ Usage::
     from orc.squad import load_squad, load_all_squads, SquadConfig
 
     squad = load_squad("default")                      # package default
-    squad = load_squad("broad", agents_dir=orc_dir)   # project-level first
+    squad = load_squad("broad", orc_dir=orc_dir)   # project-level first
     squad.count("coder")                               # → 1
     squad.model("coder")                               # → "claude-sonnet-4.6"
 
-    all_squads = load_all_squads(agents_dir=orc_dir)   # list[SquadConfig]
+    all_squads = load_all_squads(orc_dir=orc_dir)   # list[SquadConfig]
 
 Profile format::
 
@@ -51,23 +51,25 @@ from pathlib import Path
 
 import yaml
 
-# Package-bundled squads directory (fallback when project-level squad not found).
-# Lives inside the default template so there is a single source of truth.
-_PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
-
 
 class AgentRole(StrEnum):
     """Valid agent roles in an orc squad.
 
-    Because :class:`AgentRole` inherits from :class:`str`, each member compares
-    equal to its string value (e.g. ``AgentRole.CODER == "coder"`` is ``True``),
-    so existing APIs that accept plain role strings remain fully compatible.
+    The enum inherits from :class:`~enum.StrEnum` so values compare and format
+    as their plain-string equivalents (e.g. ``AgentRole.CODER == "coder"`` is
+    ``True`` and ``f"{AgentRole.CODER}"`` yields ``"coder"``), preserving
+    backward compatibility with YAML config, external systems, and existing code
+    that passes bare strings.
     """
 
     PLANNER = "planner"
     CODER = "coder"
     QA = "qa"
 
+
+# Package-bundled squads directory (fallback when project-level squad not found).
+# Lives inside the default template so there is a single source of truth.
+_PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
 
 _VALID_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 _DEFAULT_TIMEOUT_MINUTES = 120
@@ -167,11 +169,11 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
     )
 
 
-def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
+def load_squad(name: str, orc_dir: Path | None = None) -> SquadConfig:
     """Load and validate the squad profile *name*.
 
     Resolution order:
-    1. ``{agents_dir}/squads/{name}.yaml`` if *agents_dir* is provided.
+    1. ``{orc_dir}/squads/{name}.yaml`` if *orc_dir* is provided.
     2. Package bundled ``squads/{name}.yaml``.
 
     Raises:
@@ -179,8 +181,8 @@ def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
         ValueError: Profile contains invalid values (e.g. ``planner != 1``).
     """
     # Check project-level squads directory first.
-    if agents_dir is not None:
-        project_path = agents_dir / "squads" / f"{name}.yaml"
+    if orc_dir is not None:
+        project_path = orc_dir / "squads" / f"{name}.yaml"
         if project_path.exists():
             return _parse_squad_file(name, project_path)
 
@@ -189,7 +191,7 @@ def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
     if package_path.exists():
         return _parse_squad_file(name, package_path)
 
-    available = _list_available(agents_dir)
+    available = _list_available(orc_dir)
     raise FileNotFoundError(
         f"Squad profile {name!r} not found.\n"
         f"Available profiles: {available}\n"
@@ -197,10 +199,10 @@ def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
     )
 
 
-def load_all_squads(agents_dir: Path | None = None) -> list[SquadConfig]:
+def load_all_squads(orc_dir: Path | None = None) -> list[SquadConfig]:
     """Return a :class:`SquadConfig` for every squad file visible to the project.
 
-    Project-level profiles (``{agents_dir}/squads/``) take precedence over the
+    Project-level profiles (``{orc_dir}/squads/``) take precedence over the
     package-bundled ones.  Any package profile not overridden by the project is
     included as well.
 
@@ -209,8 +211,8 @@ def load_all_squads(agents_dir: Path | None = None) -> list[SquadConfig]:
     seen: dict[str, SquadConfig] = {}
 
     # Project-level profiles win.
-    if agents_dir is not None:
-        project_dir = agents_dir / "squads"
+    if orc_dir is not None:
+        project_dir = orc_dir / "squads"
         if project_dir.exists():
             for p in sorted(project_dir.glob("*.yaml")):
                 try:
@@ -229,14 +231,14 @@ def load_all_squads(agents_dir: Path | None = None) -> list[SquadConfig]:
     return list(seen.values())
 
 
-def list_squads(agents_dir: Path | None = None) -> list[str]:
+def list_squads(orc_dir: Path | None = None) -> list[str]:
     """Return sorted list of available squad profile names.
 
-    If *agents_dir* is provided, returns profiles from ``agents_dir/squads/``.
+    If *orc_dir* is provided, returns profiles from ``orc_dir/squads/``.
     Otherwise returns profiles from the package bundled squads directory.
     """
-    if agents_dir is not None:
-        squads_dir = agents_dir / "squads"
+    if orc_dir is not None:
+        squads_dir = orc_dir / "squads"
     else:
         squads_dir = _PACKAGE_SQUADS_DIR
 
@@ -245,9 +247,9 @@ def list_squads(agents_dir: Path | None = None) -> list[str]:
     return sorted(p.stem for p in squads_dir.glob("*.yaml"))
 
 
-def _list_available(agents_dir: Path | None = None) -> str:
-    names = list_squads(agents_dir)
-    if not names and agents_dir is not None:
+def _list_available(orc_dir: Path | None = None) -> str:
+    names = list_squads(orc_dir)
+    if not names and orc_dir is not None:
         # Also check package squads for the error message
         names = list_squads()
     return ", ".join(names) if names else "(none)"

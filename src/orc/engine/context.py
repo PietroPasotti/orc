@@ -255,11 +255,11 @@ def _has_planner_work() -> bool:
     """Return ``True`` if the planner has anything to do.
 
     The planner has work when either:
-    - there are pending vision documents (present in ``AGENTS_DIR/vision/`` but
+    - there are pending vision documents (present in ``ORC_DIR/vision/`` but
       not yet tracked on the kanban board), **or**
     - the codebase contains ``#TODO`` / ``#FIXME`` comments.
     """
-    vision_dir = _cfg.get().agents_dir / "vision"
+    vision_dir = _cfg.get().orc_dir / "vision"
     if vision_dir.is_dir():
         board = _board._read_board()
         all_task_stems = {
@@ -366,9 +366,9 @@ def build_agent_context(
     dev_worktree = _git._ensure_dev_worktree()
     cfg = _cfg.get()
     try:
-        agents_rel = cfg.agents_dir.relative_to(cfg.repo_root)
+        agents_rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
-        agents_rel = Path(cfg.agents_dir.name)
+        agents_rel = Path(cfg.orc_dir.name)
 
     # -- shared docs (trimmed per role) ------------------------------------
     readme_path = cfg.repo_root / "README.md"

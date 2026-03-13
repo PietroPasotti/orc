@@ -80,7 +80,7 @@ class CommitInfo:
 
 def _main_branch() -> str:
     """Return the main branch name from config or auto-detect via git."""
-    cfg_data = _cfg.load_orc_config(_cfg.get().agents_dir)
+    cfg_data = _cfg.load_orc_config(_cfg.get().orc_dir)
     configured = cfg_data.get("orc-main-branch", "").strip()
     if configured:
         return configured

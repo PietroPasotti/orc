@@ -35,7 +35,7 @@ def _minimal_squad(**kw) -> SquadConfig:
 class TestRunBareRaise:
     def test_run_loop_crash_reraises(self, tmp_path, monkeypatch):
         """Lines 62-67: exception from dispatcher.run() is logged and re-raised."""
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -59,7 +59,7 @@ class TestRunBareRaise:
 
 def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     """Monkeypatch all external dependencies for _run() tests."""
-    monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+    monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
     monkeypatch.setattr(_cfg, "validate_env", lambda: [])
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
     monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -181,6 +181,9 @@ class TestTuiPath:
         # _on_agent_done
         cb.on_agent_done(fake_agent, 0)
 
+        # _on_orc_status
+        cb.on_orc_status("running", "checking pending work")
+
         # _updating_get_messages (the wrapped get_messages)
         result = cb.get_messages()
         assert isinstance(result, list)
@@ -236,3 +239,63 @@ class TestSafeDevAhead:
 
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
         assert _run_mod._safe_dev_ahead() == 3
+
+
+class TestMaxcallsCliValidation:
+    """CLI validates --maxcalls; 0 is rejected, UNLIMITED is accepted."""
+
+    def test_maxcalls_zero_rejected(self, tmp_path, monkeypatch):
+        """--maxcalls 0 exits with an error."""
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--maxcalls", "0"])
+        assert result.exit_code != 0
+        assert "UNLIMITED" in result.output or "must be" in result.output.lower()
+
+    def test_maxcalls_negative_rejected(self, tmp_path, monkeypatch):
+        """--maxcalls -1 exits with an error."""
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--maxcalls", "-1"])
+        assert result.exit_code != 0
+
+    def test_maxcalls_invalid_string_rejected(self):
+        """--maxcalls foo exits with an error."""
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--maxcalls", "foo"])
+        assert result.exit_code != 0
+
+    def test_maxcalls_unlimited_accepted(self, tmp_path, monkeypatch):
+        """--maxcalls UNLIMITED passes sys.maxsize to _run."""
+        import sys
+
+        called_with: dict = {}
+
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda maxcalls, **kw: called_with.update(maxcalls=maxcalls),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--maxcalls", "UNLIMITED"])
+        assert result.exit_code == 0
+        assert called_with.get("maxcalls") == sys.maxsize
+
+    def test_maxcalls_unlimited_case_insensitive(self, tmp_path, monkeypatch):
+        """--maxcalls unlimited (lowercase) is accepted."""
+        import sys
+
+        called_with: dict = {}
+
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda maxcalls, **kw: called_with.update(maxcalls=maxcalls),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--maxcalls", "unlimited"])
+        assert result.exit_code == 0
+        assert called_with.get("maxcalls") == sys.maxsize

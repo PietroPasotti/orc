@@ -29,7 +29,7 @@ _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "default"
 class Config:
     """All resolved paths and settings for the current orc session."""
 
-    agents_dir: Path
+    orc_dir: Path
     repo_root: Path
     work_dir: Path
     board_file: Path
@@ -45,11 +45,11 @@ class Config:
 _config: Config | None = None
 
 
-def init(agents_dir: Path, repo_root: Path | None = None) -> Config:
+def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     """Create and store the module-level :class:`Config` singleton.
 
     *repo_root* is the project root (where ``README.md`` and git live).
-    When omitted it falls back to ``agents_dir.parent``, which is correct
+    When omitted it falls back to ``orc_dir.parent``, which is correct
     for the common case where the config dir sits directly inside the project
     root (e.g. ``{project}/.orc/``).
 
@@ -59,21 +59,21 @@ def init(agents_dir: Path, repo_root: Path | None = None) -> Config:
     """
     global _config
 
-    orc_yaml = load_orc_config(agents_dir)
+    orc_yaml = load_orc_config(orc_dir)
     work_dev_branch = orc_yaml.get("orc-dev-branch", "dev")
     branch_prefix = orc_yaml.get("orc-branch-prefix", "")
-    raw_base = orc_yaml.get("orc-worktree-base", str(agents_dir / "worktrees"))
+    raw_base = orc_yaml.get("orc-worktree-base", str(orc_dir / "worktrees"))
     worktree_base = Path(raw_base).expanduser().resolve()
-    raw_log_dir = orc_yaml.get("orc-log-dir", str(agents_dir / "logs"))
+    raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
     log_dir = Path(raw_log_dir).expanduser().resolve()
-    work_dir = agents_dir / "work"
+    work_dir = orc_dir / "work"
 
     _config = Config(
-        agents_dir=agents_dir,
-        repo_root=(repo_root or agents_dir.parent).resolve(),
+        orc_dir=orc_dir,
+        repo_root=(repo_root or orc_dir.parent).resolve(),
         work_dir=work_dir,
         board_file=work_dir / "board.yaml",
-        roles_dir=agents_dir / "roles",
+        roles_dir=orc_dir / "roles",
         env_file=Path.cwd() / ".env",
         dev_worktree=worktree_base / work_dev_branch,
         worktree_base=worktree_base,
@@ -92,7 +92,7 @@ def get() -> Config:
     if _config is None:
         raise RuntimeError(
             "orc.config.get() called before init(). "
-            "Call orc.config.init(agents_dir) during CLI bootstrap."
+            "Call orc.config.init(orc_dir) during CLI bootstrap."
         )
     return _config
 
@@ -117,12 +117,12 @@ def find_config_dir(base: Path | None = None) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def load_orc_config(agents_dir: Path) -> dict:
-    """Load ``config.yaml`` from *agents_dir*.
+def load_orc_config(orc_dir: Path) -> dict:
+    """Load ``config.yaml`` from *orc_dir*.
 
     Returns an empty dict if the file is absent or unreadable.
     """
-    config_file = agents_dir / "config.yaml"
+    config_file = orc_dir / "config.yaml"
     if not config_file.exists():
         return {}
     try:

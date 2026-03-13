@@ -25,6 +25,8 @@ from orc.engine.pool import AgentProcess
 from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
+_MAXCALLS_UNLIMITED = sys.maxsize
+
 logger = structlog.get_logger(__name__)
 
 _DEV_AHEAD_REFRESH_INTERVAL = 30.0  # seconds between git queries
@@ -35,18 +37,13 @@ def _run(
 ) -> None:
     _check_env_or_exit()
 
-    squad_cfg = load_squad(squad, agents_dir=_cfg.get().agents_dir)
+    squad_cfg = load_squad(squad, orc_dir=_cfg.get().orc_dir)
     logger.info(
         "orc run starting",
         maxcalls=maxcalls,
         dry_run=dry_run,
         squad=squad,
     )
-    typer.echo("⟳ Syncing dev on main…")
-    messages = tg.get_messages()
-    _merge_mod._rebase_dev_on_main(messages, squad_cfg)
-
-    _board.clear_all_assignments()
 
     use_tui = not no_tui and sys.stdout.isatty()
 
@@ -54,12 +51,19 @@ def _run(
     if use_tui:
         state = _tui.RunState(
             agents=[],
+            orc=_tui.OrcData(agent_id="orc", status="running", task="rebasing dev on main"),
             dev_ahead=_safe_dev_ahead(),
             telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
             backend=os.environ.get("COLONY_AI_CLI", "copilot"),
             current_calls=0,
             max_calls=maxcalls,
         )
+
+    typer.echo("⟳ Syncing dev on main…")
+    messages = tg.get_messages()
+    _merge_mod._rebase_dev_on_main(messages, squad_cfg)
+
+    _board.clear_all_assignments()
 
     _last_dev_refresh: list[float] = [0.0]
 
@@ -80,6 +84,10 @@ def _run(
     def _on_agent_done(agent: AgentProcess, rc: int) -> None:
         assert state is not None
         state.agents = [r for r in state.agents if r.agent_id != agent.agent_id]
+
+    def _on_orc_status(status: str, task: str | None) -> None:
+        assert state is not None
+        state.orc = _tui.OrcData(agent_id="orc", status=status, task=task)
 
     callbacks = _disp.DispatchCallbacks(
         derive_task_state=_git._derive_task_state,
@@ -102,6 +110,7 @@ def _run(
         get_pending_reviews=_status_mod._pending_reviews,
         on_agent_start=_on_agent_start if use_tui else None,
         on_agent_done=_on_agent_done if use_tui else None,
+        on_orc_status=_on_orc_status if use_tui else None,
     )
 
     if not _disp.Dispatcher.has_pending_work(callbacks, messages):
@@ -145,14 +154,16 @@ def _safe_dev_ahead() -> int:
 @app.command()
 def run(
     maxcalls: Annotated[
-        int,
+        str,
         typer.Option(
             help=(
-                "Maximum agent sessions to invoke before stopping (0 = run until complete). "
+                "Maximum agent sessions to invoke before stopping. "
+                "Pass a positive integer or 'UNLIMITED' to run until the workflow "
+                "completes or hard-blocks waiting for human input. "
                 "Multiple agents may be spawned in parallel within a single dispatch cycle."
             ),
         ),
-    ] = 1,
+    ] = "1",
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Print the agent context/prompt without invoking."),
@@ -172,6 +183,21 @@ def run(
     """Run the workflow, invoking agents as needed.
 
     Multiple agents may be spawned in parallel within a single dispatch cycle.
-    Use ``--maxcalls 0`` to run until the workflow completes or hard-blocks
-    waiting for human input."""
-    return _run(maxcalls=maxcalls, dry_run=dry_run, squad=squad, no_tui=no_tui)
+    Pass ``--maxcalls UNLIMITED`` to run until the workflow completes or
+    hard-blocks waiting for human input."""
+    if maxcalls.upper() == "UNLIMITED":
+        maxcalls_int = _MAXCALLS_UNLIMITED
+    else:
+        try:
+            maxcalls_int = int(maxcalls)
+        except ValueError:
+            raise typer.BadParameter(
+                f"Invalid value {maxcalls!r}: must be a positive integer or 'UNLIMITED'.",
+                param_hint="--maxcalls",
+            )
+        if maxcalls_int <= 0:
+            raise typer.BadParameter(
+                f"Invalid value {maxcalls!r}: must be > 0 or 'UNLIMITED'.",
+                param_hint="--maxcalls",
+            )
+    return _run(maxcalls=maxcalls_int, dry_run=dry_run, squad=squad, no_tui=no_tui)

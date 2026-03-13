@@ -43,6 +43,7 @@ workflow is hard-blocked".
 from __future__ import annotations
 
 import signal
+import sys
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -165,6 +166,13 @@ class DispatchCallbacks:
     on_agent_done: Callable[[AgentProcess, int], None] | None = None
     """Called immediately after a completed agent is removed from the pool."""
 
+    on_orc_status: Callable[[str, str | None], None] | None = None
+    """Called whenever the orchestrator's status changes.
+    Signature: ``(status, task)`` where *status* is e.g. ``"running"`` or
+    ``"shutting down"`` and *task* is a human-readable description of the
+    current decision point (e.g. ``"merging task 0042-foo.md"``), or
+    ``None`` when the orchestrator is idle."""
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher
@@ -212,15 +220,32 @@ class Dispatcher:
     # Public entry point
     # ------------------------------------------------------------------
 
+    def _set_orc_status(self, status: str, task: str | None = None) -> None:
+        """Update the orchestrator card via the optional callback."""
+        if self.cb.on_orc_status is not None:
+            self.cb.on_orc_status(status, task)
+
+    def _echo(self, msg: str) -> None:
+        """Write *msg* to stdout only when the TUI is not active.
+
+        When ``on_orc_status`` is wired (TUI mode) the Textual app owns the
+        terminal; echoing to stdout produces invisible or garbled output.
+        In that case the orc card already surfaces the relevant status, so
+        the echo is simply skipped.
+        """
+        if self.cb.on_orc_status is None:
+            typer.echo(msg)
+
     @property
     def total_agent_calls(self) -> int:
         """Total number of agent sessions spawned so far."""
         return self._total_spawned
 
-    def run(self, maxcalls: int = 0) -> None:
+    def run(self, maxcalls: int = sys.maxsize) -> None:
         """Run the dispatch loop.
 
-        *maxcalls* — maximum total agent invocations; ``0`` = unlimited.
+        *maxcalls* — maximum total agent invocations; must be >= 1.
+        Pass ``sys.maxsize`` (the default) for unlimited.
         Multiple agents may be spawned in parallel within a single cycle.
         When the limit is reached no new agents are dispatched, but any
         agents already running are allowed to finish before the loop exits.
@@ -245,9 +270,12 @@ class Dispatcher:
 
             _cv.clear_contextvars()
             _cv.bind_contextvars(cycle=self._loop_count)
+            self._set_orc_status("running", "checking pending work")
             messages = self.cb.get_messages()
 
             # 1. Poll for completed agents.
+            if not self.pool.is_empty():
+                self._set_orc_status("running", "polling completed agents")
             for agent, rc in self.pool.poll():
                 self._handle_completion(agent, rc, messages)
                 # Refresh messages after completion (agent may have posted).
@@ -271,10 +299,11 @@ class Dispatcher:
                 messages = self.cb.get_messages()
 
             # 5. Dispatch new agents (skip when the call limit is already reached).
-            at_limit = maxcalls > 0 and self._total_spawned >= maxcalls
+            at_limit = self._total_spawned >= maxcalls
             if not at_limit:
                 if not self.dry_run or self._total_spawned == 0:
-                    dispatched = self._dispatch(messages)
+                    call_budget = maxcalls - self._total_spawned
+                    dispatched = self._dispatch(messages, call_budget=call_budget)
                     self._total_spawned += dispatched
                 else:
                     dispatched = 0  # pragma: no cover
@@ -290,15 +319,18 @@ class Dispatcher:
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
             if at_limit and self.pool.is_empty():
+                self._set_orc_status("shutting down")
                 logger.info("reached maxcalls and pool drained, stopping", maxcalls=maxcalls)
-                typer.echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.")
+                self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.")
                 break
 
             # Check idle-complete: nothing running, nothing to dispatch.
             if not at_limit and self.pool.is_empty() and dispatched == 0:
+                self._set_orc_status("running", "checking pending work")
                 if not Dispatcher.has_pending_work(self.cb, messages):
+                    self._set_orc_status("shutting down")
                     logger.info("no pending work and pool empty — workflow complete")
-                    typer.echo("\n✓ No pending work. Workflow complete.")
+                    self._echo("\n✓ No pending work. Workflow complete.")
                     break
 
             time.sleep(_POLL_INTERVAL)
@@ -307,8 +339,24 @@ class Dispatcher:
     # Dispatch
     # ------------------------------------------------------------------
 
-    def _dispatch(self, messages: list[dict]) -> int:
-        """Spawn agents for all unassigned work. Returns number spawned."""
+    def _dispatch(self, messages: list[dict], call_budget: int) -> int:
+        """Spawn up to `call_budget` agents for all unassigned work.
+
+        Return number spawned.
+        """
+        remaining_budget = call_budget
+
+        def _spawn(call):
+            nonlocal remaining_budget
+
+            if remaining_budget > 0:
+                remaining_budget -= 1
+                call()
+                return 1
+            else:
+                logger.warning("skipped dispatch call: maxcalls reached")
+                return 0
+
         dispatched = 0
         open_tasks = self.cb.get_open_tasks()
 
@@ -334,6 +382,31 @@ class Dispatcher:
             if self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 dispatched += self._spawn_planner(messages)
             return dispatched
+        else:
+            # Keep the pipeline full when open tasks are fewer
+            # than the maximum number of coders that can run in parallel.  Without
+            # this, all coder slots may sit idle waiting for the last remaining
+            # task to finish before a new planner run creates more work.
+            if (
+                len(open_tasks) < self.squad.count(AgentRole.CODER)
+                and self.cb.get_pending_visions()
+                and self.pool.count_by_role(AgentRole.PLANNER) == 0
+            ):
+                dispatched += _spawn(lambda: self._spawn_planner(messages))
+
+        pending_reviews = self.cb.get_pending_reviews()
+        for branch in pending_reviews:
+            # Convert branch name → task name.
+            # With a branch prefix (e.g. "orc"), branches look like
+            # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
+            # Strip everything up to and including "feat/" to get the stem.
+            feat_idx = branch.find("feat/")
+            task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
+            task_name = task_stem + ".md"
+
+            if task_name not in self._merge_queue:
+                self._merge_queue.append(task_name)
+                dispatched += 1
 
         # Check for soft-block: route one planner to resolve it.
         blocked_agent, blocked_state = self.cb.has_unresolved_block(messages)
@@ -341,8 +414,9 @@ class Dispatcher:
             if self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 self._resolving_soft_block = (blocked_agent, blocked_state)
                 agent_id = self._next_id(AgentRole.PLANNER)
-                self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
-                dispatched += 1
+                dispatched += _spawn(
+                    lambda: self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
+                )
             return dispatched
 
         # Dispatch coder/QA for each unassigned task up to squad capacity.
@@ -373,8 +447,7 @@ class Dispatcher:
                 continue
 
             agent_id = self._next_id(token)
-            self._spawn_agent(token, agent_id, task_name, messages)
-            dispatched += 1
+            dispatched += _spawn(lambda: self._spawn_agent(token, agent_id, task_name, messages))
 
         return dispatched
 
@@ -436,6 +509,7 @@ class Dispatcher:
         self.pool.add(agent)
         if self.cb.on_agent_start is not None:
             self.cb.on_agent_start(agent)
+        self._set_orc_status("running", f"dispatching {agent_id}")
 
         if task_name:
             self.cb.assign_task(task_name, agent_id)
@@ -447,7 +521,7 @@ class Dispatcher:
             worktree=str(worktree),
             log=str(log_path),
         )
-        typer.echo(f"\n⟳ Spawned {agent_id} (log: {log_path})")
+        self._echo(f"\n⟳ Spawned {agent_id} (log: {log_path})")
 
     # ------------------------------------------------------------------
     # Completion handling
@@ -465,14 +539,16 @@ class Dispatcher:
             logger.error(
                 "agent failed", agent_id=agent.agent_id, exit_code=rc, log=str(agent.log_path)
             )
-            typer.echo(
+            self._set_orc_status("running", f"{agent.agent_id} failed (rc={rc})")
+            self._echo(
                 f"\n✗ {agent.agent_id} exited with code {rc}. See {agent.log_path} for details."
             )
             if agent.task_name:
                 self.cb.unassign_task(agent.task_name)
             return
 
-        typer.echo(f"\n✓ {agent.agent_id} completed successfully.")
+        self._set_orc_status("running", f"{agent.agent_id} completed")
+        self._echo(f"\n✓ {agent.agent_id} completed successfully.")
 
         if agent.task_name:
             self.cb.unassign_task(agent.task_name)
@@ -488,13 +564,16 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _do_merge(self, task_name: str) -> None:
-        typer.echo(f"\n⟳ Merging {task_name} into dev…")
+        self._set_orc_status("running", f"merging task {task_name}")
+        self._echo(f"\n⟳ Merging {task_name} into dev…")
         try:
             self.cb.merge_feature(task_name)
-            typer.echo(f"✓ {task_name} merged.")
+            self._set_orc_status("running", f"merged {task_name}")
+            self._echo(f"✓ {task_name} merged.")
         except Exception as exc:
             logger.error("merge failed", task=task_name, error=str(exc))
-            typer.echo(f"\n✗ Merge failed for {task_name}: {exc}")
+            self._set_orc_status("running", f"merge failed: {task_name}")
+            self._echo(f"\n✗ Merge failed for {task_name}: {exc}")
 
     # ------------------------------------------------------------------
     # Watchdog
@@ -508,7 +587,8 @@ class Dispatcher:
             elapsed_minutes=f"{elapsed_min:.1f}",
             timeout_minutes=self.squad.timeout_minutes,
         )
-        typer.echo(
+        self._set_orc_status("running", f"watchdog killed {agent.agent_id}")
+        self._echo(
             f"\n⚠ {agent.agent_id} exceeded watchdog timeout "
             f"({elapsed_min:.0f} min > {self.squad.timeout_minutes} min). Killing."
         )
@@ -523,7 +603,8 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _handle_hard_block(self, blocked_agent_id: str, messages: list[dict]) -> None:
-        typer.echo(f"\n⏸  {blocked_agent_id}(blocked) — waiting for your reply in Telegram…")
+        self._set_orc_status("running", f"handling hard-blocked {blocked_agent_id}")
+        self._echo(f"\n⏸  {blocked_agent_id}(blocked) — waiting for your reply in Telegram…")
         logger.info("hard block detected, waiting for human reply", agent=blocked_agent_id)
         try:
             human_reply = self.cb.wait_for_human_reply(messages)
@@ -535,9 +616,11 @@ class Dispatcher:
                 f"Stopped waiting for human reply after {timeout_h:.0f}h. Exiting.",
             )
             tg.send_message(timeout_msg)
-            typer.echo("\n✗ Timed out waiting for human reply. Stopping.")
+            self._set_orc_status("shutting down", "timed out waiting for human reply")
+            self._echo("\n✗ Timed out waiting for human reply. Stopping.")
             raise typer.Exit(code=1)
-        typer.echo(f"\n↩ Reply received: {human_reply[:80]!r}. Resuming…")
+        self._set_orc_status("running", "resuming after human reply")
+        self._echo(f"\n↩ Reply received: {human_reply[:80]!r}. Resuming…")
         # Post [orc](resolved) so _has_unresolved_block returns (None, None) on
         # the next cycle instead of seeing the block as still active.
         self.cb.post_resolved(blocked_agent_id, "blocked", "human-reply")

@@ -14,7 +14,7 @@ class TestSquadsCommand:
     def test_squads_no_profiles(self, tmp_path, monkeypatch):
         import orc.cli.squads as _squads_mod
 
-        monkeypatch.setattr(_squads_mod, "load_all_squads", lambda agents_dir: [])
+        monkeypatch.setattr(_squads_mod, "load_all_squads", lambda orc_dir: [])
         result = runner.invoke(m.app, ["squads"])
         assert result.exit_code == 0
         assert "No squad profiles found" in result.output
@@ -30,7 +30,7 @@ class TestSquadsCommand:
             "  - role: qa\n    count: 1\n"
             "timeout_minutes: 120\n"
         )
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         result = runner.invoke(m.app, ["squads"])
         assert result.exit_code == 0
         assert "test" in result.output
@@ -38,6 +38,6 @@ class TestSquadsCommand:
     def test_squads_cli_command(self, tmp_path, monkeypatch):
         import orc.cli.squads as _squads_mod
 
-        monkeypatch.setattr(_squads_mod, "load_all_squads", lambda agents_dir: [])
+        monkeypatch.setattr(_squads_mod, "load_all_squads", lambda orc_dir: [])
         result = runner.invoke(m.app, ["squads"])
         assert result.exit_code == 0

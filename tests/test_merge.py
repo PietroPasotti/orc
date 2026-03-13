@@ -21,7 +21,7 @@ class TestMergeCommand:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
         )
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
 

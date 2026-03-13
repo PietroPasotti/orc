@@ -38,10 +38,10 @@ class TestStatusCoverage:
             monkeypatch.setattr(
                 _st,
                 "load_squad",
-                lambda n, agents_dir: (_ for _ in ()).throw(ValueError("no squad")),
+                lambda n, orc_dir: (_ for _ in ()).throw(ValueError("no squad")),
             )
         else:
-            monkeypatch.setattr(_st, "load_squad", lambda n, agents_dir: squad_cfg)
+            monkeypatch.setattr(_st, "load_squad", lambda n, orc_dir: squad_cfg)
         open_dicts = [{"name": t} if isinstance(t, str) else t for t in (open_tasks or [])]
         monkeypatch.setattr(_st._board, "get_open_tasks", lambda: open_dicts)
         monkeypatch.setattr(_st._board, "has_open_work", lambda: has_open_work)
@@ -232,7 +232,7 @@ class TestStatusCoverage:
         (vision_dir / ".hidden.md").write_text("")
         (vision_dir / "feature-a.md").write_text("")
         (vision_dir / "feature-b.md").write_text("")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(
             _st._board,
             "_read_board",

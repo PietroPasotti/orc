@@ -45,7 +45,7 @@ class TestLoadSquad:
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(_NEW_YAML)
-        cfg = load_squad("default", agents_dir=tmp_path)
+        cfg = load_squad("default", orc_dir=tmp_path)
         assert cfg.planner == 1
         assert cfg.coder == 1
         assert cfg.qa == 1
@@ -76,7 +76,7 @@ class TestLoadSquad:
                 timeout_minutes: 60
             """)
         )
-        cfg = load_squad("mixed", agents_dir=tmp_path)
+        cfg = load_squad("mixed", orc_dir=tmp_path)
         assert cfg.coder == 2
         assert cfg.qa == 1
         assert cfg.model("planner") == "claude-opus-4-5"
@@ -103,7 +103,7 @@ class TestLoadSquad:
                 timeout_minutes: 180
             """)
         )
-        cfg = load_squad("broad", agents_dir=tmp_path)
+        cfg = load_squad("broad", orc_dir=tmp_path)
         assert cfg.coder == 4
         assert cfg.qa == 2
         assert cfg.timeout_minutes == 180
@@ -115,7 +115,7 @@ class TestLoadSquad:
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir(exist_ok=True)
         (squads_dir / "mypro.yaml").write_text(_MINIMAL_YAML)
-        cfg = load_squad("mypro", agents_dir=tmp_path)
+        cfg = load_squad("mypro", orc_dir=tmp_path)
         assert cfg.name == "mypro"
 
     def test_dict_composition_raises(self, tmp_path):
@@ -132,13 +132,13 @@ class TestLoadSquad:
             """)
         )
         with pytest.raises(ValueError, match="must be a list"):
-            load_squad("bad", agents_dir=tmp_path)
+            load_squad("bad", orc_dir=tmp_path)
 
     def test_missing_file_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir(exist_ok=True)
         with pytest.raises(FileNotFoundError):
-            load_squad("nonexistent", agents_dir=tmp_path)
+            load_squad("nonexistent", orc_dir=tmp_path)
 
     def test_planner_not_one_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
@@ -156,7 +156,7 @@ class TestLoadSquad:
             """)
         )
         with pytest.raises(ValueError, match="planner"):
-            load_squad("bad", agents_dir=tmp_path)
+            load_squad("bad", orc_dir=tmp_path)
 
     def test_zero_count_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
@@ -174,7 +174,7 @@ class TestLoadSquad:
             """)
         )
         with pytest.raises(ValueError, match="coder"):
-            load_squad("zero", agents_dir=tmp_path)
+            load_squad("zero", orc_dir=tmp_path)
 
     def test_defaults_applied(self, tmp_path):
         """timeout_minutes omitted — should default to 120."""
@@ -191,11 +191,11 @@ class TestLoadSquad:
                     count: 1
             """)
         )
-        cfg = load_squad("notimeout", agents_dir=tmp_path)
+        cfg = load_squad("notimeout", orc_dir=tmp_path)
         assert cfg.timeout_minutes == 120
 
     def test_package_fallback(self):
-        """load_squad without agents_dir falls back to package bundled squads."""
+        """load_squad without orc_dir falls back to package bundled squads."""
         cfg = load_squad("default")
         assert cfg.planner == 1
         assert cfg.coder == 1
@@ -220,7 +220,7 @@ class TestLoadSquad:
                 timeout_minutes: 60
             """)
         )
-        cfg = load_squad("default", agents_dir=tmp_path)
+        cfg = load_squad("default", orc_dir=tmp_path)
         assert cfg.coder == 3  # overridden, not the package default of 1
 
 
@@ -285,16 +285,16 @@ class TestListSquads:
         squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(_MINIMAL_YAML)
         (squads_dir / "broad.yaml").write_text(_MINIMAL_YAML)
-        names = list_squads(agents_dir=tmp_path)
+        names = list_squads(orc_dir=tmp_path)
         assert sorted(names) == ["broad", "default"]
 
     def test_empty_dir(self, tmp_path):
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir(exist_ok=True)
-        assert list_squads(agents_dir=tmp_path) == []
+        assert list_squads(orc_dir=tmp_path) == []
 
-    def test_no_agents_dir_returns_package_squads(self):
-        """Without agents_dir, returns package bundled squads."""
+    def test_no_orc_dir_returns_package_squads(self):
+        """Without orc_dir, returns package bundled squads."""
         names = list_squads()
         assert "default" in names
 
@@ -321,7 +321,7 @@ class TestLoadAllSquads:
                 timeout_minutes: 180
             """)
         )
-        profiles = load_all_squads(agents_dir=tmp_path)
+        profiles = load_all_squads(orc_dir=tmp_path)
         names = {p.name for p in profiles}
         assert "default" in names
         assert "broad" in names
@@ -347,7 +347,7 @@ class TestLoadAllSquads:
                 timeout_minutes: 60
             """)
         )
-        profiles = load_all_squads(agents_dir=tmp_path)
+        profiles = load_all_squads(orc_dir=tmp_path)
         default = next(p for p in profiles if p.name == "default")
         assert default.coder == 5  # project value, not package default of 1
         assert default.model("coder") == "claude-opus-4-5"
@@ -358,7 +358,7 @@ class TestLoadAllSquads:
 
     def test_no_project_dir(self, tmp_path):
         """No squads dir in project → only package profiles."""
-        profiles = load_all_squads(agents_dir=tmp_path)
+        profiles = load_all_squads(orc_dir=tmp_path)
         assert any(p.name == "default" for p in profiles)
 
 
@@ -426,7 +426,7 @@ class TestSquadCoverage:
                 timeout_minutes: 30
             """)
         )
-        profiles = load_all_squads(agents_dir=tmp_path)
+        profiles = load_all_squads(orc_dir=tmp_path)
         names = [p.name for p in profiles]
         assert "local" in names
 
@@ -443,17 +443,17 @@ class TestSquadCoverage:
                 return [bad_file]
 
         monkeypatch.setattr(_sq, "_PACKAGE_SQUADS_DIR", FakeDir())
-        profiles = load_all_squads(agents_dir=tmp_path / "nonexistent")
+        profiles = load_all_squads(orc_dir=tmp_path / "nonexistent")
         assert isinstance(profiles, list)
 
-    def test_list_squads_with_agents_dir(self, tmp_path):
-        """Line 253: list_squads uses agents_dir squads subdir."""
+    def test_list_squads_with_orc_dir(self, tmp_path):
+        """Line 253: list_squads uses orc_dir squads subdir."""
         from orc.squad import list_squads
 
         squads_dir = tmp_path / "squads"
         squads_dir.mkdir(exist_ok=True)
         (squads_dir / "alpha.yaml").write_text("")
-        result = list_squads(agents_dir=tmp_path)
+        result = list_squads(orc_dir=tmp_path)
         assert "alpha" in result
 
     def test_parse_squad_file_timeout_too_low(self, tmp_path):
@@ -476,12 +476,12 @@ class TestSquadCoverage:
         squads_dir.mkdir(exist_ok=True)
         (squads_dir / "broken.yaml").write_text(": : invalid yaml\n")
         # Should not raise; bad file is silently skipped
-        profiles = load_all_squads(agents_dir=tmp_path)
+        profiles = load_all_squads(orc_dir=tmp_path)
         assert isinstance(profiles, list)
 
     def test_list_squads_no_squads_subdir(self, tmp_path):
-        """Line 253: list_squads returns [] when agents_dir/squads/ doesn't exist."""
+        """Line 253: list_squads returns [] when orc_dir/squads/ doesn't exist."""
         from orc.squad import list_squads
 
-        result = list_squads(agents_dir=tmp_path)
+        result = list_squads(orc_dir=tmp_path)
         assert result == []

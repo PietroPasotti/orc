@@ -210,7 +210,7 @@ class TestWaitForHumanReply:
 class TestContextCoverage:
     def test_read_adrs_empty_dir(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
         result = _ctx._read_adrs()
         assert result == "_No ADRs found._"
@@ -337,7 +337,7 @@ class TestContextCoverage:
             _replace(
                 _cfg.get(),
                 roles_dir=roles_dir,
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 work_dir=tmp_path / ".orc" / "work",
                 board_file=tmp_path / ".orc" / "work" / "board.yaml",
@@ -366,7 +366,7 @@ class TestContextCoverage:
             _replace(
                 _cfg.get(),
                 roles_dir=roles_dir,
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=work_dir,
@@ -405,7 +405,7 @@ class TestContextCoverage:
             _replace(
                 _cfg.get(),
                 roles_dir=roles_dir,
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=work_dir,
@@ -419,25 +419,25 @@ class TestContextCoverage:
         _, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
         assert "feature/0001-task" in ctx
 
-    def test_build_context_agents_dir_outside_repo_root(self, tmp_path, monkeypatch):
-        """Lines 86-87: AGENTS_DIR not under REPO_ROOT → falls back to dir name."""
+    def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
+        """Lines 86-87: ORC_DIR not under REPO_ROOT → falls back to dir name."""
         repo = tmp_path / "repo"
         repo.mkdir(exist_ok=True)
-        agents_dir = tmp_path / "external-orc"
-        agents_dir.mkdir(exist_ok=True)
-        (agents_dir / "work").mkdir(exist_ok=True)
-        (agents_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        orc_dir = tmp_path / "external-orc"
+        orc_dir.mkdir(exist_ok=True)
+        (orc_dir / "work").mkdir(exist_ok=True)
+        (orc_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         monkeypatch.setattr(
             _cfg,
             "_config",
             _replace(
                 _cfg.get(),
-                roles_dir=agents_dir / "roles",
-                agents_dir=agents_dir,
+                roles_dir=orc_dir / "roles",
+                orc_dir=orc_dir,
                 repo_root=repo,
                 dev_worktree=tmp_path / "dev-wt",
-                work_dir=agents_dir / "work",
-                board_file=agents_dir / "work" / "board.yaml",
+                work_dir=orc_dir / "work",
+                board_file=orc_dir / "work" / "board.yaml",
             ),
         )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -554,7 +554,7 @@ class TestHasPlannerWork:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
             ),
@@ -629,7 +629,7 @@ class TestBuildContextTodos:
             _replace(
                 _cfg.get(),
                 roles_dir=roles_dir,
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=work_dir,

@@ -46,11 +46,11 @@ def _init_config(tmp_path, monkeypatch):
     """
     import orc.config as _cfg
 
-    agents_dir = tmp_path / ".orc"
-    agents_dir.mkdir(exist_ok=True)
-    (agents_dir / "work").mkdir(exist_ok=True)
+    orc_dir = tmp_path / ".orc"
+    orc_dir.mkdir(exist_ok=True)
+    (orc_dir / "work").mkdir(exist_ok=True)
     _real_init = _cfg.init
-    _real_init(agents_dir, repo_root=tmp_path)
+    _real_init(orc_dir, repo_root=tmp_path)
     monkeypatch.setattr(_cfg, "init", lambda *a, **kw: _cfg.get())
     yield _real_init
     monkeypatch.setattr(_cfg, "_config", None)

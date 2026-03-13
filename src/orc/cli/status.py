@@ -16,6 +16,7 @@ import orc.engine.workflow as _wf
 import orc.git.core as _git
 from orc.cli import app
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
+from orc.engine.state_machine import LastCommit as _LastCommit
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, load_squad
 
@@ -38,7 +39,7 @@ def _dev_ahead_of_main() -> int:
 
 def _pending_visions() -> list[str]:
     """Return vision .md filenames (excl. README.md) with no matching board task."""
-    vision_dir = _cfg.get().agents_dir / "vision"
+    vision_dir = _cfg.get().orc_dir / "vision"
     if not vision_dir.is_dir():
         return []
     board = _board._read_board()
@@ -58,8 +59,8 @@ def _pending_visions() -> list[str]:
     return result
 
 
-def _pending_reviews() -> list[str]:
-    """Return feature branches that exist locally but are not yet merged into dev.
+def _unmerged_feature_branches() -> list[str]:
+    """Return all local ``feat/*`` branches not yet merged into dev.
 
     Respects ``orc-branch-prefix``: when a prefix is configured (e.g. ``orc``),
     branches are listed as ``{prefix}/feat/*``; otherwise ``feat/*``.
@@ -87,6 +88,39 @@ def _pending_reviews() -> list[str]:
     return unmerged
 
 
+# Backward-compatible alias used by dispatcher callbacks.
+_pending_reviews = _unmerged_feature_branches
+
+
+def _get_wip_branches() -> list[str]:
+    """Return feature branches where the coder has made their exit commit.
+
+    These branches have a ``chore(coder-N.done.NNNN):`` tip commit — the coder
+    is finished but QA has not yet run.  They represent work *in progress*
+    (awaiting review) from the dispatcher's perspective.
+    """
+    result = []
+    for branch in _unmerged_feature_branches():
+        last_msg = _git._last_feature_commit_message(branch)
+        if _git._classify_last_commit(last_msg) == _LastCommit.CODER_DONE:
+            result.append(branch)
+    return result
+
+
+def _get_approved_branches() -> list[str]:
+    """Return feature branches that QA has approved and are ready to merge.
+
+    These branches have a ``chore(qa-N.approve.NNNN):`` tip commit — QA passed
+    and the branch should be merged into dev.
+    """
+    result = []
+    for branch in _unmerged_feature_branches():
+        last_msg = _git._last_feature_commit_message(branch)
+        if _git._classify_last_commit(last_msg) == _LastCommit.QA_PASSED:
+            result.append(branch)
+    return result
+
+
 def _dev_log_since_main() -> list[str]:
     """Return one-line summaries of commits on dev not yet in main."""
     result = subprocess.run(
@@ -106,7 +140,7 @@ def _status(squad: str = "default") -> None:
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
-        squad_cfg = load_squad(squad, agents_dir=_cfg.get().agents_dir)
+        squad_cfg = load_squad(squad, orc_dir=_cfg.get().orc_dir)
     except Exception:
         squad_cfg = None
 
@@ -223,12 +257,21 @@ def _status(squad: str = "default") -> None:
         for v in shown:
             typer.echo(f"  📄 {v}")
 
-    # --- Pending reviews (unmerged feat branches) ----------------------------
-    reviews = _pending_reviews()
-    if reviews:
-        shown_r = reviews[:5]
-        typer.echo(f"\nPending reviews ({len(shown_r)} of {len(reviews)}):")
-        for branch in shown_r:
+    # --- Branches awaiting QA review -----------------------------------------
+    wip = _get_wip_branches()
+    if wip:
+        shown_w = wip[:5]
+        typer.echo(f"\nAwaiting review ({len(shown_w)} of {len(wip)}):")
+        for branch in shown_w:
+            last = _git._last_feature_commit_message(branch) or ""
+            typer.echo(f"  🔍 {branch}  last: {last}")
+
+    # --- Branches approved by QA, pending merge ------------------------------
+    approved = _get_approved_branches()
+    if approved:
+        shown_a = approved[:5]
+        typer.echo(f"\nApproved, pending merge ({len(shown_a)} of {len(approved)}):")
+        for branch in shown_a:
             last = _git._last_feature_commit_message(branch) or ""
             typer.echo(f"  🔀 {branch}  last: {last}")
 

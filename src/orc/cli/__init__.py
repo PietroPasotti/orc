@@ -66,7 +66,7 @@ def _app_entry(
 
     cfg = _cfg.get()
     load_dotenv(cfg.env_file)
-    if cfg.agents_dir.is_dir():
+    if cfg.orc_dir.is_dir():
         _obs.setup(default_log_file=cfg.log_dir / "orc.log")
     else:
         _obs.setup()
@@ -74,10 +74,10 @@ def _app_entry(
 
 def _check_env_or_exit() -> None:
     cfg = _cfg.get()
-    if not cfg.agents_dir.is_dir():
+    if not cfg.orc_dir.is_dir():
         typer.echo(
             f"✗ orc configuration directory not found.\n"
-            f"  Searched: {cfg.agents_dir.parent}/.orc/\n"
+            f"  Searched: {cfg.orc_dir.parent}/.orc/\n"
             "  Run 'orc bootstrap' to create one, or pass --config-dir <base> to "
             "point to an existing configuration.",
             err=True,

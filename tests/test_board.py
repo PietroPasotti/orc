@@ -16,7 +16,7 @@ class TestBoardCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=tmp_path / ".orc" / "work",
@@ -35,7 +35,7 @@ class TestBoardCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 board_file=tmp_path / "board.yaml",
@@ -60,7 +60,7 @@ class TestBoardCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 board_file=tmp_path / "board.yaml",
@@ -94,7 +94,7 @@ class TestBoardCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 board_file=tmp_path / "board.yaml",
@@ -128,7 +128,7 @@ class TestBoardCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                agents_dir=tmp_path / ".orc",
+                orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=tmp_path / ".orc" / "work",

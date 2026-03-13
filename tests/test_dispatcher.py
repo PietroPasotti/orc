@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace as _replace
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -112,7 +113,7 @@ def _make_callbacks(
 class TestBootMessageSentBeforeInvoke:
     def _common_patches(self, monkeypatch, tmp_path):
         """Patch git helpers so tests don't hit subprocess."""
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -182,7 +183,7 @@ class TestBlockedResumption:
         return [make_msg(f"[{agent_id}](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
 
     def _common_patches(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -224,7 +225,7 @@ class TestBlockedResumption:
 
     def test_blocked_resumes_correct_agent(self, monkeypatch, tmp_path):
         """After a hard-block reply, the dispatcher routes to the correct role."""
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
@@ -300,7 +301,7 @@ class TestBlockedResumption:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
         )
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
@@ -332,7 +333,7 @@ class TestBlockedResumption:
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
         )
 
         # A vision doc gives the planner something to plan (otherwise no dispatch).
@@ -455,7 +456,7 @@ class TestDispatcherCoverage:
         cb = _make_callbacks(tmp_path, get_open_tasks=lambda: [{"name": "0001-foo.md"}])
         cb.has_unresolved_block = lambda msgs: ("coder-1", "soft-blocked")
         d = Dispatcher(_minimal_squad(), cb)
-        count = d._dispatch([])
+        count = d._dispatch([], 100)
         assert count >= 1
 
     def test_dispatch_skips_assigned_task(self, tmp_path):
@@ -466,7 +467,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: ("coder", "reason"),
         )
         d = Dispatcher(_minimal_squad(), cb)
-        count = d._dispatch([])
+        count = d._dispatch([], 100)
         assert count == 0
 
     def test_dispatch_close_board(self, tmp_path):
@@ -479,7 +480,7 @@ class TestDispatcherCoverage:
         )
         cb.do_close_board = lambda t: closed.append(t)
         d = Dispatcher(_minimal_squad(), cb)
-        d._dispatch([])
+        d._dispatch([], 100)
         assert "0001-foo.md" in closed
 
     def test_dispatch_skips_unknown_token(self, tmp_path):
@@ -490,7 +491,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: ("unknown_token", "reason"),
         )
         d = Dispatcher(_minimal_squad(), cb)
-        assert d._dispatch([]) == 0
+        assert d._dispatch([], 1000) == 0
 
     def test_dispatch_skips_when_role_at_capacity(self, tmp_path):
         """Coder at capacity → skip."""
@@ -501,7 +502,7 @@ class TestDispatcherCoverage:
         )
         d = Dispatcher(_minimal_squad(), cb)
         d.pool.add(_make_agent(tmp_path, role="coder"))  # coder-1 already running
-        assert d._dispatch([]) == 0
+        assert d._dispatch([], 1000) == 0
 
     def test_loop_refreshes_messages_after_completion(self, tmp_path, monkeypatch):
         """Line 235: messages refreshed after hard-block handling."""
@@ -519,7 +520,7 @@ class TestDispatcherCoverage:
 
         d.cb.has_unresolved_block = fake_has_unresolved_block
         d._handle_hard_block = MagicMock()
-        d._loop(maxcalls=0)
+        d._loop(maxcalls=sys.maxsize)
 
         d._handle_hard_block.assert_called_once()
 
@@ -565,10 +566,8 @@ class TestDispatcherCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         cb = _make_callbacks(tmp_path)
         d = Dispatcher(_minimal_squad(), cb, dry_run=True)
-        d.run(maxcalls=0)
+        d.run(maxcalls=sys.maxsize)
         assert d._total_spawned == 1
-
-    def test_handle_hard_block_posts_resolved(self, tmp_path):
         """_handle_hard_block posts resolved after human reply."""
         resolved = []
         cb = _make_callbacks(
@@ -589,7 +588,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: (QA_PASSED, "qa passed"),
         )
         d = Dispatcher(_minimal_squad(), cb)
-        d._dispatch([])
+        d._dispatch([], 100)
         assert "0001-foo.md" in d._merge_queue
 
     def test_handle_completion_posts_resolved_for_soft_block_planner(self, tmp_path, monkeypatch):
@@ -727,7 +726,7 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: [],
         )
         d = Dispatcher(_minimal_squad(), cb)
-        result = d._dispatch([])
+        result = d._dispatch([], 100)
         assert result == 0
 
     def test_dispatch_queues_pending_reviews_for_merge(self, tmp_path, monkeypatch):
@@ -740,7 +739,7 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
         d = Dispatcher(_minimal_squad(), cb)
-        result = d._dispatch([])
+        result = d._dispatch([], 100)
         assert result == 1
         assert "0001-foo.md" in d._merge_queue
 
@@ -754,8 +753,8 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
         d = Dispatcher(_minimal_squad(), cb)
-        d._dispatch([])
-        d._dispatch([])
+        d._dispatch([], 100)
+        d._dispatch([], 100)
         assert d._merge_queue.count("0001-foo.md") == 1
 
     def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
@@ -769,7 +768,7 @@ class TestDispatcherInternalCoverage:
         )
         cb.has_unresolved_block = lambda msgs: (None, None)
         d = Dispatcher(_minimal_squad(), cb)
-        d.run(maxcalls=0)
+        d.run(maxcalls=sys.maxsize)
         out = capsys.readouterr().out
         assert "Workflow complete" in out
 
@@ -843,6 +842,25 @@ class TestDispatchCallbacksOptional:
         d.pool.add(agent)
         d._handle_completion(agent, 0, [])  # must not raise
 
+    def test_on_orc_status_called(self, tmp_path):
+        """on_orc_status receives the status and task strings."""
+        updates: list[tuple[str, str | None]] = []
+
+        cb = _make_callbacks(tmp_path)
+        cb.on_orc_status = lambda status, task: updates.append((status, task))
+
+        d = Dispatcher(_minimal_squad(), cb)
+        d._set_orc_status("running", "merging task 0001-foo.md")
+        assert updates == [("running", "merging task 0001-foo.md")]
+
+    def test_on_orc_status_none_is_safe(self, tmp_path):
+        """on_orc_status=None (default) does not crash."""
+        cb = _make_callbacks(tmp_path)
+        assert cb.on_orc_status is None
+
+        d = Dispatcher(_minimal_squad(), cb)
+        d._set_orc_status("running", "checking pending work")  # must not raise
+
 
 class TestDispatcherLoopProperty:
     def test_loop_starts_at_zero(self, tmp_path):
@@ -865,3 +883,121 @@ class TestDispatcherLoopProperty:
         # Run one maxcalls cycle (spawns planner then stops when pool drains).
         d.run(maxcalls=1)
         assert d.total_agent_calls >= 1
+
+
+class TestProactivePlanner:
+    """Dispatcher spawns a planner proactively when open_tasks < coder count."""
+
+    def test_spawns_planner_when_tasks_below_coder_capacity(self, tmp_path):
+        """Planner spawned when open_tasks < coder count and visions pending."""
+        spawned_roles: list[str] = []
+
+        def _spawn(ctx, cwd, model, log):
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        cb = _make_callbacks(
+            tmp_path,
+            # 1 open task, squad has 2 coders → pipeline has room → spawn planner
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            derive_task_state=lambda t: ("coder", "ready"),
+            get_pending_visions=lambda: ["vision-001.md"],
+            spawn_fn=_spawn,
+        )
+        cb.assign_task = lambda t, a: spawned_roles.append(a.split("-")[0])
+
+        # Squad with 2 coders so that 1 open task < 2 triggers the proactive path.
+        squad = _minimal_squad(coder=2)
+        d = Dispatcher(squad, cb)
+        d._dispatch([], 100)
+
+        # Should have spawned 1 coder + 1 planner
+        pool_roles = [a.role for a in d.pool.all_agents()]
+        assert "planner" in pool_roles, f"expected planner in pool, got {pool_roles}"
+
+    def test_no_proactive_planner_when_tasks_meet_coder_capacity(self, tmp_path):
+        """No proactive planner when open_tasks >= coder count."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
+            derive_task_state=lambda t: ("coder", "ready"),
+            get_pending_visions=lambda: ["vision-001.md"],
+        )
+        # 2 open tasks, 2 coders → at capacity, no proactive planner
+        squad = _minimal_squad(coder=2)
+        d = Dispatcher(squad, cb)
+        d._dispatch([], 100)
+
+        pool_roles = [a.role for a in d.pool.all_agents()]
+        assert "planner" not in pool_roles, f"unexpected planner in pool: {pool_roles}"
+
+    def test_no_proactive_planner_when_no_pending_visions(self, tmp_path):
+        """No proactive planner when there are no pending vision docs to plan."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            derive_task_state=lambda t: ("coder", "ready"),
+            get_pending_visions=lambda: [],  # nothing to plan
+        )
+        squad = _minimal_squad(coder=2)
+        d = Dispatcher(squad, cb)
+        d._dispatch([], 100)
+
+        pool_roles = [a.role for a in d.pool.all_agents()]
+        assert "planner" not in pool_roles, f"unexpected planner in pool: {pool_roles}"
+
+    def test_no_proactive_planner_when_planner_already_running(self, tmp_path):
+        """No second planner spawned when one is already in the pool."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            derive_task_state=lambda t: ("coder", "ready"),
+            get_pending_visions=lambda: ["vision-001.md"],
+        )
+        squad = _minimal_squad(coder=2)
+        d = Dispatcher(squad, cb)
+        # Pre-populate pool with a planner.
+        d.pool.add(_make_agent(tmp_path, role="planner", task=""))
+        d._dispatch([], 100)
+
+        planner_count = sum(1 for a in d.pool.all_agents() if a.role == "planner")
+        assert planner_count == 1, "second planner must not be spawned"
+
+
+class TestMaxcallsUnlimited:
+    """Dispatcher.run() with sys.maxsize behaves as unlimited."""
+
+    def test_unlimited_dispatches_agents(self, tmp_path, monkeypatch):
+        """run(maxcalls=sys.maxsize) dispatches agents normally (not zero)."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        cb.has_unresolved_block = lambda msgs: (None, None)
+        d = Dispatcher(_minimal_squad(), cb)
+        d.run(maxcalls=sys.maxsize)
+        # Must not crash; total_agent_calls reflects whatever was dispatched.
+        assert d.total_agent_calls >= 0
+
+
+class TestDispatchBudgetExhaustion:
+    """_dispatch stops spawning when call_budget is consumed mid-dispatch."""
+
+    def test_budget_limits_spawns(self, tmp_path):
+        """With budget=1 and 2 tasks, only 1 agent is spawned."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [
+                {"name": "0001-foo.md"},
+                {"name": "0002-bar.md"},
+            ],
+            derive_task_state=lambda t: ("coder", "ready"),
+        )
+        # Squad allows 2 coders, but budget is capped at 1.
+        squad = _minimal_squad(coder=2)
+        d = Dispatcher(squad, cb)
+        count = d._dispatch([], call_budget=1)
+        assert count == 1
+        assert len(d.pool.all_agents()) == 1

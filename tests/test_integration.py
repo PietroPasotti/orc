@@ -125,7 +125,7 @@ def orc_env(git_project, monkeypatch):
     Returns the project root :class:`~pathlib.Path`.
     """
     root = git_project
-    agents_dir = root / ".orc"
+    orc_dir = root / ".orc"
     # Mirror the default DEV_WORKTREE convention (sibling of repo root)
     dev_wt = root.parent / f"{root.name}-dev"
 
@@ -135,10 +135,10 @@ def orc_env(git_project, monkeypatch):
         _replace(
             _cfg.get(),
             repo_root=root,
-            agents_dir=agents_dir,
-            work_dir=agents_dir / "work",
-            board_file=agents_dir / "work" / "board.yaml",
-            roles_dir=agents_dir / "roles",
+            orc_dir=orc_dir,
+            work_dir=orc_dir / "work",
+            board_file=orc_dir / "work" / "board.yaml",
+            roles_dir=orc_dir / "roles",
             env_file=root / ".env",
             dev_worktree=dev_wt,
         ),
@@ -456,7 +456,7 @@ class TestNoWorkExitsCleanly:
         spawn_calls: list = []
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: spawn_calls.append(a) or (None, None))
 
-        result = runner.invoke(m.app, ["run", "--maxcalls", "0"], catch_exceptions=False)
+        result = runner.invoke(m.app, ["run", "--maxcalls", "UNLIMITED"], catch_exceptions=False)
 
         assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}:\n{result.output}"
         assert "No pending work" in result.output, (

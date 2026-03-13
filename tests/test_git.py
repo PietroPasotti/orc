@@ -144,7 +144,7 @@ class TestDeriveStateFromGit:
 class TestBoardReconciliation:
     def test_close_task_moves_to_done(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
@@ -167,7 +167,7 @@ class TestBoardReconciliation:
 
     def test_close_task_deletes_md_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
@@ -182,14 +182,14 @@ class TestBoardReconciliation:
 
     def test_close_task_missing_board_does_not_raise(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
         _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
 
     def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
@@ -294,7 +294,7 @@ class TestFeatureWorktree:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, agents_dir=tmp_path / ".orc")
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, orc_dir=tmp_path / ".orc")
         )
 
         work_dir = tmp_path / ".orc" / "work"
@@ -341,7 +341,7 @@ class TestGitCoverage:
     def test_close_task_on_board_missing_board(self, tmp_path, monkeypatch):
         """Lines 142-148: board.yaml not found in dev worktree → warns and returns."""
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir(exist_ok=True)
@@ -404,17 +404,17 @@ class TestGitCoverage:
             result = _git._conflict_status(tmp_path)
         assert "conflict" in result
 
-    def test_close_task_agents_dir_not_relative_to_repo_root(self, tmp_path, monkeypatch):
-        """Lines 86-87: AGENTS_DIR outside REPO_ROOT uses basename fallback."""
+    def test_close_task_orc_dir_not_relative_to_repo_root(self, tmp_path, monkeypatch):
+        """Lines 86-87: ORC_DIR outside REPO_ROOT uses basename fallback."""
         import orc.config as _cfg
         import orc.git.core as _git
 
-        agents_dir = tmp_path / "other" / "orc"
-        agents_dir.mkdir(parents=True, exist_ok=True)
+        orc_dir = tmp_path / "other" / "orc"
+        orc_dir.mkdir(parents=True, exist_ok=True)
         repo_root = tmp_path / "repo"
         repo_root.mkdir(exist_ok=True)
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=agents_dir, repo_root=repo_root)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=orc_dir, repo_root=repo_root)
         )
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir()
@@ -437,7 +437,7 @@ class TestGitCoverage:
             _cfg,
             "_config",
             _replace(
-                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
             ),
         )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
@@ -461,7 +461,7 @@ class TestGitCoverage:
         assert any("commit" in c for c in cmds_str)
 
     def test_merge_feature_commits_board_agents_outside_root(self, tmp_path, monkeypatch):
-        """Lines 308-309: except ValueError when AGENTS_DIR is outside REPO_ROOT."""
+        """Lines 308-309: except ValueError when ORC_DIR is outside REPO_ROOT."""
         import orc.config as _cfg
         import orc.git.core as _git
 
@@ -473,12 +473,12 @@ class TestGitCoverage:
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir()
 
-        # AGENTS_DIR is outside REPO_ROOT → triggers except ValueError
+        # ORC_DIR is outside REPO_ROOT → triggers except ValueError
         monkeypatch.setattr(
             _cfg,
             "_config",
             _replace(
-                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=repo_root, work_dev_branch="dev"
+                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=repo_root, work_dev_branch="dev"
             ),
         )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
@@ -515,7 +515,7 @@ class TestGitCoverage:
             _cfg,
             "_config",
             _replace(
-                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
             ),
         )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
@@ -558,7 +558,7 @@ class TestGitCoverage:
             _cfg,
             "_config",
             _replace(
-                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
             ),
         )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)

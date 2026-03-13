@@ -226,7 +226,7 @@ class TestWorkflowCoverage:
         import orc.engine.workflow as _wf
 
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
         )
 
         dev_wt = tmp_path / "dev"
@@ -251,7 +251,7 @@ class TestWorkflowCoverage:
         assert any("commit" in c for c in cmds)
 
     def test_do_close_board_crash_recovery_agents_outside_root(self, tmp_path, monkeypatch):
-        """Lines 81-82: ValueError except branch when AGENTS_DIR is outside REPO_ROOT."""
+        """Lines 81-82: ValueError except branch when ORC_DIR is outside REPO_ROOT."""
         from unittest.mock import MagicMock
         from unittest.mock import patch as _patch
 
@@ -259,10 +259,10 @@ class TestWorkflowCoverage:
 
         repo_root = tmp_path / "repo"
         repo_root.mkdir(exist_ok=True)
-        agents_dir = tmp_path / "other" / ".orc"
-        agents_dir.mkdir(parents=True, exist_ok=True)
+        orc_dir = tmp_path / "other" / ".orc"
+        orc_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), agents_dir=agents_dir, repo_root=repo_root)
+            _cfg, "_config", _replace(_cfg.get(), orc_dir=orc_dir, repo_root=repo_root)
         )
 
         dev_wt = tmp_path / "dev"
