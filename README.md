@@ -10,8 +10,10 @@
 
 ![orc diagram](assets/orc.drawio.svg)
 
-Inter-agent synchronisation happens over git; interaction with you is mediated by a Telegram bot.
-The orchestrator inspects the git tree to determine state and decide which agent(s) to run next.
+Inter-agent synchronisation happens over the **board** (a YAML file in the
+project cache); interaction with you is mediated by a Telegram bot.
+The orchestrator reads board task-status fields to determine which agent(s)
+to run next.  Git is used only for branch management and code merging.
 
 Orc's work happens on a `dev` branch, so that you can keep working on `main` independently.
 Any time control goes to the orchestrator, it will rebase `dev` on `main`.

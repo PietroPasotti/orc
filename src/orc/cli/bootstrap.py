@@ -230,7 +230,7 @@ def bootstrap(
             "--upgrade",
             help=(
                 "Upgrade an existing .orc/ installation to the bundled template version. "
-                "Preserves orc-CHANGELOG.md, vision/, and work/. "
+                "Preserves orc-CHANGELOG.md, worktrees/, and logs/. "
                 "All other files (roles/, squads/, agent_tools/, …) are overwritten."
             ),
         ),
@@ -249,7 +249,7 @@ def bootstrap(
 
     \\b
     1. Edit .orc/roles/*/ to customise the agent instructions for your project.
-    2. Add vision documents to .orc/vision/.
+    2. Add vision documents to the project cache vision/ directory (path shown after bootstrap).
     3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)

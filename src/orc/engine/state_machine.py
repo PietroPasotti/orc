@@ -35,9 +35,9 @@ class LastCommit(Enum):
 
     NONE = "none"  # branch has no commits, or no readable message
     CODER_WORK = "coder_work"  # ordinary coder commit (feat/fix/refactor/…)
-    CODER_DONE = "coder_done"  # structured exit: chore(<id>.done.<code>): …
-    QA_PASSED = "qa_passed"  # structured exit: chore(<id>.approve.<code>): …
-    QA_OTHER = "qa_other"  # structured exit: chore(<id>.reject.<code>): …
+    CODER_DONE = "coder_done"  # board status: review (coder finished, awaiting QA)
+    QA_PASSED = "qa_passed"  # board status: approved (QA signed off)
+    QA_OTHER = "qa_other"  # board status: rejected (QA failed, back to coder)
 
 
 class BlockState(Enum):

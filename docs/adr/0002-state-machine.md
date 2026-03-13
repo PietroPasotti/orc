@@ -1,4 +1,4 @@
-# ADR-0002 — Git-Backed State Machine
+# ADR-0002 — Board-Backed State Machine
 
 **Status**: Accepted
 
@@ -7,10 +7,12 @@
 ## Context
 
 `orc` is a multi-agent orchestrator.  It decides which agent to invoke next
-(planner, coder, or qa) by reading git state and Telegram message history —
-no database, no in-process state.  This document describes the state machine
-formally, explains the design choices, and records where the formal model lives
-and how its soundness is verified.
+(planner, coder, or qa) by reading **board state** (a YAML file in the project
+cache) and Telegram message history — no database, no in-process state.  Git
+is used exclusively for branch/commit detection; the board is the single source
+of truth for task status.  This document describes the state machine formally,
+explains the design choices, and records where the formal model lives and how
+its soundness is verified.
 
 ---
 
@@ -49,7 +51,7 @@ is tested exhaustively for deadlock-freedom via BFS.
 | `branch_exists` | `git branch --list <feat/NNNN-*>` | feature branch present |
 | `commits_ahead` | `git rev-list <branch> ^main` | any commits not in main |
 | `merged_into_dev` | `git merge-base --is-ancestor <branch> dev` | only checked when branch exists and has no commits ahead |
-| `last_commit` | message of HEAD on feature branch | `qa(passed):`, `qa(*):`, or other |
+| `last_commit` | board `status` field via `_STATUS_TO_LAST_COMMIT` map | `review`→CODER_DONE, `approved`→QA_PASSED, `rejected`→QA_OTHER |
 | `block` | newest non-boot Telegram message | `HARD`, `SOFT`, or `NONE` |
 
 ### State diagram
@@ -131,7 +133,7 @@ def route(state):
 The merge sequence in `_merge_feature_into_dev` is:
 
 1. `git merge --no-ff <feature>`
-2. Close task on board + commit board update
+2. Close task on board (filesystem cache write — no git commit)
 3. `git worktree remove`
 4. `git branch -D <feature>`
 
@@ -256,7 +258,7 @@ parametrised tests that:
 |---|-------|----------|--------|
 | 1 | `merged_into_dev` not checked for absent branch (would be unreliable) | Low | Fixed — branch-absent path returns `"coder"` unconditionally |
 | 2 | Soft-block pauses all task dispatch (not just the blocked task) | Medium | By design — planner may need to re-plan globally |
-| 3 | Board read-modify-write not locked | Low | Acceptable — dispatcher is single-threaded; board writes are serialized |
+| 3 | Board read-modify-write uses `filelock.FileLock` (30 s timeout); agent tool scripts acquire the same lock | Low | Fixed — `FileBoardManager` and agent tool scripts share `.board.lock` |
 | 4 | Simultaneous blocks: only newest detected | Low | Acceptable — hard-block suppresses all dispatch so co-occurrence is rare |
 | 5 | `frozenset[TaskState]` deduplicates structurally identical tasks | Model limitation | Acceptable — structural equivalence is sufficient for liveness proofs |
 
@@ -266,9 +268,9 @@ parametrised tests that:
 
 | File | Role |
 |------|------|
-| `src/orc/state_machine.py` | Formal model (`TaskState`, `WorldState`, `route`, `successors`, `SystemState`, `system_route`, `system_successors`) + coarse enum (`WorkflowState`, `WorkflowStateMachine`) |
-| `src/orc/git.py` | Imperative implementation (`_derive_task_state` — reads board status) |
-| `src/orc/workflow.py` | Top-level routing (`determine_next_agent`, `_has_unresolved_block`) |
-| `src/orc/dispatcher.py` | Parallel scheduler (`_dispatch`, sentinel handling) |
-| `src/orc/board.py` | Board YAML CRUD (`_active_task_name`) |
+| `src/orc/engine/state_machine.py` | Formal model (`TaskState`, `WorldState`, `route`, `successors`, `SystemState`, `system_route`, `system_successors`) + coarse enum (`WorkflowState`, `WorkflowStateMachine`) |
+| `src/orc/git/core.py` | Imperative implementation (`_derive_task_state` — reads board status via `_STATUS_TO_LAST_COMMIT`) |
+| `src/orc/engine/workflow.py` | Top-level routing (`determine_next_agent`, `_has_unresolved_block`) |
+| `src/orc/engine/dispatcher.py` | Parallel scheduler (`_dispatch`, sentinel handling) |
+| `src/orc/board.py` / `src/orc/board_manager.py` | Board YAML CRUD; `FileBoardManager` with `filelock.FileLock` |
 | `tests/test_state_machine.py` | Deadlock proofs + cross-checks |
