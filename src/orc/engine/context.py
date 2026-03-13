@@ -15,6 +15,7 @@ import orc.config as _cfg
 import orc.git.core as _git
 from orc.ai import invoke as inv
 from orc.messaging import telegram as tg
+from orc.squad import AgentRole
 
 logger = structlog.get_logger(__name__)
 
@@ -108,14 +109,14 @@ def _extract_readme(full_text: str) -> str:
 
 # CONTRIBUTING.md section headings irrelevant to agents.
 _CONTRIBUTING_AGENT_SECTIONS: dict[str, frozenset[str]] = {
-    "coder": frozenset(
+    AgentRole.CODER: frozenset(
         {
             "the development loop (tdd)",
             "committing",
             "package layout",
         }
     ),
-    "qa": frozenset(
+    AgentRole.QA: frozenset(
         {
             "the development loop (tdd)",
             "committing",
@@ -123,7 +124,7 @@ _CONTRIBUTING_AGENT_SECTIONS: dict[str, frozenset[str]] = {
             "package layout",
         }
     ),
-    "planner": frozenset(
+    AgentRole.PLANNER: frozenset(
         {
             "package layout",
             "writing an adr",
@@ -378,14 +379,14 @@ def build_agent_context(
     contributing = _extract_contributing(contributing_raw, agent_name)
 
     # ADRs: full for planner, summarised for coder/QA
-    adrs = _read_adrs(summarize=agent_name != "planner")
+    adrs = _read_adrs(summarize=agent_name != AgentRole.PLANNER)
 
     chat = tg.messages_to_text(messages)
     chat = _window_chat(chat)
 
     # Board: scoped to active task for coder/QA
     active_task = _board._active_task_name()
-    if agent_name in ("coder", "qa") and active_task:
+    if agent_name in (AgentRole.CODER, AgentRole.QA) and active_task:
         plans = _board._read_work(active_only=active_task)
     else:
         plans = _board._read_work()
@@ -399,7 +400,7 @@ def build_agent_context(
         else ""
     )
 
-    if agent_name == "coder" and feature_branch:
+    if agent_name == AgentRole.CODER and feature_branch:
         git_info = (
             f"Your branch: `{feature_branch}` (cut from `main`)\n"
             f"Your worktree: `{feature_wt}` — all edits and git commands go here\n"
@@ -410,7 +411,7 @@ def build_agent_context(
             f"The orchestrator will merge your branch into "
             f"`{_cfg.WORK_DEV_BRANCH}` after QA passes."
         )
-    elif agent_name == "qa" and feature_branch:
+    elif agent_name == AgentRole.QA and feature_branch:
         git_info = (
             f"Branch to review: `{feature_branch}`\n"
             f"Feature worktree: `{feature_wt}`\n"
@@ -436,7 +437,7 @@ def build_agent_context(
     extra_section = f"## Current task\n\n{extra}\n\n" if extra else ""
 
     todos_section = ""
-    if agent_name == "planner":
+    if agent_name == AgentRole.PLANNER:
         todos = _scan_todos(_cfg.REPO_ROOT)
         todos_section = f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
 

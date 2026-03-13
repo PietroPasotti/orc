@@ -13,7 +13,7 @@ import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.cli import _check_env_or_exit, app
 from orc.messaging import telegram as tg
-from orc.squad import SquadConfig
+from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -47,11 +47,11 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
         "5. Exit when the rebase is complete.\n"
     )
 
-    coder_model = squad_cfg.model("coder") if squad_cfg is not None else _ctx._DEFAULT_MODEL
+    coder_model = squad_cfg.model(AgentRole.CODER) if squad_cfg is not None else _ctx._DEFAULT_MODEL
     model, context = _ctx.build_agent_context(
-        "coder", messages, extra=conflict_extra, model=coder_model
+        AgentRole.CODER, messages, extra=conflict_extra, model=coder_model
     )
-    rc = _ctx.invoke_agent("coder", context, model)
+    rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
 
     if rc != 0:
         logger.error("coder agent failed to resolve startup rebase", exit_code=rc)

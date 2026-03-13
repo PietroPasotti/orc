@@ -46,6 +46,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import Enum
 
+from orc.squad import AgentRole
+
 # ---------------------------------------------------------------------------
 # Formal model — WorldState, route(), successors()
 # ---------------------------------------------------------------------------
@@ -154,7 +156,8 @@ def route(state: WorldState) -> str | None:
     Returns
     -------
     str
-        An agent role (``"coder"``, ``"qa"``, ``"planner"``) or one of the
+        An agent role (:attr:`~orc.squad.AgentRole.CODER`, :attr:`~orc.squad.AgentRole.QA`,
+        :attr:`~orc.squad.AgentRole.PLANNER`) or one of the
         orchestrator sentinels :data:`ACTION_CLOSE_BOARD` /
         :data:`ACTION_QA_PASSED`.
     None
@@ -170,12 +173,12 @@ def route(state: WorldState) -> str | None:
 
     # Soft block: route to planner to clarify.
     if state.block == BlockState.SOFT:
-        return "planner"
+        return AgentRole.PLANNER
 
     # No open tasks.
     if not state.has_open_task:
         if state.has_pending_vision:
-            return "planner"
+            return AgentRole.PLANNER
         return None  # COMPLETE
 
     # Has open task — derive per-task git state (mirrors _derive_task_state).
@@ -183,7 +186,7 @@ def route(state: WorldState) -> str | None:
         # Branch was never created (or was cleaned up after a proper merge that
         # already closed the board — so if it's still on the board it needs a
         # coder to create it).
-        return "coder"
+        return AgentRole.CODER
 
     if not state.commits_ahead:
         # Branch exists but has no commits ahead of main.
@@ -191,20 +194,20 @@ def route(state: WorldState) -> str | None:
         # not yet updated) or when the coder hasn't committed anything yet.
         if state.merged_into_dev:
             return ACTION_CLOSE_BOARD
-        return "coder"
+        return AgentRole.CODER
 
     # Branch has commits ahead of main.
     if state.last_commit == LastCommit.QA_PASSED:
         return ACTION_QA_PASSED
     if state.last_commit == LastCommit.QA_OTHER:
-        return "coder"
+        return AgentRole.CODER
 
     # Coder explicitly signalled done via close_task.sh → send to QA.
     if state.last_commit == LastCommit.CODER_DONE:
-        return "qa"
+        return AgentRole.QA
 
     # Ordinary coder commit (CODER_WORK or unknown) — coder is still working.
-    return "coder"
+    return AgentRole.CODER
 
 
 def successors(state: WorldState) -> frozenset[WorldState]:
@@ -247,7 +250,7 @@ def successors(state: WorldState) -> frozenset[WorldState]:
         )
 
     # --- agent actions (nondeterministic) ------------------------------------
-    if action == "coder":
+    if action == AgentRole.CODER:
         return frozenset(
             {
                 # Coder makes ordinary commits — branch now has work ahead of main.
@@ -275,7 +278,7 @@ def successors(state: WorldState) -> frozenset[WorldState]:
             }
         )
 
-    if action == "qa":
+    if action == AgentRole.QA:
         return frozenset(
             {
                 # QA passes — commits qa(passed): on feature branch.
@@ -295,7 +298,7 @@ def successors(state: WorldState) -> frozenset[WorldState]:
             }
         )
 
-    if action == "planner":
+    if action == AgentRole.PLANNER:
         if state.block == BlockState.SOFT:
             # Planner resolves soft-block → previous routing resumes.
             return frozenset({replace(state, block=BlockState.NONE)})
@@ -396,7 +399,7 @@ def system_route(state: SystemState) -> dict[TaskState, str] | None:
 
     if state.block == BlockState.SOFT:
         # Planner needed to resolve block; no per-task dispatch.
-        return {"__soft_block_planner__": "planner"}  # type: ignore[dict-item]
+        return {"__soft_block_planner__": AgentRole.PLANNER}  # type: ignore[dict-item]
 
     actions: dict[TaskState, str] = {}
 
@@ -414,7 +417,7 @@ def system_route(state: SystemState) -> dict[TaskState, str] | None:
 
     if not actions and not state.tasks:
         if state.pending_visions > 0:
-            return {"__vision_planner__": "planner"}  # type: ignore[dict-item]
+            return {"__vision_planner__": AgentRole.PLANNER}  # type: ignore[dict-item]
         return {}  # COMPLETE
 
     return actions
@@ -476,7 +479,7 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
                 )
             )
 
-        elif action == "coder":
+        elif action == AgentRole.CODER:
             done_task = TaskState(
                 branch_exists=True,
                 commits_ahead=True,
@@ -522,7 +525,7 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
                 )
             )
 
-        elif action == "qa":
+        elif action == AgentRole.QA:
             qa_passed = TaskState(
                 branch_exists=task.branch_exists,
                 commits_ahead=task.commits_ahead,
@@ -560,7 +563,7 @@ def system_successors(state: SystemState) -> frozenset[SystemState]:
                 )
             )
 
-        elif action == "planner":  # pragma: no cover
+        elif action == AgentRole.PLANNER:  # pragma: no cover
             # Per-task planner action is unreachable via system_route (block states handled above).
             new_task = TaskState()
             result.add(
@@ -669,8 +672,8 @@ def _agent_to_state(agent: str | None) -> WorkflowState:
     """Map an agent name to the corresponding :class:`WorkflowState`."""
     mapping: dict[str | None, WorkflowState] = {
         None: WorkflowState.IDLE,
-        "planner": WorkflowState.PLANNING,
-        "coder": WorkflowState.CODING,
-        "qa": WorkflowState.REVIEWING,
+        AgentRole.PLANNER: WorkflowState.PLANNING,
+        AgentRole.CODER: WorkflowState.CODING,
+        AgentRole.QA: WorkflowState.REVIEWING,
     }
     return mapping.get(agent, WorkflowState.IDLE)

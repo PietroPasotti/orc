@@ -23,7 +23,7 @@ import typer
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
-from orc.squad import SquadConfig
+from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -60,7 +60,7 @@ class ConflictResolver:
         self.messages = messages
 
     def _coder_model(self) -> str:
-        return self.squad_cfg.model("coder")
+        return self.squad_cfg.model(AgentRole.CODER)
 
     def resolve_merge_conflict(self, branch: str, worktree: Path, status_output: str) -> None:
         """Resolve a paused ``git merge --no-ff`` conflict via a coder agent.
@@ -106,13 +106,13 @@ class ConflictResolver:
         )
 
         model, context = _ctx.build_agent_context(
-            "coder",
+            AgentRole.CODER,
             self.messages,
             extra=conflict_extra,
             worktree=worktree,
             model=self._coder_model(),
         )
-        rc = _ctx.invoke_agent("coder", context, model)
+        rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
 
         if rc != 0:
             logger.error("coder agent failed to resolve merge conflict", exit_code=rc)
@@ -169,12 +169,12 @@ class ConflictResolver:
         )
 
         model, context = _ctx.build_agent_context(
-            "coder",
+            AgentRole.CODER,
             self.messages,
             extra=conflict_extra,
             model=self._coder_model(),
         )
-        rc = _ctx.invoke_agent("coder", context, model)
+        rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
 
         if rc != 0:
             logger.error("coder agent failed to resolve startup rebase", exit_code=rc)

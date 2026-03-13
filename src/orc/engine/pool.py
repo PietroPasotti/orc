@@ -29,6 +29,8 @@ from typing import IO
 
 import structlog
 
+from orc.squad import AgentRole
+
 logger = structlog.get_logger(__name__)
 
 
@@ -39,8 +41,8 @@ class AgentProcess:
     agent_id: str
     """Unique identifier in the form ``{role}-{n}`` (e.g. ``coder-1``)."""
 
-    role: str
-    """The agent's role: ``planner``, ``coder``, or ``qa``."""
+    role: AgentRole
+    """The agent's role."""
 
     model: str
     """The AI model used by this agent (e.g. ``copilot``)."""
@@ -102,10 +104,10 @@ class AgentPool:
     def is_empty(self) -> bool:
         return not self._agents
 
-    def count_by_role(self, role: str) -> int:
+    def count_by_role(self, role: AgentRole | str) -> int:
         return sum(1 for a in self._agents.values() if a.role == role)
 
-    def running_by_role(self, role: str) -> list[AgentProcess]:
+    def running_by_role(self, role: AgentRole | str) -> list[AgentProcess]:
         return [a for a in self._agents.values() if a.role == role]
 
     # ------------------------------------------------------------------

@@ -172,6 +172,7 @@ def gather_git_tree() -> tuple[list[str], list[CommitInfo]]:
         _add(feat, [dev, main])
 
     commits.sort(key=lambda c: c.timestamp, reverse=True)
+    commits = commits[:_MAX_COMMITS]
     return branches, commits
 
 
@@ -283,6 +284,7 @@ class StatusApp(App[None]):
         super().__init__()
         self._squad = squad
         self._tab_index = 0
+        self._git_tree_loaded = False
 
     def compose(self) -> ComposeResult:
         yield Static(self._tab_bar_markup(), id="tab-bar")
@@ -290,11 +292,10 @@ class StatusApp(App[None]):
             with VerticalScroll(id=_TAB_IDS[0]):
                 yield Static("Loading…", id="agents-content")
             with VerticalScroll(id=_TAB_IDS[1]):
-                yield Static("Loading…", id="git-tree-content")
+                yield Static("Press → to load git tree…", id="git-tree-content")
 
     def on_mount(self) -> None:
         self._refresh_agents()
-        self._refresh_git_tree()
 
     # ------------------------------------------------------------------
     # Tab navigation
@@ -311,6 +312,9 @@ class StatusApp(App[None]):
     def _apply_tab(self) -> None:
         self.query_one("#tab-bar", Static).update(self._tab_bar_markup())
         self.query_one(ContentSwitcher).current = _TAB_IDS[self._tab_index]
+        if self._tab_index == 1 and not self._git_tree_loaded:
+            self._git_tree_loaded = True
+            self._refresh_git_tree()
 
     def _tab_bar_markup(self) -> str:
         parts: list[str] = []

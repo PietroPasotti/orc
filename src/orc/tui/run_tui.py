@@ -26,6 +26,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static
 
+from orc.squad import AgentRole
+
 
 @dataclass
 class OrcData:
@@ -94,10 +96,10 @@ class RunState:
 
 
 # Role → display colour mapping.
-_ROLE_STYLE: dict[str, str] = {
-    "planner": "cyan",
-    "coder": "green",
-    "qa": "yellow",
+_ROLE_STYLE: dict[AgentRole, str] = {
+    AgentRole.PLANNER: "cyan",
+    AgentRole.CODER: "green",
+    AgentRole.QA: "yellow",
 }
 
 
@@ -168,9 +170,9 @@ def render(state: RunState) -> RenderableType:
         f"telegram={tg_str}"
     )
 
-    planners = [r for r in state.agents if r.role == "planner"]
-    coders = [r for r in state.agents if r.role == "coder"]
-    qa_agents = [r for r in state.agents if r.role == "qa"]
+    planners = [r for r in state.agents if r.role == AgentRole.PLANNER]
+    coders = [r for r in state.agents if r.role == AgentRole.CODER]
+    qa_agents = [r for r in state.agents if r.role == AgentRole.QA]
 
     workers_grid = rich.table.Table.grid(expand=True)
     workers_grid.add_column(ratio=1)

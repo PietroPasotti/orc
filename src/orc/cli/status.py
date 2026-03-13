@@ -17,7 +17,7 @@ import orc.git.core as _git
 from orc.cli import app
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
 from orc.messaging import telegram as tg
-from orc.squad import load_squad
+from orc.squad import AgentRole, load_squad
 
 logger = structlog.get_logger(__name__)
 
@@ -140,9 +140,9 @@ def _status(squad: str = "default") -> None:
         for task in _board.get_open_tasks():
             name = task["name"]
             token, reason = _git._derive_task_state(name)
-            if token == "coder":
+            if token == AgentRole.CODER:
                 coder_tasks.append((name, reason))
-            elif token == "qa":
+            elif token == AgentRole.QA:
                 qa_tasks.append((name, _git._feature_branch(name)))
             elif token == _QA_PASSED:
                 merge_pending.append(name)
@@ -156,9 +156,9 @@ def _status(squad: str = "default") -> None:
 
         typer.echo("\nAgent status:")
 
-        sym_p = _ctx._role_symbol("planner")
-        sym_c = _ctx._role_symbol("coder")
-        sym_q = _ctx._role_symbol("qa")
+        sym_p = _ctx._role_symbol(AgentRole.PLANNER)
+        sym_c = _ctx._role_symbol(AgentRole.CODER)
+        sym_q = _ctx._role_symbol(AgentRole.QA)
 
         # Compute the longest agent-name string so we can ljust only the ASCII
         # part.  Emoji code-point counts don't match terminal display widths

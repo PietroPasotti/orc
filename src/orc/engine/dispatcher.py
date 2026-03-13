@@ -55,7 +55,7 @@ import typer
 import orc.config as _cfg
 from orc.engine.pool import AgentPool, AgentProcess
 from orc.messaging import telegram as tg
-from orc.squad import SquadConfig
+from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -331,17 +331,17 @@ class Dispatcher:
                     dispatched += 1
             if not self.cb.get_pending_visions():
                 return dispatched
-            if self.pool.count_by_role("planner") == 0:
+            if self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 dispatched += self._spawn_planner(messages)
             return dispatched
 
         # Check for soft-block: route one planner to resolve it.
         blocked_agent, blocked_state = self.cb.has_unresolved_block(messages)
         if blocked_agent and blocked_state == "soft-blocked":
-            if self.pool.count_by_role("planner") == 0:
+            if self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 self._resolving_soft_block = (blocked_agent, blocked_state)
-                agent_id = self._next_id("planner")
-                self._spawn_agent("planner", agent_id, None, messages)
+                agent_id = self._next_id(AgentRole.PLANNER)
+                self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
                 dispatched += 1
             return dispatched
 
@@ -365,7 +365,7 @@ class Dispatcher:
                 self.cb.do_close_board(task_name)
                 continue
 
-            if token not in ("coder", "qa"):
+            if token not in (AgentRole.CODER, AgentRole.QA):
                 continue
 
             # Check squad capacity for this role.
@@ -382,24 +382,24 @@ class Dispatcher:
     # Agent spawn helpers
     # ------------------------------------------------------------------
 
-    def _next_id(self, role: str) -> str:
+    def _next_id(self, role: AgentRole | str) -> str:
         self._id_counters[role] += 1
         return tg.make_agent_id(role, self._id_counters[role])
 
     def _spawn_planner(self, messages: list[dict]) -> int:
-        agent_id = self._next_id("planner")
-        self._spawn_agent("planner", agent_id, None, messages)
+        agent_id = self._next_id(AgentRole.PLANNER)
+        self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
         return 1
 
     def _spawn_agent(
         self,
-        role: str,
+        role: AgentRole | str,
         agent_id: str,
         task_name: str | None,
         messages: list[dict],
     ) -> None:
         """Build context and spawn an agent subprocess (or print for dry-run)."""
-        if role == "planner":
+        if role == AgentRole.PLANNER:
             worktree = self.cb.ensure_dev_worktree()
         elif task_name:
             worktree = self.cb.ensure_feature_worktree(task_name)
@@ -478,7 +478,7 @@ class Dispatcher:
             self.cb.unassign_task(agent.task_name)
 
         # Post [orc](resolved) if this planner was resolving a soft-block.
-        if agent.role == "planner" and self._resolving_soft_block is not None:
+        if agent.role == AgentRole.PLANNER and self._resolving_soft_block is not None:
             blocked_a, blocked_s = self._resolving_soft_block
             self.cb.post_resolved(blocked_a, blocked_s, agent.agent_id)
             self._resolving_soft_block = None

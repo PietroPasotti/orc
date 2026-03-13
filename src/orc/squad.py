@@ -46,6 +46,7 @@ Constraints
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 import yaml
@@ -54,7 +55,21 @@ import yaml
 # Lives inside the default template so there is a single source of truth.
 _PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
 
-_VALID_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
+
+class AgentRole(str, Enum):
+    """Valid agent roles in an orc squad.
+
+    Because :class:`AgentRole` inherits from :class:`str`, each member compares
+    equal to its string value (e.g. ``AgentRole.CODER == "coder"`` is ``True``),
+    so existing APIs that accept plain role strings remain fully compatible.
+    """
+
+    PLANNER = "planner"
+    CODER = "coder"
+    QA = "qa"
+
+
+_VALID_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 _DEFAULT_TIMEOUT_MINUTES = 120
 _DEFAULT_MODEL = "claude-sonnet-4.6"
 
@@ -71,20 +86,22 @@ class SquadConfig:
     description: str = ""
     _models: dict[str, str] = field(default_factory=dict, compare=False)
 
-    def count(self, role: str) -> int:
+    def count(self, role: AgentRole | str) -> int:
         """Return the configured agent count for *role*."""
         if role not in _VALID_ROLES:
             raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
-        return getattr(self, role)
+        role_value = role.value if isinstance(role, AgentRole) else role
+        return getattr(self, role_value)
 
-    def model(self, role: str) -> str:
+    def model(self, role: AgentRole | str) -> str:
         """Return the configured model name for *role*.
 
         Falls back to ``_DEFAULT_MODEL`` when no model is specified for the role.
         """
         if role not in _VALID_ROLES:
             raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
-        return self._models.get(role, _DEFAULT_MODEL)
+        role_value = role.value if isinstance(role, AgentRole) else role
+        return self._models.get(role_value, _DEFAULT_MODEL)
 
 
 def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
@@ -113,9 +130,9 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         counts[role] = int(entry.get("count", 1))
         if "model" in entry and entry["model"]:
             models[role] = str(entry["model"]).strip()
-    planner = counts.get("planner", 1)
-    coder = counts.get("coder", 1)
-    qa = counts.get("qa", 1)
+    planner = counts.get(AgentRole.PLANNER, 1)
+    coder = counts.get(AgentRole.CODER, 1)
+    qa = counts.get(AgentRole.QA, 1)
 
     timeout_minutes = int(raw.get("timeout_minutes", _DEFAULT_TIMEOUT_MINUTES))
     name = str(raw.get("name", "") or path.stem)
@@ -128,9 +145,11 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
             "Scale throughput by adding more coders and QA reviewers instead."
         )
 
-    for role, cnt in [("coder", coder), ("qa", qa)]:
+    for role, cnt in [(AgentRole.CODER, coder), (AgentRole.QA, qa)]:
         if cnt < 1:
-            raise ValueError(f"Squad profile {file_name!r}: {role} count must be >= 1, got {cnt}.")
+            raise ValueError(
+                f"Squad profile {file_name!r}: {role.value} count must be >= 1, got {cnt}."
+            )
 
     if timeout_minutes < 1:
         raise ValueError(

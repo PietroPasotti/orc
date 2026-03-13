@@ -15,6 +15,7 @@ import orc.config as _cfg
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
+from orc.squad import AgentRole
 
 logger = structlog.get_logger(__name__)
 
@@ -436,7 +437,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
 
     if not branch_exists:
         logger.debug("derive_task_state: branch absent — dispatch coder", task=task_name)
-        return "coder", f"feature branch {branch!r} does not exist yet"
+        return AgentRole.CODER, f"feature branch {branch!r} does not exist yet"
 
     has_commits = _feature_has_commits_ahead_of_main(branch)
     logger.debug(
@@ -454,7 +455,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
                 branch=branch,
             )
             return _CLOSE_BOARD, f"branch {branch!r} already merged into dev but board not updated"
-        return "coder", f"feature branch {branch!r} has no commits ahead of main"
+        return AgentRole.CODER, f"feature branch {branch!r} has no commits ahead of main"
 
     last_msg = _last_feature_commit_message(branch)
     logger.debug("derive_task_state: last commit", task=task_name, branch=branch, last_msg=last_msg)
@@ -484,7 +485,7 @@ def _derive_state_from_git() -> tuple[str, str]:
     """Derive the next-agent token from git for the currently active task."""
     active_task = _board._active_task_name()
     if not active_task:
-        return "planner", "no open tasks on board"
+        return AgentRole.PLANNER, "no open tasks on board"
     return _derive_task_state(active_task)
 
 

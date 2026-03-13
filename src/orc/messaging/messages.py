@@ -22,13 +22,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from orc.squad import AgentRole
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 # The set of valid agent *roles*.  Agent messages use IDs of the form
 # ``{role}-{n}`` (e.g. ``coder-1``, ``qa-2``).
-KNOWN_ROLES: frozenset[str] = frozenset({"planner", "coder", "qa"})
+KNOWN_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 
 # States that are informational only — not used for state-machine transitions.
 # ``parse_last_agent_message`` skips messages with these states so a boot
