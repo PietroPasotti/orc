@@ -24,6 +24,8 @@ done:
 - commit-tag: pending
   name: 0009-code-cleanup.md
   timestamp: '2026-03-13T17:34:45Z'
+- commit-tag: 5c0c7a5
+  name: 0007-per-role-boot-messages.md
+  timestamp: '2026-03-13T17:34:52Z'
 open:
-- name: 0007-per-role-boot-messages.md
 - name: 0008-engine-robustness.md
