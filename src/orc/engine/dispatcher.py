@@ -203,15 +203,17 @@ class Dispatcher:
         if self.hooks.on_orc_status is not None:
             self.hooks.on_orc_status(status, task)
 
-    def _echo(self, msg: str) -> None:
+    def _echo(self, msg: str, final: bool = False) -> None:
         """Write *msg* to stdout only when the TUI is not active.
 
         When ``on_orc_status`` is wired (TUI mode) the Textual app owns the
         terminal; echoing to stdout produces invisible or garbled output.
         In that case the orc card already surfaces the relevant status, so
         the echo is simply skipped.
+
+        Exception for final messages, which are triggered just before the TUI shuts down.
         """
-        if self.hooks.on_orc_status is None:
+        if final or self.hooks.on_orc_status is None:
             typer.echo(msg)
 
     @property
@@ -303,7 +305,7 @@ class Dispatcher:
             if at_limit and self.pool.is_empty():
                 self._set_orc_status("shutting down")
                 logger.info("reached maxcalls and pool drained, stopping", maxcalls=maxcalls)
-                self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.")
+                self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.", final=True)
                 break
 
             # Check idle-complete: nothing running, nothing to dispatch.
@@ -320,11 +322,12 @@ class Dispatcher:
                             only_role=self.only_role,
                         )
                         self._echo(
-                            f"\n✓ No dispatchable work for --agent {self.only_role}. Stopping."
+                            f"\n✓ No dispatchable work for --agent {self.only_role}. Stopping.",
+                            final=True,
                         )
                     else:
                         logger.info("no pending work and pool empty — workflow complete")
-                        self._echo("\n✓ No pending work. Workflow complete.")
+                        self._echo("\n✓ No pending work. Workflow complete.", final=True)
                     break
 
             time.sleep(_POLL_INTERVAL)
@@ -623,7 +626,7 @@ class Dispatcher:
             )
             tg.send_message(timeout_msg)
             self._set_orc_status("shutting down", "timed out waiting for human reply")
-            self._echo("\n✗ Timed out waiting for human reply. Stopping.")
+            self._echo("\n✗ Timed out waiting for human reply. Stopping.", final=True)
             raise typer.Exit(code=1)
         self._set_orc_status("running", "resuming after human reply")
         self._echo(f"\n↩ Reply received: {human_reply[:80]!r}. Resuming…")
