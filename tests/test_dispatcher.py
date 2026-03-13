@@ -1001,3 +1001,104 @@ class TestDispatchBudgetExhaustion:
         count = d._dispatch([], call_budget=1)
         assert count == 1
         assert len(d.pool.all_agents()) == 1
+
+
+# ---------------------------------------------------------------------------
+# --agent (only_role) filtering
+# ---------------------------------------------------------------------------
+
+
+class TestOnlyRoleFiltering:
+    """Dispatcher.only_role restricts which roles get dispatched."""
+
+    def test_only_coder_skips_planner(self, tmp_path):
+        """With only_role='coder', planner is not dispatched even when visions exist."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: ["v1.md"],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        count = d._dispatch([], call_budget=10)
+        assert count == 0
+        assert d.pool.is_empty()
+
+    def test_only_planner_dispatches_planner(self, tmp_path):
+        """With only_role='planner' and pending visions, a planner is spawned."""
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: ["v1.md"],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role="planner")
+        count = d._dispatch([], call_budget=10)
+        assert count == 1
+        agents = d.pool.all_agents()
+        assert len(agents) == 1
+        assert agents[0].role == "planner"
+
+    def test_only_coder_dispatches_coder_skips_qa(self, tmp_path):
+        """With only_role='coder', coder tasks are dispatched but QA tasks are skipped."""
+        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: tasks,
+            derive_task_state=lambda t: states[t],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        count = d._dispatch([], call_budget=10)
+        assert count == 1
+        agents = d.pool.all_agents()
+        assert all(a.role == "coder" for a in agents)
+
+    def test_only_qa_dispatches_qa_skips_coder(self, tmp_path):
+        """With only_role='qa', QA tasks are dispatched but coder tasks are skipped."""
+        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: tasks,
+            derive_task_state=lambda t: states[t],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role="qa")
+        count = d._dispatch([], call_budget=10)
+        assert count == 1
+        agents = d.pool.all_agents()
+        assert all(a.role == "qa" for a in agents)
+
+    def test_no_filter_dispatches_all_roles(self, tmp_path):
+        """Without only_role, both coder and QA tasks are dispatched."""
+        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: tasks,
+            derive_task_state=lambda t: states[t],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role=None)
+        count = d._dispatch([], call_budget=10)
+        assert count == 2
+        roles = {a.role for a in d.pool.all_agents()}
+        assert roles == {"coder", "qa"}
+
+    def test_only_role_idle_exits_when_no_work_for_role(self, tmp_path, monkeypatch):
+        """Dispatcher stops when only_role is set and no work for that role exists."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        cb = _make_callbacks(
+            tmp_path,
+            get_open_tasks=lambda: [],
+            get_pending_visions=lambda: ["v1.md"],
+            get_pending_reviews=lambda: [],
+        )
+        d = Dispatcher(_minimal_squad(), cb, only_role="coder")
+        d.run(maxcalls=5)
+        assert d.total_agent_calls == 0
