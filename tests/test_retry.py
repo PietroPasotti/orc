@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orc.engine.retry import retry, retry_call
+from orc.engine.retry import retry
 
 
 class TestRetryDecorator:
@@ -97,30 +97,3 @@ class TestRetryDecorator:
         with pytest.raises(RuntimeError):
             fn()
         assert len(calls) == 1
-
-
-class TestRetryCall:
-    def test_success(self):
-        result = retry_call(lambda: 42, max_attempts=1)
-        assert result == 42
-
-    def test_retries_and_succeeds(self):
-        calls = []
-
-        def fn():
-            calls.append(1)
-            if len(calls) < 2:
-                raise OSError("fail")
-            return "ok"
-
-        result = retry_call(fn, max_attempts=3, initial_delay=0)
-        assert result == "ok"
-        assert len(calls) == 2
-
-    def test_raises_after_exhaustion(self):
-        with pytest.raises(OSError):
-            retry_call(
-                lambda: (_ for _ in ()).throw(OSError("always")),
-                max_attempts=2,
-                initial_delay=0,
-            )

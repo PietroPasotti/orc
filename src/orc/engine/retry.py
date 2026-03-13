@@ -80,34 +80,3 @@ def retry(
         return wrapper  # type: ignore[return-value]
 
     return decorator
-
-
-def retry_call(
-    fn: Callable,
-    *args,
-    max_attempts: int = 3,
-    backoff_factor: float = 2.0,
-    initial_delay: float = 1.0,
-    exceptions: tuple[type[BaseException], ...] = (Exception,),
-    **kwargs,
-):
-    """Call *fn* with retry logic without requiring a decorator.
-
-    Useful when retrying a lambda or a function you don't own.
-
-    Parameters
-    ----------
-    fn:
-        The callable to invoke.
-    *args / **kwargs:
-        Passed through to *fn*.
-    max_attempts / backoff_factor / initial_delay / exceptions:
-        See :func:`retry`.
-    """
-    decorated = retry(
-        max_attempts=max_attempts,
-        backoff_factor=backoff_factor,
-        initial_delay=initial_delay,
-        exceptions=exceptions,
-    )(fn)
-    return decorated(*args, **kwargs)

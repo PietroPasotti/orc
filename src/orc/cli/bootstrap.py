@@ -28,15 +28,6 @@ def _is_preserved(rel: Path) -> bool:
     return rel.parts[0] in _UPGRADE_PRESERVE
 
 
-def _write_file(path: Path, content: str, created: list[str], skipped: list[str]) -> None:
-    """Write *content* to *path* if it does not exist; record the outcome."""
-    if path.exists():
-        skipped.append(str(path))
-    else:
-        path.write_text(content)
-        created.append(str(path))
-
-
 def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> None:
     """Copy *src* to *dst* if *dst* does not exist; record the outcome."""
     if dst.exists():
