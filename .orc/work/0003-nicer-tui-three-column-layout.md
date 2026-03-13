@@ -39,7 +39,7 @@ Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
 
 ## Steps
 
-- [ ] 1. Update `src/orc/tui.py`:
+- [x] 1. Update `src/orc/tui.py`:
 
   a. Import `rich.layout`, `rich.panel`, `rich.columns` (or use `rich.table`
      creatively — pick whichever produces the cleanest card layout).
@@ -74,7 +74,7 @@ Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
        columns row) — this avoids `rich.layout.Layout`'s fixed-height
        requirement and works well in non-TTY test contexts.
 
-- [ ] 2. Update `tests/test_tui.py`:
+- [x] 2. Update `tests/test_tui.py`:
 
   a. Test `_elapsed()`: 0 s → `"0m 0s"`, 90 s → `"1m 30s"`, 3661 s → `"61m 1s"`.
 
@@ -97,11 +97,11 @@ Architecture baseline: `docs/adr/0001-live-tui-for-orc-run.md` (use
        `telegram_ok=False` → `"✗"` in header.
      - Verify `max_loops=0` → `"∞"` in header.
 
-- [ ] 3. Run `just test` — confirm 100 % coverage and all tests pass.
+- [x] 3. Run `just test` — confirm 100 % coverage and all tests pass.
 
-- [ ] 4. Run `just fmt` then `just lint` — fix any issues.
+- [x] 4. Run `just fmt` then `just lint` — fix any issues.
 
-- [ ] 5. Commit:
+- [x] 5. Commit:
        ```
        feat(tui): redesign live panel with three-column role-card layout
        ```
