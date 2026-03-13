@@ -27,11 +27,15 @@ logger = structlog.get_logger(__name__)
 
 def _echo_wrapped(line: str) -> None:
     """Echo *line*, truncating each visual line to the current terminal width."""
-    width = shutil.get_terminal_size().columns
+    width = shutil.get_terminal_size().columns - 2  # account for scrollbar
     parts = line.split("\n")
     typer.echo("\n".join(p[:width] for p in parts))
 
 
+# fixme: this is not too interesting; what we want to know is how many FEATURES dev is ahead
+#  of main by: for example we could list the feature branches that are in dev with
+#  `git log dev --merges --oneline | grep "Merge feat/"`
+#  and then compare that to what's still marked as open in the board.
 def _dev_ahead_of_main() -> int:
     """Return the number of commits dev is ahead of main (0 if even or behind)."""
     result = subprocess.run(
