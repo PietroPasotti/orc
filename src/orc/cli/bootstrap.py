@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -51,6 +52,37 @@ def _tree(dir_path: Path, prefix: str = ""):
             yield from _tree(path, prefix=prefix + extension)
 
 
+def _try_commit_board(project_root: Path, board_rel: Path) -> None:
+    """Stage and commit board.yaml if it is not yet tracked by git."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", str(board_rel)],
+        cwd=project_root,
+        capture_output=True,
+    )
+    if tracked.returncode == 0:
+        return  # already tracked, nothing to do
+
+    stage = subprocess.run(
+        ["git", "add", str(board_rel)],
+        cwd=project_root,
+        capture_output=True,
+    )
+    if stage.returncode != 0:
+        typer.echo("⚠ Could not stage board.yaml (not a git repo?). Skipping commit.")
+        return
+
+    commit = subprocess.run(
+        ["git", "commit", "-m", "chore: bootstrap orc – add initial board.yaml"],
+        cwd=project_root,
+        capture_output=True,
+    )
+    if commit.returncode != 0:
+        subprocess.run(["git", "reset", "HEAD", str(board_rel)], cwd=project_root)
+        typer.echo("⚠ Could not commit board.yaml. You may need to commit it manually.")
+    else:
+        typer.echo(f"✓ Committed initial {board_rel} to main.")
+
+
 def _bootstrap(force: bool = False) -> None:
     _obs.setup()
     project_root = Path.cwd()
@@ -79,6 +111,12 @@ def _bootstrap(force: bool = False) -> None:
             dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         _copy(src, dst, created, skipped)
+
+    # ── commit board.yaml to main so it is tracked from day one ──────────────
+    board_rel = Path(".orc") / "work" / "board.yaml"
+    board_abs = project_root / board_rel
+    if str(board_abs) in created:
+        _try_commit_board(project_root, board_rel)
 
     # ── summary ───────────────────────────────────────────────────────────────
     rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731

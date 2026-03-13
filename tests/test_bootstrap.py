@@ -1,5 +1,7 @@
 """Tests for orc/cli/bootstrap.py."""
 
+from pathlib import Path
+
 import yaml
 from typer.testing import CliRunner
 
@@ -201,3 +203,73 @@ class TestBootstrapUpgrade:
         assert "Preserved" in result.output
         assert "vision" in result.output
         assert "work" in result.output
+
+
+# ---------------------------------------------------------------------------
+# bootstrap – git commit of board.yaml
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapCommitsBoardYaml:
+    def test_bootstrap_commits_board_yaml_to_main(self, tmp_path, monkeypatch):
+        """git add + git commit are called when board.yaml is newly created."""
+        import subprocess
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+
+        def fake_run(cmd, **kwargs):
+            result = subprocess.CompletedProcess(cmd, 0, b"", b"")
+            if cmd[:3] == ["git", "ls-files", "--error-unmatch"]:
+                result.returncode = 1  # not tracked
+            return result
+
+        with patch("orc.cli.bootstrap.subprocess.run", side_effect=fake_run) as mock_run:
+            result = runner.invoke(m.app, ["bootstrap"])
+
+        assert result.exit_code == 0
+
+        calls = [c.args[0] for c in mock_run.call_args_list]
+        board_rel = str(Path(".orc") / "work" / "board.yaml")
+
+        assert any(c[:2] == ["git", "add"] and board_rel in c for c in calls)
+        assert any(c[:2] == ["git", "commit"] for c in calls)
+
+    def test_bootstrap_skips_commit_when_already_tracked(self, tmp_path, monkeypatch):
+        """No git commit is issued when board.yaml is already tracked."""
+        import subprocess
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+
+        def fake_run(cmd, **kwargs):
+            # ls-files returns 0 → already tracked
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+        with patch("orc.cli.bootstrap.subprocess.run", side_effect=fake_run) as mock_run:
+            result = runner.invoke(m.app, ["bootstrap"])
+
+        assert result.exit_code == 0
+        calls = [c.args[0] for c in mock_run.call_args_list]
+        assert not any(c[:2] == ["git", "commit"] for c in calls)
+
+    def test_bootstrap_commit_failure_is_non_fatal(self, tmp_path, monkeypatch):
+        """Bootstrap exits 0 even when the git commit subprocess fails."""
+        import subprocess
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["git", "ls-files", "--error-unmatch"]:
+                return subprocess.CompletedProcess(cmd, 1, b"", b"")  # not tracked
+            if cmd[:2] == ["git", "add"]:
+                return subprocess.CompletedProcess(cmd, 0, b"", b"")  # add ok
+            if cmd[:2] == ["git", "commit"]:
+                return subprocess.CompletedProcess(cmd, 1, b"", b"error")  # commit fails
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+        with patch("orc.cli.bootstrap.subprocess.run", side_effect=fake_run):
+            result = runner.invoke(m.app, ["bootstrap"])
+
+        assert result.exit_code == 0
