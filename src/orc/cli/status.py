@@ -345,9 +345,13 @@ def status(
             help="Squad profile name used to determine agent slots. Default: 'default'.",
         ),
     ] = "default",
+    plain: Annotated[
+        bool,
+        typer.Option("--plain", help="Print plain text without launching the TUI."),
+    ] = False,
 ) -> None:
     """Print current workflow state without running any agent."""
-    if _is_tty():
+    if not plain and _is_tty():
         from orc.tui.status_tui import run_status_tui  # noqa: PLC0415
 
         run_status_tui(squad=squad)
