@@ -485,6 +485,8 @@ class Dispatcher:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
+        # TODO: remove cb.boot_message_body and construct the message body instead as
+        #  part of post_boot_message
         body = self.cb.boot_message_body()
         self.cb.post_boot_message(agent_id, body)
 

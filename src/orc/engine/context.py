@@ -488,6 +488,7 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
+# TODO: each agent role should have their own boot message body.
 def _boot_message_body() -> str:
     """Build the body text for a (boot) message listing open work items."""
     board = _board._read_board()

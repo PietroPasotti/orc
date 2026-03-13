@@ -64,6 +64,10 @@ def _post_resolved(blocked_agent: str, blocked_state: str, resolver_agent: str) 
     )
 
 
+# TODO: each agent role should have a custom boot message
+#  - planner: "Starting to refine vision NNNN-....md"
+#  - coder-N: "Starting work on feat/NNNN-..."
+#  - qa-N: "Starting to review feat/NNNN-..."
 def _post_boot_message(agent_id: str, body: str) -> None:
     """Send ``[{agent_id}](boot) …`` to Telegram."""
     tg.send_message(tg.format_agent_message(agent_id, "boot", body))
