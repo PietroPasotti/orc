@@ -15,5 +15,7 @@ done:
 - commit-tag: pending
   name: 0005-orc-merge-auto-worktree-fix.md
   timestamp: '2026-03-13T17:23:55Z'
-open:
-- name: 0006-board-yaml-main-worktree.md
+- commit-tag: pending
+  name: 0006-board-yaml-main-worktree.md
+  timestamp: '2026-03-13T17:23:56Z'
+open: []
