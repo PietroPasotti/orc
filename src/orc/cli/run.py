@@ -31,7 +31,7 @@ _MAXCALLS_UNLIMITED = sys.maxsize
 
 logger = structlog.get_logger(__name__)
 
-_DEV_AHEAD_REFRESH_INTERVAL = 30.0  # seconds between git queries
+_FEATURES_DONE_REFRESH_INTERVAL = 30.0  # seconds between git queries
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ def _run(
         state = _tui.RunState(
             agents=[],
             orc=_tui.OrcData(agent_id="orc", status="running", task="rebasing dev on main"),
-            dev_ahead=_safe_dev_ahead(),
+            features_done=_safe_features_done(),
             telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
             backend=os.environ.get("COLONY_AI_CLI", "copilot"),
             current_calls=0,
@@ -223,7 +223,7 @@ def _run(
             only_role=only_role,
         )
         if use_tui and state is not None:
-            # Wrap get_messages to keep state.current_loop and state.dev_ahead
+            # Wrap get_messages to keep state.current_calls and state.features_done
             # fresh; the Textual app reads from state on its own timer.
             _orig_get_messages = messaging_svc.get_messages
 
@@ -231,8 +231,8 @@ def _run(
                 assert state is not None
                 state.current_calls = dispatcher.total_agent_calls
                 now = time.monotonic()
-                if now - _last_dev_refresh[0] >= _DEV_AHEAD_REFRESH_INTERVAL:
-                    state.dev_ahead = _safe_dev_ahead()
+                if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:
+                    state.features_done = _safe_features_done()
                     _last_dev_refresh[0] = now
                 return _orig_get_messages()
 
@@ -252,12 +252,12 @@ def _run(
         raise
 
 
-def _safe_dev_ahead() -> int:
-    """Return dev-ahead-of-main count, or 0 on error."""
+def _safe_features_done() -> int:
+    """Return the count of feature-merge commits in dev not yet in main, or 0 on error."""
     try:
-        return _status_mod._dev_ahead_of_main()
+        return _git._count_features_done()
     except Exception:
-        logger.debug("_safe_dev_ahead: failed to compute dev-ahead count", exc_info=True)
+        logger.debug("_safe_features_done: failed to count features", exc_info=True)
         return 0
 
 

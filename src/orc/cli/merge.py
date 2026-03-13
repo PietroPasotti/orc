@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-
 import structlog
 import typer
 
@@ -23,14 +21,10 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     """Rebase dev on top of main so every session starts with the latest instructions."""
     dev_worktree = _git._ensure_dev_worktree()
 
-    result = subprocess.run(
-        ["git", "rebase", "--autostash", "main"], cwd=dev_worktree, capture_output=True, text=True
-    )
-    if result.returncode == 0:
+    ok, status_output = _git._rebase_on_main(dev_worktree)
+    if ok:
         typer.echo("✓ dev rebased on main.")
         return
-
-    status_output = _git._conflict_status(dev_worktree)
     typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")
 
     conflict_extra = (
@@ -69,7 +63,6 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
-# TODO move this in git.py (and see if there's a similar function we can reuse or generalize)
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
