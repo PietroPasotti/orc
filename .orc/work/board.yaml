@@ -1,4 +1,4 @@
-counter: 4
+counter: 7
 done:
 - commit-tag: 402c12b
   name: 0001-live-tui-status-view.md
@@ -9,4 +9,7 @@ done:
 - commit-tag: 0dcc07a
   name: 0003-nicer-tui-three-column-layout.md
   timestamp: '2026-03-13T14:53:24Z'
-open: []
+open:
+- name: 0004-orc-status-plain-flag.md
+- name: 0005-orc-merge-auto-worktree-fix.md
+- name: 0006-board-yaml-main-worktree.md

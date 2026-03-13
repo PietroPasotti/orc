@@ -216,11 +216,10 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
-        if not work.open_tasks:
-            planner_note = "ready to plan  (board empty)"
-        elif work.soft_blocked:
-            soft_agent, _ = work.soft_blocked
-            planner_note = f"ready to clarify soft-block from {soft_agent}"
+        if not _board.has_open_work():
+            planner_note = "ready (visions pending)"
+        elif blocked_agent and blocked_state == "soft-blocked":
+            planner_note = f"ready to clarify soft-block from {blocked_agent}"
         else:
             planner_note = "idle"
 
@@ -251,7 +250,7 @@ def _status(squad: str = "default") -> None:
             idx = i - 1
             if idx < len(coder_tasks):
                 task_name, _ = coder_tasks[idx]
-                note = f"ready to pick  {task_name}"
+                note = f"ready (next up: {task_name})"
             else:
                 note = "idle  (no work ready)"
             _echo_wrapped(_row(sym_c, f"coder-{i}", note))
@@ -260,7 +259,7 @@ def _status(squad: str = "default") -> None:
             idx = i - 1
             if idx < len(qa_tasks):
                 task_name, branch = qa_tasks[idx]
-                note = f"ready to review  {branch}"
+                note = f"ready (next up: {branch})"
             else:
                 note = "idle"
             _echo_wrapped(_row(sym_q, f"qa-{i}", note))
