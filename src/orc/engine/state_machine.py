@@ -202,7 +202,7 @@ def route(state: WorldState) -> str | None:
     if state.last_commit == LastCommit.QA_OTHER:
         return AgentRole.CODER
 
-    # Coder explicitly signalled done via close_task.sh → send to QA.
+    # Coder explicitly signalled done via close_task.py → send to QA.
     if state.last_commit == LastCommit.CODER_DONE:
         return AgentRole.QA
 

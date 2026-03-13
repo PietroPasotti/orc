@@ -83,6 +83,7 @@ select = ["E", "F", "I", "T20", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/orc/main.py" = ["T201"]
+"src/templates/**" = ["T201"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

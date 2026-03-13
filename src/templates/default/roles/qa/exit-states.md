@@ -11,13 +11,13 @@
 When the task passes review, run:
 
 ```bash
-.orc/agent_tools/qa/approve_task.sh --help
+.orc/agent_tools/qa/approve_task.py --help
 ```
 
 for usage, then execute with your agent ID, task code, and message:
 
 ```bash
-.orc/agent_tools/qa/approve_task.sh <agent-id> <task-code> "<message>"
+.orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<message>"
 ```
 
 ### Signalling `reject`
@@ -26,13 +26,13 @@ Stage your feedback file(s) first, then run:
 
 ```bash
 git add .orc/work/<task-file>.md   # or wherever you wrote your feedback
-.orc/agent_tools/qa/reject_task.sh --help
+.orc/agent_tools/qa/reject_task.py --help
 ```
 
 for usage, then execute with your agent ID, task code, and message:
 
 ```bash
-.orc/agent_tools/qa/reject_task.sh <agent-id> <task-code> "<message>"
+.orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<message>"
 ```
 
 Both scripts commit all changes and produce a structured commit the orchestrator

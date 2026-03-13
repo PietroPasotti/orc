@@ -8,7 +8,7 @@ feature it describes has been implemented and merged.
 ## How to close
 
 ```bash
-.orc/agent_tools/planner/close_vision.sh <vision-file> "<summary>" [task-file...]
+.orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-file...]
 ```
 
 The tool appends a changelog entry to `.orc/orc-CHANGELOG.md`, deletes the
