@@ -478,8 +478,38 @@ class TestStatusApp:
         app._refresh_agents = lambda: refreshed.append("agents")
         app._refresh_git_tree = lambda: refreshed.append("git_tree")
         app.on_mount()
+        # git tree is loaded lazily on first tab switch, not on mount
         assert "agents" in refreshed
+        assert "git_tree" not in refreshed
+
+    def test_git_tree_loaded_lazily_on_tab_switch(self):
+        app = StatusApp()
+        refreshed: list[str] = []
+        app._refresh_git_tree = lambda: refreshed.append("git_tree")
+
+        class FakeStatic:
+            def update(self, x: object) -> None:
+                pass
+
+        class FakeContentSwitcher:
+            current = None
+
+        def fake_query_one(sel, wt=None):
+            if isinstance(sel, str):
+                return FakeStatic()
+            return FakeContentSwitcher()
+
+        app.query_one = fake_query_one
+        assert not app._git_tree_loaded
+        # simulate switching to the git tree tab (index 1)
+        app._tab_index = 1
+        app._apply_tab()
         assert "git_tree" in refreshed
+        assert app._git_tree_loaded
+        # switching again should NOT reload
+        refreshed.clear()
+        app._apply_tab()
+        assert "git_tree" not in refreshed
 
     def test_refresh_agents_updates_widget(self, monkeypatch):
         monkeypatch.setattr(

@@ -46,7 +46,7 @@ Constraints
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
@@ -56,7 +56,7 @@ import yaml
 _PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "squads"
 
 
-class AgentRole(str, Enum):
+class AgentRole(StrEnum):
     """Valid agent roles in an orc squad.
 
     Because :class:`AgentRole` inherits from :class:`str`, each member compares
