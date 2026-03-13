@@ -299,3 +299,84 @@ class TestMaxcallsCliValidation:
         result = runner.invoke(m.app, ["run", "--maxcalls", "unlimited"])
         assert result.exit_code == 0
         assert called_with.get("maxcalls") == sys.maxsize
+
+
+class TestAgentCliOption:
+    """CLI validates --agent and passes only_role to _run."""
+
+    def test_agent_coder_passes_only_role(self, monkeypatch):
+        called_with: dict = {}
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: called_with.update(kw),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--agent", "coder"])
+        assert result.exit_code == 0
+        assert called_with.get("only_role") == "coder"
+
+    def test_agent_qa_passes_only_role(self, monkeypatch):
+        called_with: dict = {}
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: called_with.update(kw),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--agent", "qa"])
+        assert result.exit_code == 0
+        assert called_with.get("only_role") == "qa"
+
+    def test_agent_planner_passes_only_role(self, monkeypatch):
+        called_with: dict = {}
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: called_with.update(kw),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--agent", "planner"])
+        assert result.exit_code == 0
+        assert called_with.get("only_role") == "planner"
+
+    def test_agent_invalid_role_rejected(self, monkeypatch):
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: None,
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--agent", "wizard"])
+        assert result.exit_code != 0
+        assert "Invalid agent role" in result.output
+
+    def test_agent_none_by_default(self, monkeypatch):
+        called_with: dict = {}
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: called_with.update(kw),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run"])
+        assert result.exit_code == 0
+        assert called_with.get("only_role") is None
+
+    def test_agent_case_insensitive(self, monkeypatch):
+        called_with: dict = {}
+        monkeypatch.setattr(
+            _run_mod,
+            "_run",
+            lambda **kw: called_with.update(kw),
+        )
+        import orc.main as m
+
+        result = runner.invoke(m.app, ["run", "--agent", "CODER"])
+        assert result.exit_code == 0
+        assert called_with.get("only_role") == "coder"
