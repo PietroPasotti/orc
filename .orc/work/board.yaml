@@ -21,5 +21,8 @@ done:
 - commit-tag: pending
   name: 0007-per-role-boot-messages.md
   timestamp: '2026-03-13T17:28:09Z'
+- commit-tag: ea5da50
+  name: 0005-orc-merge-auto-worktree-fix.md
+  timestamp: '2026-03-13T17:28:26Z'
 open:
 - name: 0008-engine-robustness.md
