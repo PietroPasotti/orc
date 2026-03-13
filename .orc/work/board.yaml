@@ -18,6 +18,8 @@ done:
 - commit-tag: pending
   name: 0006-board-yaml-main-worktree.md
   timestamp: '2026-03-13T17:28:08Z'
+- commit-tag: pending
+  name: 0007-per-role-boot-messages.md
+  timestamp: '2026-03-13T17:28:09Z'
 open:
-- name: 0007-per-role-boot-messages.md
 - name: 0008-engine-robustness.md
