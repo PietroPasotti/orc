@@ -1,26 +1,13 @@
-## Manage the kanban board
+# Board management
 
-`.orc/work/board.yaml` is the single source of truth for the backlog.
+Use the board management tool to create new tasks:
 
-**When creating a new task:**
-
-1. Read `board.yaml` and note the `counter` value (e.g. `3`).
-2. Format the task ID as a 4-digit zero-padded string: `f"{counter:04d}"` → `"0003"`.
-3. Create the task file at `.orc/work/0003-short-title.md`.
-4. Add the filename to the `open` list in `board.yaml`.
-5. Increment `counter` by 1 and write it back.
-
-Example `board.yaml` after adding task 0003:
-
-```yaml
-counter: 4
-
-open:
-  - name: 0002-module-combat-stats.md
-  - name: 0003-short-title.md
-
-done:
-  - name: 0001-sample-plan.md
-    commit-tag: example
-    timestamp: 2026-03-01T00:00:00Z
+```bash
+.orc/agent_tools/planner/create_task.sh <task-title>
 ```
+
+The tool reads the current counter from `board.yaml`, creates the task file
+from template, adds it to the `open` list, and increments the counter.
+
+After running the tool, edit the created task file to fill in the overview,
+scope, steps, and notes.  Then use `publish_task.sh` to commit.

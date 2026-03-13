@@ -1,27 +1,34 @@
 #!/usr/bin/env bash
 # publish_task.sh — commit a newly created task file (and updated board) to dev.
-#
-# Usage:
-#   .orc/agent_tools/planner/publish_task.sh <agent-id> <task-file> [extra-files...]
-#
-# Arguments:
-#   agent-id    Your agent identifier, e.g. planner-1
-#   task-file   Path to the new task markdown, e.g. .orc/work/0003-add-foo.md
-#   extra-files Optional additional files to stage (e.g. .orc/work/board.yaml)
-#
-# Example:
-#   .orc/agent_tools/planner/publish_task.sh planner-1 .orc/work/0003-add-foo.md .orc/work/board.yaml
-#
-# This stages the given files and produces a structured exit commit:
-#   chore(planner-1.ready.0003): add task 0003-add-foo
-#
-# The commit format follows the same chore(<agent-id>.<action>.<task-code>)
-# convention used by coder and qa tools, allowing the git history to be
-# inspected uniformly across all agent roles.
-#
-# All git commands must be run from inside the dev worktree.
 
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: publish_task.sh <agent-id> <task-file> [extra-files...]
+
+Commit a newly created task file (and updated board) to dev.
+
+Arguments:
+  agent-id    Your agent identifier, e.g. planner-1
+  task-file   Path to the new task markdown, e.g. .orc/work/0003-add-foo.md
+  extra-files Optional additional files to stage (e.g. .orc/work/board.yaml)
+
+Example:
+  .orc/agent_tools/planner/publish_task.sh planner-1 .orc/work/0003-add-foo.md .orc/work/board.yaml
+
+This stages the given files and produces a structured exit commit:
+  chore(planner-1.ready.0003): add task 0003-add-foo
+
+The commit format follows the same chore(<agent-id>.<action>.<task-code>)
+convention used by coder and qa tools, allowing the git history to be
+inspected uniformly across all agent roles.
+
+All git commands must be run from inside the dev worktree.
+EOF
+}
+
+[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { usage; exit 0; }
 
 AGENT_ID="${1:-}"
 TASK_FILE="${2:-}"

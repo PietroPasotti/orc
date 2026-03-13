@@ -12,5 +12,5 @@ the vision and the tasks that delivered it.
 **Vision summary:** <2–4 sentence summary of what the vision described>
 
 **Implemented by:**
-- `orc/work/NNNN-task-title.md`
+- `.orc/work/NNNN-task-title.md`
 -->

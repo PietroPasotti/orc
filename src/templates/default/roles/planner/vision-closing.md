@@ -1,44 +1,23 @@
-## Close completed vision docs
+# Closing completed visions
 
-**Every time you run**, inspect every file in `.orc/vision/` (excluding
-`README.md`). For each vision doc, decide whether the vision it describes
-has been **fully implemented** — i.e. every capability it describes exists
-in the codebase, and the tasks that delivered it appear in the `done` list
-of `board.yaml` (or equivalent ADRs are in place and the code reflects them).
+## When to close a vision
 
-When a vision doc is complete:
+Inspect `.orc/vision/` each run.  A vision is ready to close when every
+feature it describes has been implemented and merged.
 
-1. Write a 2–4 sentence summary of what the vision described.
-2. Collect the filenames of the `done` tasks that implemented it.
-3. Append an entry to `.orc/orc-CHANGELOG.md`:
+## How to close
 
-```markdown
-## NNNN-short-title (closed YYYY-MM-DDTHH:MM:SSZ)
-
-**Vision summary:** <2–4 sentence summary>
-
-**Implemented by:**
-- `.orc/work/NNNN-task-title.md`
-- ...
+```bash
+.orc/agent_tools/planner/close_vision.sh <vision-file> "<summary>" [task-file...]
 ```
 
-4. Delete the vision document file from `.orc/vision/`.
-5. Commit both changes together:
+The tool appends a changelog entry to `.orc/orc-CHANGELOG.md`, deletes the
+vision file, and prints a confirmation.
 
-```
-git add .orc/vision/NNNN-title.md .orc/orc-CHANGELOG.md
-git commit -m "chore(orc): close vision NNNN-title"
-```
-
-Do this **before** creating any new tasks, so the board reflects the true
-remaining work.
-
-## Know when you are done
+## When you are done
 
 You are done when:
-- All fully-implemented vision documents have been closed and logged in
-  `.orc/orc-CHANGELOG.md`, **and**
-- All remaining vision documents have been translated into tasks or ADRs, **and**
-- All `#TODO` / `#FIXME` comments have been translated into tasks (or are
-  already tracked on the board), **and**
-- All tasks have been implemented and closed (the `open` list in `board.yaml` is empty).
+- All implemented visions are closed.
+- Remaining visions have been translated into tasks and/or ADRs.
+- All code `#TODO` and `#FIXME` comments have been translated into tasks.
+- All tasks are implemented and the `open` list is empty.

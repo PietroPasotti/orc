@@ -161,7 +161,7 @@ def run(
         str,
         typer.Option(
             "--squad",
-            help="Squad profile name (file in orc/squads/).  Default: 'default'.",
+            help="Squad profile name (file in .orc/squads/).  Default: 'default'.",
         ),
     ] = "default",
     no_tui: Annotated[

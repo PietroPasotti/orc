@@ -397,7 +397,7 @@ class TestContextCoverage:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: repo)
         _, ctx = _ctx.build_agent_context("planner", [])
-        assert "external-orc/README.md" in ctx
+        assert "external-orc/work/" in ctx
 
 
 # ---------------------------------------------------------------------------
@@ -602,3 +602,225 @@ class TestBuildContextTodos:
         )
         _, ctx = _ctx.build_agent_context("coder", [])
         assert "Code TODOs and FIXMEs" not in ctx
+
+
+# ---------------------------------------------------------------------------
+# _summarize_adr / _read_adrs(summarize=True)
+# ---------------------------------------------------------------------------
+
+
+class TestAdrSummarize:
+    def test_summarize_adr_extracts_title_and_status(self, tmp_path):
+        adr = tmp_path / "0001-test.md"
+        adr.write_text(
+            "# ADR-0001 — My Decision\n\n"
+            "**Status:** Accepted\n\n---\n\n"
+            "## Context\n\n"
+            "We need to decide on a database.\n\n"
+            "## Decision\n\nUse PostgreSQL.\n"
+        )
+        result = _ctx._summarize_adr(adr)
+        assert "ADR-0001 — My Decision" in result
+        assert "**Status:** Accepted" in result
+        assert "We need to decide on a database." in result
+        assert "Full text:" in result
+        # Should NOT include full body
+        assert "Use PostgreSQL" not in result
+
+    def test_summarize_adr_no_status(self, tmp_path):
+        adr = tmp_path / "0002-simple.md"
+        adr.write_text("# Simple ADR\n\nJust a paragraph of context.\n")
+        result = _ctx._summarize_adr(adr)
+        assert "Simple ADR" in result
+        assert "Just a paragraph of context." in result
+
+    def test_summarize_adr_stops_at_next_heading_after_paragraph(self, tmp_path):
+        adr = tmp_path / "0003-heading.md"
+        adr.write_text(
+            "# ADR 003\n\n**Status:** Accepted\n\n"
+            "First paragraph line.\n"
+            "## Decision\n\nShould not appear.\n"
+        )
+        result = _ctx._summarize_adr(adr)
+        assert "First paragraph line." in result
+        assert "Should not appear" not in result
+
+    def test_read_adrs_summarize_mode(self, tmp_path, monkeypatch):
+        adr_dir = tmp_path / "docs" / "adr"
+        adr_dir.mkdir(parents=True)
+        (adr_dir / "0001-first.md").write_text(
+            "# ADR 001\n\n**Status:** Accepted\n\n---\n\n"
+            "## Context\n\nSome decision context.\n\n"
+            "## Decision\n\nLots of detail here that should not appear.\n"
+        )
+        (adr_dir / "README.md").write_text("# Index")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        result = _ctx._read_adrs(summarize=True)
+        assert "ADR 001" in result
+        assert "Full text:" in result
+        assert "Lots of detail" not in result
+
+    def test_read_adrs_full_mode(self, tmp_path, monkeypatch):
+        adr_dir = tmp_path / "docs" / "adr"
+        adr_dir.mkdir(parents=True)
+        (adr_dir / "0001-first.md").write_text("# ADR 001\n\nFull body text.\n")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        result = _ctx._read_adrs(summarize=False)
+        assert "Full body text." in result
+        assert "Full text:" not in result
+
+
+# ---------------------------------------------------------------------------
+# _extract_readme / _extract_contributing / _keep_sections
+# ---------------------------------------------------------------------------
+
+
+class TestDocExtraction:
+    _SAMPLE_README = (
+        "# My Project\n\nProject description.\n\n"
+        "## How it works\n\nIt does things.\n\n"
+        "## Installation\n\n```bash\npip install myproj\n```\n\n"
+        "## Quick start\n\nRun the thing.\n\n"
+        "## Architecture\n\nModular design.\n"
+    )
+
+    _SAMPLE_CONTRIBUTING = (
+        "# Contributing\n\nWelcome.\n\n"
+        "## First-time setup\n\nClone and install.\n\n"
+        "## The development loop (TDD)\n\nWrite tests first.\n\n"
+        "## Committing\n\nUse conventional commits.\n\n"
+        "## Package layout\n\nsrc/myproj/...\n\n"
+        "## Writing an ADR\n\nFollow the template.\n"
+    )
+
+    def test_extract_readme_strips_install_sections(self):
+        result = _ctx._extract_readme(self._SAMPLE_README)
+        assert "Project description." in result
+        assert "It does things." in result
+        assert "Modular design." in result
+        assert "pip install" not in result
+        assert "Run the thing" not in result
+
+    def test_extract_contributing_for_coder(self):
+        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "coder")
+        assert "Write tests first" in result
+        assert "Use conventional commits" in result
+        assert "src/myproj" in result
+        # Should NOT include setup or ADR writing
+        assert "Clone and install" not in result
+        assert "Follow the template" not in result
+
+    def test_extract_contributing_for_planner(self):
+        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "planner")
+        assert "src/myproj" in result
+        assert "Follow the template" in result
+        # Should NOT include TDD or committing
+        assert "Write tests first" not in result
+        assert "Use conventional commits" not in result
+
+    def test_extract_contributing_for_qa(self):
+        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "qa")
+        assert "Write tests first" in result
+        assert "Use conventional commits" in result
+        assert "src/myproj" in result
+        assert "Clone and install" not in result
+
+    def test_extract_contributing_unknown_role_returns_full(self):
+        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "unknown_role")
+        assert "Clone and install" in result
+        assert "Write tests first" in result
+
+    def test_keep_sections_skip_mode(self):
+        text = "# Title\n\nIntro.\n\n## Keep\n\nGood.\n\n## Drop\n\nBad.\n"
+        result = _ctx._keep_sections(text, skip=frozenset({"drop"}))
+        assert "Good." in result
+        assert "Bad." not in result
+        assert "Intro." in result
+
+    def test_keep_sections_keep_mode(self):
+        text = "# Title\n\nPreamble.\n\n## Alpha\n\nA content.\n\n## Beta\n\nB content.\n"
+        result = _ctx._keep_sections(text, keep=frozenset({"alpha"}))
+        assert "Preamble." in result
+        assert "A content." in result
+        assert "B content." not in result
+
+
+# ---------------------------------------------------------------------------
+# _window_chat
+# ---------------------------------------------------------------------------
+
+
+class TestWindowChat:
+    def test_empty_chat_unchanged(self):
+        assert _ctx._window_chat("") == ""
+
+    def test_short_chat_unchanged(self):
+        text = "\n".join(f"line {i}" for i in range(10))
+        assert _ctx._window_chat(text, max_recent=50) == text
+
+    def test_long_chat_trims_old_non_agent_lines(self):
+        old_lines = [f"human message {i}" for i in range(20)]
+        agent_line = "[coder-1](done) 2026-03-01T12:00:00Z: Task complete."
+        old_lines.insert(5, agent_line)
+        recent_lines = [f"recent line {i}" for i in range(10)]
+        text = "\n".join(old_lines + recent_lines)
+        result = _ctx._window_chat(text, max_recent=10)
+        # Recent lines preserved
+        assert "recent line 0" in result
+        assert "recent line 9" in result
+        # Agent state line preserved from old section
+        assert "[coder-1](done)" in result
+        # Old human messages trimmed
+        assert "human message 0" not in result
+        assert "older messages trimmed" in result
+
+    def test_all_old_are_agent_lines(self):
+        old_lines = [f"[agent-{i}](running) msg" for i in range(5)]
+        recent_lines = [f"recent {i}" for i in range(3)]
+        text = "\n".join(old_lines + recent_lines)
+        result = _ctx._window_chat(text, max_recent=3)
+        # All agent lines kept
+        for i in range(5):
+            assert f"[agent-{i}](running)" in result
+        # No trimmed notice since nothing was dropped
+        assert "trimmed" not in result
+
+
+# ---------------------------------------------------------------------------
+# _read_work(active_only=...)
+# ---------------------------------------------------------------------------
+
+
+class TestReadWorkScoped:
+    def test_active_only_includes_only_target_task(self, tmp_path, monkeypatch):
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
+        (work_dir / "0001-a.md").write_text("Task A content.")
+        (work_dir / "0002-b.md").write_text("Task B content.")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
+
+        import orc.board as _board
+
+        result = _board._read_work(active_only="0001-a.md")
+        assert "Task A content." in result
+        assert "Task B content." not in result
+        assert "0002-b.md" in result  # name still listed
+        assert "_(summary only)_" in result
+
+    def test_no_active_only_includes_all(self, tmp_path, monkeypatch):
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n")
+        (work_dir / "0001-a.md").write_text("Task A content.")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
+
+        import orc.board as _board
+
+        result = _board._read_work()
+        assert "Task A content." in result
+        assert "_(summary only)_" not in result

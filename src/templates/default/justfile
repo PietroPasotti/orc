@@ -2,7 +2,7 @@
 #
 # Usage from root: add this to your root justfile:
 #
-#   mod orc 'orc/justfile'
+#   mod orc '.orc/justfile'
 #
 # Then: just orc run, just orc status, just orc merge
 
@@ -24,7 +24,7 @@ logs *args:
 # Examples:
 #   just orc run                          # default squad, 1 invocation
 #   just orc run --maxloops 0             # run until complete
-#   just orc run --squad broad            # load orc/squads/broad.yaml
+#   just orc run --squad broad            # load .orc/squads/broad.yaml
 #   just orc run --dry-run                # print context without invoking
 run *args:
     uv run orc --project-dir {{repo_root}} run {{args}}

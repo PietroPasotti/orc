@@ -2,7 +2,7 @@
 
 A squad profile defines how many agents of each role may run in parallel and
 which AI model each role should use.
-Profiles are YAML files stored in ``orc/squads/`` (project-level) or in the
+Profiles are YAML files stored in ``.orc/squads/`` (project-level) or in the
 package's bundled ``squads/`` directory.
 
 Usage::
@@ -174,7 +174,7 @@ def load_squad(name: str, agents_dir: Path | None = None) -> SquadConfig:
     raise FileNotFoundError(
         f"Squad profile {name!r} not found.\n"
         f"Available profiles: {available}\n"
-        f"Create orc/squads/{name}.yaml to define a new profile."
+        f"Create .orc/squads/{name}.yaml to define a new profile."
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -19,9 +20,15 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_MODEL = "claude-sonnet-4.6"
 _BLOCKED_TIMEOUT = 3600.0  # seconds before giving up on a human reply
+_CHAT_WINDOW_SIZE = 50  # max recent messages to keep in full
 
 
-def _read_adrs() -> str:
+def _read_adrs(*, summarize: bool = False) -> str:
+    """Read ADRs from ``docs/adr/``.
+
+    When *summarize* is True, include only the title, status, and first
+    non-empty paragraph of each ADR (for coder/QA who only need the gist).
+    """
     adr_dir = _cfg.REPO_ROOT / "docs" / "adr"
     parts: list[str] = []
     if not adr_dir.exists():
@@ -29,8 +36,176 @@ def _read_adrs() -> str:
     for adr_file in sorted(adr_dir.glob("*.md")):
         if adr_file.name == "README.md":
             continue
-        parts.append(f"### {adr_file.name}\n\n{adr_file.read_text()}")
+        if summarize:
+            parts.append(_summarize_adr(adr_file))
+        else:
+            parts.append(f"### {adr_file.name}\n\n{adr_file.read_text()}")
     return "\n\n---\n\n".join(parts) if parts else "_No ADRs found._"
+
+
+def _summarize_adr(path: Path) -> str:
+    """Return a compact summary of a single ADR file.
+
+    Extracts the title (first ``#`` heading), status line, and the first
+    non-empty paragraph after any front-matter or heading block.
+    """
+    text = path.read_text()
+    lines = text.splitlines()
+
+    title = path.stem
+    status = ""
+    first_para: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not title or title == path.stem:
+            m = re.match(r"^#+\s+(.+)", stripped)
+            if m:
+                title = m.group(1)
+                continue
+        if stripped.lower().startswith("**status"):
+            status = stripped
+            continue
+        if stripped == "---" or stripped == "":
+            if first_para:
+                break
+            continue
+        if stripped.startswith("#"):
+            if first_para:
+                break
+            continue
+        first_para.append(stripped)
+
+    summary = f"### {path.name}\n\n**{title}**"
+    if status:
+        summary += f" — {status}"
+    if first_para:
+        summary += f"\n\n{' '.join(first_para)}"
+    summary += f"\n\n_Full text: `docs/adr/{path.name}`_"
+    return summary
+
+
+# ---- Shared-doc extraction helpers ----------------------------------------
+
+# README.md section headings that are irrelevant to agents.
+_README_SKIP_HEADINGS = frozenset(
+    {
+        "installation",
+        "quick start",
+        "bootstrap",
+        ".env",
+        "configuration",
+        "environment variables",
+        "config file",
+    }
+)
+
+
+def _extract_readme(full_text: str) -> str:
+    """Return a trimmed README keeping only sections useful to agents."""
+    return _keep_sections(full_text, skip=_README_SKIP_HEADINGS)
+
+
+# CONTRIBUTING.md section headings irrelevant to agents.
+_CONTRIBUTING_AGENT_SECTIONS: dict[str, frozenset[str]] = {
+    "coder": frozenset(
+        {
+            "the development loop (tdd)",
+            "committing",
+            "package layout",
+        }
+    ),
+    "qa": frozenset(
+        {
+            "the development loop (tdd)",
+            "committing",
+            "other useful recipes",
+            "package layout",
+        }
+    ),
+    "planner": frozenset(
+        {
+            "package layout",
+            "writing an adr",
+        }
+    ),
+}
+
+
+def _extract_contributing(full_text: str, role: str) -> str:
+    """Return only the CONTRIBUTING sections relevant to *role*."""
+    keep = _CONTRIBUTING_AGENT_SECTIONS.get(role)
+    if keep is None:
+        return full_text
+    return _keep_sections(full_text, keep=keep)
+
+
+def _keep_sections(
+    text: str,
+    *,
+    skip: frozenset[str] | None = None,
+    keep: frozenset[str] | None = None,
+) -> str:
+    """Filter Markdown *text* by ``##``-level headings.
+
+    If *skip* is provided, drop sections whose heading matches (case-insensitive).
+    If *keep* is provided, retain **only** matching sections (plus any preamble
+    before the first heading).
+    """
+    lines = text.splitlines(keepends=True)
+    result: list[str] = []
+    current_heading: str | None = None
+    include = True
+    preamble = True
+
+    for line in lines:
+        heading_match = re.match(r"^##\s+(.+)", line)
+        if heading_match:
+            preamble = False
+            current_heading = heading_match.group(1).strip().lower()
+            if skip is not None:
+                include = current_heading not in skip
+            elif keep is not None:
+                include = current_heading in keep
+        if preamble or include:
+            result.append(line)
+
+    return "".join(result).strip()
+
+
+# ---- Chat-history windowing -----------------------------------------------
+
+_AGENT_STATE_RE = re.compile(r"^\[.+?\]\(.+?\)")
+
+
+def _window_chat(chat_text: str, *, max_recent: int = _CHAT_WINDOW_SIZE) -> str:
+    """Trim chat history to *max_recent* full messages.
+
+    Older messages are kept only if they look like agent state-transition
+    lines (``[role](state) ...``).  Everything else is dropped and replaced
+    with a ``[... N older messages trimmed ...]`` notice.
+    """
+    if not chat_text:
+        return chat_text
+    lines = chat_text.splitlines()
+    if len(lines) <= max_recent:
+        return chat_text
+
+    old = lines[:-max_recent]
+    recent = lines[-max_recent:]
+
+    kept: list[str] = []
+    trimmed = 0
+    for line in old:
+        if _AGENT_STATE_RE.match(line.strip()):
+            kept.append(line)
+        else:
+            trimmed += 1
+
+    if trimmed:
+        kept.append(f"\n[... {trimmed} older messages trimmed ...]\n")
+
+    return "\n".join(kept + recent)
 
 
 def _scan_todos(root: Path) -> list[dict]:
@@ -192,17 +367,29 @@ def build_agent_context(
         agents_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
     except ValueError:
         agents_rel = Path(_cfg.AGENTS_DIR.name)
-    orc_readme_path = _cfg.AGENTS_DIR / "README.md"
-    orc_readme = orc_readme_path.read_text() if orc_readme_path.exists() else ""
-    readme_path = _cfg.REPO_ROOT / "README.md"
-    readme = readme_path.read_text() if readme_path.exists() else ""
-    contributing_path = _cfg.REPO_ROOT / "CONTRIBUTING.md"
-    contributing = contributing_path.read_text() if contributing_path.exists() else ""
-    adrs = _read_adrs()
-    chat = tg.messages_to_text(messages)
-    plans = _board._read_work()
 
+    # -- shared docs (trimmed per role) ------------------------------------
+    readme_path = _cfg.REPO_ROOT / "README.md"
+    readme_raw = readme_path.read_text() if readme_path.exists() else ""
+    readme = _extract_readme(readme_raw)
+
+    contributing_path = _cfg.REPO_ROOT / "CONTRIBUTING.md"
+    contributing_raw = contributing_path.read_text() if contributing_path.exists() else ""
+    contributing = _extract_contributing(contributing_raw, agent_name)
+
+    # ADRs: full for planner, summarised for coder/QA
+    adrs = _read_adrs(summarize=agent_name != "planner")
+
+    chat = tg.messages_to_text(messages)
+    chat = _window_chat(chat)
+
+    # Board: scoped to active task for coder/QA
     active_task = _board._active_task_name()
+    if agent_name in ("coder", "qa") and active_task:
+        plans = _board._read_work(active_only=active_task)
+    else:
+        plans = _board._read_work()
+
     feature_branch = _git._feature_branch(active_task) if active_task else None
     feature_wt = _git._feature_worktree_path(active_task) if active_task else None
 
@@ -260,7 +447,6 @@ def build_agent_context(
         f"{extra_section}"
         "## Shared context\n\n"
         f"### Git workflow\n\n{git_info}\n\n"
-        f"### Orc workflow documentation ({agents_rel}/README.md)\n\n{orc_readme}\n\n"
         f"### README\n\n{readme}\n\n"
         f"### CONTRIBUTING\n\n{contributing}\n\n"
         f"### Architecture Decision Records\n\n{adrs}\n\n"

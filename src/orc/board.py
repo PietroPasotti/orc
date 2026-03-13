@@ -119,8 +119,14 @@ def has_open_work() -> bool:
     return _active_task_name() is not None
 
 
-def _read_work() -> str:
-    """Return a human-readable summary of the kanban board + open task files."""
+def _read_work(*, active_only: str | None = None) -> str:
+    """Return a human-readable summary of the kanban board + open task files.
+
+    When *active_only* is provided (a task filename such as ``0001-task.md``),
+    only that task's full content is included; other open tasks are listed by
+    name only.  This dramatically reduces token cost for coder/QA agents that
+    work on a single task.
+    """
     parts: list[str] = []
 
     board_path = _dev_board_file()
@@ -131,6 +137,9 @@ def _read_work() -> str:
     for task_file in sorted(work_dir.glob("*.md")):
         if task_file.name.lower() == "readme.md":
             continue
-        parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
+        if active_only and task_file.name != active_only:
+            parts.append(f"### {task_file.name} _(summary only)_")
+        else:
+            parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
 
     return "\n\n".join(parts) if parts else "_No active work._"

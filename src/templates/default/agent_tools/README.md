@@ -53,10 +53,8 @@ The orchestrator parses this scope to determine which agent to dispatch next.
 
 ```bash
 # Stage feedback files first, then reject:
-git add orc/work/0003-foo.md
+git add .orc/work/0003-foo.md
 .orc/agent_tools/qa/reject_task.sh <agent-id> <task-code> "<message>"
-
-# Example:
 .orc/agent_tools/qa/reject_task.sh qa-2 0003 "missing tests for error paths; see task file"
 # Produces: chore(qa-2.reject.0003): missing tests for error paths; see task file
 ```

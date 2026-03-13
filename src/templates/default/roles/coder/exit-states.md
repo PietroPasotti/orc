@@ -11,12 +11,13 @@
 When your implementation is complete, run:
 
 ```bash
-.orc/agent_tools/coder/close_task.sh <agent-id> <task-code> "<message>"
+.orc/agent_tools/coder/close_task.sh --help
 ```
 
-Example:
+for usage, then execute with your agent ID, task code, and message:
+
 ```bash
-.orc/agent_tools/coder/close_task.sh coder-1 0002 "implemented auth module; all tests green"
+.orc/agent_tools/coder/close_task.sh <agent-id> <task-code> "<message>"
 ```
 
 This commits all your changes and produces a structured commit the orchestrator

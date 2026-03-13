@@ -11,12 +11,13 @@
 When you have created a task (or ADR), publish it with:
 
 ```bash
-.orc/agent_tools/planner/publish_task.sh <agent-id> <task-file> [extra-files...]
+.orc/agent_tools/planner/publish_task.sh --help
 ```
 
-Example:
+for usage, then execute with your agent ID, task file, and any extra files:
+
 ```bash
-.orc/agent_tools/planner/publish_task.sh planner-1 .orc/work/0003-add-foo.md .orc/work/board.yaml
+.orc/agent_tools/planner/publish_task.sh <agent-id> <task-file> [extra-files...]
 ```
 
 This produces `chore(planner-1.ready.0003): add task 0003-add-foo` on the `dev`

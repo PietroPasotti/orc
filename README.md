@@ -4,24 +4,18 @@
   <img src="assets/icon.png" alt="orc icon" width="200"/>
 </p>
 
-**orc** is a standalone multi-agent orchestrator that turns high-level user-provided product visions into implementation code.
+**orc** is an agent-driven orchestrator that turns high-level user-provided visions into implementation code.
 
 ## How it works
 
-```
-orc run
-  └── planner                   – reads vision docs and #TODOs|#FIXMEs, creates tasks in orc/work/
-        └── coder               – implements each task on a feature branch
-              └── qa            – reviews the branch, commits chore(<qa-id>.approve.<task>): or chore(<qa-id>.reject.<task>):
-                    └── orc     – merges the feature branch into dev, loops back to planner
-```
+![orc diagram](assets/orc.drawio.svg)
 
-Inter-agent synchronization happens over git and interaction with the user is mediated by a telegram bot. 
-The orchestrator inspects the git tree status to determine the current state and decide which agent(s) to run next depending on the pool of available agents.
+Inter-agent synchronisation happens over git; interaction with you is mediated by a Telegram bot.
+The orchestrator inspects the git tree to determine state and decide which agent(s) to run next.
 
 Orc's work happens on a `dev` branch, so that you can keep working on `main` independently.
-Any time control goes to the orchestrator, the orchestrator will rebase `dev` on `main`.
-Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate fixing any conflicts to an agent.
+Any time control goes to the orchestrator, it will rebase `dev` on `main`.
+Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate conflict resolution to an agent.
 
 If the dev worktree is dirty when a feature branch is being merged (e.g. from a previously interrupted run), orc automatically resets it to `HEAD` before retrying.  If the merge itself produces conflicts, a coder agent is spawned to resolve them before the run continues.
 
@@ -161,7 +155,7 @@ These are the supported variables, their defaults, and what they do:
 | `ANTHROPIC_API_KEY` | — | When `COLONY_AI_CLI=claude` | Anthropic API key. |
 | `COLONY_TELEGRAM_TOKEN` | — | Optional | Telegram bot token. When set, enables Telegram notifications and human-in-the-loop replies. |
 | `COLONY_TELEGRAM_CHAT_ID` | — | Optional | Telegram chat ID the bot posts to. Required when `COLONY_TELEGRAM_TOKEN` is set. |
-| `ORC_DIR` | `.orc/` or `orc/` in CWD | Optional | Override the path to the orc configuration directory. Useful when the config lives outside the project root. |
+| `ORC_DIR` | `.orc/` in CWD | Optional | Override the path to the orc configuration directory. Useful when the config lives outside the project root. |
 | `ORC_LOG_LEVEL` | `INFO` | Optional | Minimum log level. Standard values: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `ORC_LOG_FORMAT` | `console` | Optional | Log output format. `console` for human-readable output, `json` for structured logs. |
 | `ORC_LOG_FILE` | `.orc/logs/orc.log` | Optional | Path to the orchestrator log file. Set to an empty string to disable file logging. |
