@@ -1,4 +1,4 @@
-counter: 10
+counter: 11
 done:
 - commit-tag: 402c12b
   name: 0001-live-tui-status-view.md
@@ -30,4 +30,5 @@ done:
 - commit-tag: 3a39c5b
   name: 0008-engine-robustness.md
   timestamp: '2026-03-13T17:35:00Z'
-open: []
+open:
+- name: 0010-code-cleanup.md
