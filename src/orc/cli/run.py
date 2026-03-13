@@ -123,6 +123,8 @@ class _AgentSvc:
 # ---------------------------------------------------------------------------
 
 
+# TODO: the main run loop should be protected against unintentional ctrl+C.
+#  We should require a confirmation, to avoid leaving half-merged branches and so on.
 def _run(
     maxcalls: int = 1,
     dry_run: bool = False,
