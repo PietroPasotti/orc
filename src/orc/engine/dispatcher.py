@@ -356,7 +356,6 @@ class Dispatcher:
                 task_name = task_stem + ".md"
                 if task_name not in self._merge_queue:
                     self._merge_queue.append(task_name)
-                    dispatched += 1
             if not self.board.get_pending_visions():
                 return dispatched
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
@@ -387,7 +386,6 @@ class Dispatcher:
 
             if task_name not in self._merge_queue:
                 self._merge_queue.append(task_name)
-                dispatched += 1
 
         # Check for soft-block: route one planner to resolve it.
         blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)

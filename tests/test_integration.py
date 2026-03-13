@@ -227,7 +227,7 @@ def _coder_handler():
 
         subprocess.run(["git", "add", "feature_x.py"], cwd=cwd, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-m", "feat: implement feature-x"],
+            ["git", "commit", "-m", "chore(coder-1.done.0001): implement feature-x"],
             cwd=cwd,
             check=True,
             capture_output=True,

@@ -68,6 +68,7 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
+# TODO move this in git.py (and see if there's a similar function we can reuse or generalize)
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
@@ -75,7 +76,7 @@ def _merge(auto: bool = False) -> None:
     dev_worktree = _git._ensure_dev_worktree()
 
     if auto:
-        merged = _git._complete_merge(dev_worktree)
+        merged = _git._complete_merge()
         if merged:
             typer.echo("✓ dev merged into main.")
         else:

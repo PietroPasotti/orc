@@ -318,13 +318,14 @@ class TestStatusCoverage:
         assert "feature-x.md" in result.output
 
     def test_status_shows_pending_reviews(self, tmp_path, monkeypatch):
-        """Lines 205-209: pending reviews section printed when unmerged branches exist."""
+        """Lines 271-278: awaiting-review section printed when WIP branches exist."""
         self._setup(monkeypatch, ahead=0)
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
-        monkeypatch.setattr(_st, "_pending_reviews", lambda: ["feat/0001-foo"])
+        monkeypatch.setattr(_st, "_get_wip_branches", lambda: ["feat/0001-foo"])
+        monkeypatch.setattr(_st, "_get_approved_branches", lambda: [])
         monkeypatch.setattr(_st._git, "_last_feature_commit_message", lambda b: "fix: something")
         result = runner.invoke(m.app, ["status"])
-        assert "Pending reviews" in result.output
+        assert "Awaiting review" in result.output
         assert "feat/0001-foo" in result.output
 
     def test_status_tui_launched_when_isatty(self, monkeypatch):

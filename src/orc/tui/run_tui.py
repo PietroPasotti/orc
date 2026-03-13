@@ -79,6 +79,10 @@ class RunState:
     orc: OrcData | None = None
     """Orchestrator status, or ``None`` when not yet active."""
 
+    # TODO: instead of dev_ahead, we should count the number of 'completed features' that dev
+    #  has ahead of main = find all commits that merge a feat/NNNN-<feature name> into <dev>.
+    #  then the TUI can show a more meaningful "3 features completed" (and even say which ones!)
+    #  instead of "17 commits ahead"
     dev_ahead: int = 0
     """Commits dev is ahead of main."""
 

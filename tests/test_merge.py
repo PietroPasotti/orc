@@ -38,7 +38,7 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True))
+        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
@@ -75,7 +75,7 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True) or True)
+        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -93,7 +93,7 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: False)
+        monkeypatch.setattr(_git, "_complete_merge", lambda: False)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -126,7 +126,7 @@ class TestMergeCommand:
         )
         monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: completed.append(True) or True)
+        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -150,7 +150,7 @@ class TestMergeCommand:
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(_git, "_complete_merge", lambda wt: False)
+        monkeypatch.setattr(_git, "_complete_merge", lambda: False)
 
         received_extra: list[str] = []
 

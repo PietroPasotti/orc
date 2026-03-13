@@ -510,20 +510,22 @@ def _rebase_in_progress(worktree: Path) -> bool:
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
-def _complete_merge(worktree: Path) -> bool:
-    """Fast-forward merge dev into main, then switch back to dev.
+def _complete_merge() -> bool:
+    """Fast-forward merge dev into main from the repo root worktree.
+
+    The root worktree always has the default branch checked out, so no
+    checkout is needed before or after the merge.
 
     Returns True if a merge was performed, False if already up to date.
     """
-    subprocess.run(["git", "checkout", "main"], cwd=worktree, check=True)
+    cfg = _cfg.get()
     result = subprocess.run(
-        ["git", "merge", "--ff-only", _cfg.get().work_dev_branch],
-        cwd=worktree,
+        ["git", "merge", "--ff-only", cfg.work_dev_branch],
+        cwd=cfg.repo_root,
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(["git", "checkout", _cfg.get().work_dev_branch], cwd=worktree, check=True)
     return "Already up to date" not in result.stdout
 
 

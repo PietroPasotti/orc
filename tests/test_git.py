@@ -360,27 +360,35 @@ class TestGitCoverage:
         assert result is False
 
     def test_complete_merge_calls_git(self, tmp_path, monkeypatch):
-        """_complete_merge runs checkout and merge, returns True when a merge occurred."""
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
+        """_complete_merge merges dev into main from repo_root and
+        returns True when a merge occurred
+        """
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev", repo_root=tmp_path)
+        )
         runs = []
 
         def fake_run(cmd, **kw):
-            runs.append(cmd)
+            runs.append((cmd, kw.get("cwd")))
             r = MagicMock()
             r.returncode = 0
             r.stdout = "Updating abc..def\nFast-forward\n"
             return r
 
         with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._complete_merge(tmp_path)
-        cmds = [" ".join(c) for c in runs]
-        assert any("checkout" in c and "main" in c for c in cmds)
+            result = _git._complete_merge()
+        cmds = [" ".join(c) for c, _ in runs]
+        cwds = [cwd for _, cwd in runs]
         assert any("merge" in c for c in cmds)
+        assert not any("checkout" in c for c in cmds), "should not need to checkout any branch"
+        assert all(cwd == tmp_path for cwd in cwds), "merge should run from repo_root"
         assert result is True
 
     def test_complete_merge_returns_false_when_already_up_to_date(self, tmp_path, monkeypatch):
         """_complete_merge returns False when git reports 'Already up to date.'"""
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev", repo_root=tmp_path)
+        )
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -389,7 +397,7 @@ class TestGitCoverage:
             return r
 
         with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._complete_merge(tmp_path)
+            result = _git._complete_merge()
         assert result is False
 
     def test_conflict_status_returns_output(self, tmp_path):
