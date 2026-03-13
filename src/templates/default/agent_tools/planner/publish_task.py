@@ -25,6 +25,7 @@ All git commands must be run from inside the dev worktree.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -50,7 +51,14 @@ def main() -> None:
         sys.exit(result.returncode)
 
     commit_msg = f"chore({args.agent_id}.ready.{task_code}): add task {task_name}"
-    result = subprocess.run(["git", "commit", "-m", commit_msg])
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": args.agent_id,
+        "GIT_AUTHOR_EMAIL": f"{args.agent_id}@orc.local",
+        "GIT_COMMITTER_NAME": args.agent_id,
+        "GIT_COMMITTER_EMAIL": f"{args.agent_id}@orc.local",
+    }
+    result = subprocess.run(["git", "commit", "-m", commit_msg], env=env)
     sys.exit(result.returncode)
 
 

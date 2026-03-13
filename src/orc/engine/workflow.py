@@ -15,7 +15,7 @@ import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.git.conflict import ConflictResolutionFailed, ConflictResolver
 from orc.messaging import telegram as tg
-from orc.squad import AgentRole, SquadConfig
+from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -118,29 +118,6 @@ def _make_context_builder(
         )
 
     return _build
-
-
-def determine_next_agent(messages: list[dict]) -> tuple[str | None, str]:
-    """Return ``(next_agent, reason)`` for the current workflow state."""
-    blocked_agent, blocked_state = _has_unresolved_block(messages)
-    if blocked_agent:
-        if blocked_state == "soft-blocked":
-            reason = f"{blocked_agent}(soft-blocked) — needs planner clarification"
-            logger.info("unresolved soft-block, routing to planner", **{"from": blocked_agent})
-            return AgentRole.PLANNER, reason
-        reason = f"{blocked_agent}(blocked) — needs human intervention"
-        logger.warning("unresolved hard block, stopping", agent=blocked_agent)
-        return None, reason
-
-    agent, reason = _git._derive_state_from_git()
-    logger.info("git-derived state", next_agent=agent, reason=reason)
-
-    if agent == AgentRole.PLANNER and not _ctx._has_planner_work():
-        reason = "no vision docs, TODOs, or FIXMEs — nothing to plan"
-        logger.info("skipping planner — nothing to plan")
-        return None, reason
-
-    return agent, reason
 
 
 def _make_merge_feature_fn(squad_cfg: SquadConfig) -> Callable[[str], None]:

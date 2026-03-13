@@ -27,6 +27,7 @@ The orchestrator reads this prefix to route the task back to a coder.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -42,7 +43,14 @@ def main() -> None:
     args = parser.parse_args()
 
     commit_msg = f"chore({args.agent_id}.reject.{args.task_code}): {args.message}"
-    result = subprocess.run(["git", "commit", "-a", "--allow-empty", "-m", commit_msg])
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": args.agent_id,
+        "GIT_AUTHOR_EMAIL": f"{args.agent_id}@orc.local",
+        "GIT_COMMITTER_NAME": args.agent_id,
+        "GIT_COMMITTER_EMAIL": f"{args.agent_id}@orc.local",
+    }
+    result = subprocess.run(["git", "commit", "-a", "--allow-empty", "-m", commit_msg], env=env)
     sys.exit(result.returncode)
 
 
