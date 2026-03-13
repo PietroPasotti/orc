@@ -327,6 +327,10 @@ def _merge_feature_into_dev(task_name: str) -> None:
             check=True,
         )
 
+    # Prune stale worktree references so git no longer considers the branch
+    # "checked out", even if the worktree directory was already gone from disk.
+    subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
+
     logger.info("deleting feature branch", branch=branch)
     subprocess.run(["git", "branch", "-D", branch], cwd=_cfg.REPO_ROOT, check=True)
 

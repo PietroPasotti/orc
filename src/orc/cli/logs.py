@@ -31,9 +31,24 @@ def _logs(
         bool,
         typer.Option("--tail/--no-tail", help="Follow the log(s) with tail -f."),
     ] = False,
+    wipe: Annotated[
+        bool,
+        typer.Option("--wipe", help="Delete all log files instead of printing them."),
+    ] = False,
 ) -> None:
     """Print or tail orc log files."""
     log_dir = path if path is not None else _DEFAULT_LOG_DIR
+
+    if wipe:
+        files = sorted(log_dir.glob("*.log")) if log_dir.is_dir() else []
+        if not files:
+            typer.echo("No log files found.", err=True)
+            raise typer.Exit(code=1)
+        for f in files:
+            f.unlink()
+            typer.echo(f"deleted {f}")
+        typer.echo(f"✓ Wiped {len(files)} log file(s) from {log_dir}")
+        return
 
     if agent == "all":
         files = sorted(log_dir.glob("*.log")) if log_dir.is_dir() else []

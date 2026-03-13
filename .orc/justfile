@@ -12,13 +12,21 @@ repo_root := source_directory() / ".."
 default:
     @just --list --justfile {{source_file()}}
 
-# Print or tail orc log files.
+# Print, tail, or wipe orc log files.
+# Subcommands:
+#   wipe           Delete all log files
 # Options:
-#   --path <dir>   Log directory (default: ~/.cache/orc)
+#   --path <dir>   Log directory (default: .orc/logs)
 #   --agent <name> all | orc | <agent-name>  (default: all)
 #   --tail         Follow the log(s) with tail -f
 logs *args:
-    uv run orc --project-dir {{repo_root}} logs {{args}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "${1:-}" == "wipe" ]]; then
+        uv run orc --project-dir {{repo_root}} logs --wipe "${@:2}"
+    else
+        uv run orc --project-dir {{repo_root}} logs {{args}}
+    fi
 
 # Run the next agent(s) in the workflow
 # Examples:

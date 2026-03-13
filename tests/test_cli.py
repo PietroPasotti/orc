@@ -128,3 +128,16 @@ class TestLogsCommand:
         result = runner.invoke(m.app, ["logs", "--path", str(nonexistent)])
         assert result.exit_code != 0
         assert "No log files found" in result.output
+
+    def test_logs_wipe_deletes_files(self, tmp_path):
+        (tmp_path / "orc.log").write_text("orc log\n")
+        (tmp_path / "coder-1.log").write_text("coder log\n")
+        result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--wipe"])
+        assert result.exit_code == 0
+        assert "Wiped 2 log file(s)" in result.output
+        assert not any(tmp_path.glob("*.log"))
+
+    def test_logs_wipe_no_files_exits_nonzero(self, tmp_path):
+        result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--wipe"])
+        assert result.exit_code != 0
+        assert "No log files found" in result.output
