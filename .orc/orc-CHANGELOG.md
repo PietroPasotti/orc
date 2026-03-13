@@ -12,3 +12,10 @@
 
 **Implemented by:**
 - `.orc/work/0001-live-tui-status-view.md`
+
+## 0004-orc-status-plain-output (closed 2026-03-13T17:21:56Z)
+
+**Vision summary:** Added a `--plain` flag to `orc status` that forces plain-text output even when running in an interactive terminal. Without `--plain`, the existing TTY → TUI / non-TTY → plain behaviour is unchanged. The flag makes `orc status` usable in CI, scripts, pipes, and AI-agent subprocesses where a full Textual TUI is unavailable or unwanted.
+
+**Implemented by:**
+- `.orc/work/0004-orc-status-plain-flag.md`
