@@ -13,7 +13,6 @@ from orc.engine.workflow import (
     _ORC_RESOLVED_RE,
     _has_unresolved_block,
     _post_resolved,
-    determine_next_agent,
 )
 
 # ---------------------------------------------------------------------------
@@ -136,83 +135,6 @@ class TestPostResolved:
 
 
 # ---------------------------------------------------------------------------
-# determine_next_agent
-# ---------------------------------------------------------------------------
-
-
-class TestDetermineNextAgent:
-    def _git_patch(self, monkeypatch, agent: str, reason: str = "test"):
-        monkeypatch.setattr("orc.git.core._derive_state_from_git", lambda: (agent, reason))
-
-    def test_no_messages_falls_through_to_git(self, monkeypatch):
-        self._git_patch(monkeypatch, "coder")
-        agent, _ = determine_next_agent([])
-        assert agent == "coder"
-
-    def test_unresolved_hard_block_returns_none(self, monkeypatch):
-        self._git_patch(monkeypatch, "qa")
-        msgs = [make_msg("[planner-1](blocked) 2026-03-09T10:00:00Z: Need vision.")]
-        agent, reason = determine_next_agent(msgs)
-        assert agent is None
-        assert "human intervention" in reason
-
-    def test_unresolved_soft_block_returns_planner(self, monkeypatch):
-        self._git_patch(monkeypatch, "qa")
-        msgs = [make_msg("[coder-1](soft-blocked) 2026-03-09T11:00:00Z: Unclear spec.")]
-        agent, reason = determine_next_agent(msgs)
-        assert agent == "planner"
-        assert "soft-blocked" in reason
-
-    def test_resolved_block_falls_through_to_git(self, monkeypatch):
-        self._git_patch(monkeypatch, "qa", "feature branch has unreviewed commits")
-        msgs = [
-            make_msg("[coder-1](soft-blocked) 2026-03-09T11:00:00Z: Stuck.", ts=1000),
-            make_msg("[orc](resolved) 2026-03-09T12:00:00Z: resolved.", ts=2000),
-        ]
-        agent, reason = determine_next_agent(msgs)
-        assert agent == "qa"
-
-    def test_git_routing_no_tasks(self, monkeypatch):
-        self._git_patch(monkeypatch, "planner", "no open tasks on board")
-        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: True)
-        agent, reason = determine_next_agent([])
-        assert agent == "planner"
-        assert "no open tasks" in reason
-
-    def test_git_routing_no_branch(self, monkeypatch):
-        self._git_patch(monkeypatch, "coder", "feature branch does not exist yet")
-        agent, reason = determine_next_agent([])
-        assert agent == "coder"
-
-    def test_git_routing_with_commits(self, monkeypatch):
-        self._git_patch(monkeypatch, "qa", "feature branch has unreviewed commits")
-        agent, reason = determine_next_agent([])
-        assert agent == "qa"
-
-    def test_git_routing_merged(self, monkeypatch):
-        self._git_patch(monkeypatch, "planner", "feature branch already merged into dev")
-        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: True)
-        agent, reason = determine_next_agent([])
-        assert agent == "planner"
-        assert "merged" in reason
-
-    def test_planner_skipped_when_no_work(self, monkeypatch):
-        """Planner is skipped when there are no vision docs or TODOs/FIXMEs."""
-        self._git_patch(monkeypatch, "planner", "no open tasks on board")
-        monkeypatch.setattr(_ctx, "_has_planner_work", lambda: False)
-        agent, reason = determine_next_agent([])
-        assert agent is None
-        assert "nothing to plan" in reason
-
-    def test_block_overrides_git_state(self, monkeypatch):
-        """Even if git says QA, a hard block should return None."""
-        self._git_patch(monkeypatch, "qa")
-        msgs = [make_msg("[qa-1](blocked) 2026-03-09T12:00:00Z: Cannot review.")]
-        agent, reason = determine_next_agent(msgs)
-        assert agent is None
-
-
-# ---------------------------------------------------------------------------
 # workflow.py coverage gap tests
 # ---------------------------------------------------------------------------
 
@@ -310,7 +232,6 @@ class TestMakeMergeFeatureFn:
 
     def test_spawns_coder_on_merge_conflict(self, monkeypatch, tmp_path):
         """On MergeConflictError, a coder agent is invoked."""
-        import orc.engine.context as _ctx
         import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
@@ -329,7 +250,6 @@ class TestMakeMergeFeatureFn:
         import pytest
         import typer
 
-        import orc.engine.context as _ctx
         import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
@@ -348,7 +268,6 @@ class TestMakeMergeFeatureFn:
         import pytest
         import typer
 
-        import orc.engine.context as _ctx
         import orc.engine.workflow as _wf
 
         exc = _git.MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")

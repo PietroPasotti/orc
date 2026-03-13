@@ -10,7 +10,6 @@ import pytest
 
 from orc.ai.backends import (
     SUPPORTED_BACKENDS,
-    AIBackend,
     ClaudeBackend,
     CopilotBackend,
     SpawnResult,
@@ -158,13 +157,3 @@ class TestClaudeBackend:
         with patch("subprocess.run", return_value=MagicMock(returncode=1)):
             rc = b.invoke("context", cwd=tmp_path)
         assert rc == 1
-
-
-class TestAIBackendProtocol:
-    """Verify that concrete backends satisfy the AIBackend protocol."""
-
-    def test_copilot_satisfies_protocol(self):
-        assert isinstance(CopilotBackend(), AIBackend)
-
-    def test_claude_satisfies_protocol(self):
-        assert isinstance(ClaudeBackend(), AIBackend)

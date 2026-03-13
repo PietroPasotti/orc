@@ -100,25 +100,6 @@ def is_agent_message(text: str) -> bool:
     return role is not None
 
 
-def parse_last_agent_message(
-    messages: list[dict],
-) -> tuple[str, str] | tuple[None, None]:
-    """Scan *messages* from newest to oldest and return ``(agent_id, state)``.
-
-    Agent messages must use the ``{role}-{n}`` ID format (e.g. ``coder-1``).
-    Returns ``(None, None)`` when no known-agent message is found.
-    """
-    for msg in reversed(messages):
-        text = msg.get("text", "").strip()
-        m = _MSG_RE.match(text)
-        if m:
-            name, state = m.group(1), m.group(2)
-            role, _ = parse_agent_id(name)
-            if role is not None and state not in INFORMATIONAL_STATES:
-                return name, state
-    return None, None
-
-
 def messages_to_text(messages: list[dict]) -> str:
     """Render *messages* as a plain-text chat log for inclusion in agent context."""
     lines: list[str] = []

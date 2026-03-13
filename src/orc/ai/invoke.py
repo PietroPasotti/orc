@@ -13,7 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from orc.ai.backends import ClaudeBackend, CopilotBackend, SpawnResult, get_backend
+from orc.ai.backends import SpawnResult, get_backend
 
 load_dotenv()  # auto-discovers .env from CWD upward
 
@@ -23,16 +23,6 @@ _CLI = os.environ.get("COLONY_AI_CLI", "copilot").strip().lower()
 def _require_config() -> None:
     """Raise :class:`OSError` if ``_CLI`` names an unsupported backend."""
     get_backend(_CLI)
-
-
-def _resolve_gh_token() -> str:
-    """Return a GitHub token using :class:`~orc.ai.backends.CopilotBackend`'s chain."""
-    return CopilotBackend().resolve_token()
-
-
-def _resolve_anthropic_key() -> str:
-    """Return the Anthropic API key using :class:`~orc.ai.backends.ClaudeBackend`."""
-    return ClaudeBackend().resolve_key()
 
 
 def invoke(context: str, cwd: Path | None = None, model: str | None = None) -> int:

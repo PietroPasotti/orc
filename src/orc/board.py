@@ -116,11 +116,6 @@ def _active_task_name() -> str | None:
     return first["name"] if isinstance(first, dict) else str(first)
 
 
-def has_open_work() -> bool:
-    """Return ``True`` if board.yaml has at least one task in the open list."""
-    return _active_task_name() is not None
-
-
 def _read_work(*, active_only: str | None = None) -> str:
     """Return a human-readable summary of the kanban board + open task files.
 

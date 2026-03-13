@@ -224,20 +224,6 @@ class TestTelegramCoverage:
         monkeypatch.setattr(tg, "_CHAT_ID", "123")
         assert tg.is_configured() is False
 
-    def test_parse_last_agent_message_returns_match(self):
-        msgs = [
-            _make_msg("[coder-1](working) 2026-01-01T00:00:00Z: Coding.", ts=1000),
-            _make_msg("[coder-1](done) 2026-01-01T01:00:00Z: Finished.", ts=2000),
-        ]
-        agent_id, state = tg.parse_last_agent_message(msgs)
-        assert agent_id == "coder-1"
-        assert state == "done"
-
-    def test_parse_last_agent_message_skips_informational(self):
-        msgs = [_make_msg("[planner-1](boot) 2026-01-01T00:00:00Z: Starting.", ts=1000)]
-        agent_id, state = tg.parse_last_agent_message(msgs)
-        assert agent_id is None
-
     def test_is_agent_message_true(self):
         assert tg.is_agent_message("[coder-1](done) 2026-01-01T00:00:00Z: Done.")
 

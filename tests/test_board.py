@@ -75,7 +75,7 @@ class TestBoardCoverage:
         assert board["open"][0].get("assigned_to") is None
 
     def test_active_task_name_returns_none_for_empty_board(self, tmp_path, monkeypatch):
-        """Line 107: has_open_work returns False when board empty."""
+        """_active_task_name returns None when board is empty."""
         monkeypatch.setattr(
             _cfg,
             "_config",
@@ -84,7 +84,7 @@ class TestBoardCoverage:
             ),
         )
         (tmp_path / "board.yaml").write_text("open: []\ndone: []\n")
-        assert _board.has_open_work() is False
+        assert _board._active_task_name() is None
 
     def test_write_board_atomic_cleans_up_on_error(self, tmp_path, monkeypatch):
         """_write_board cleans up the .tmp file and re-raises on OSError."""

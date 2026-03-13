@@ -107,9 +107,6 @@ class AgentPool:
     def count_by_role(self, role: AgentRole | str) -> int:
         return sum(1 for a in self._agents.values() if a.role == role)
 
-    def running_by_role(self, role: AgentRole | str) -> list[AgentProcess]:
-        return [a for a in self._agents.values() if a.role == role]
-
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

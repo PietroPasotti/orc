@@ -12,7 +12,6 @@ from orc.messaging.messages import (
     make_agent_id,
     messages_to_text,
     parse_agent_id,
-    parse_last_agent_message,
 )
 
 
@@ -107,32 +106,3 @@ class TestMessagesToText:
         msgs = [{"text": "hi", "date": 0, "from": {}}]
         text = messages_to_text(msgs)
         assert "unknown" in text
-
-
-class TestParseLastAgentMessage:
-    def test_returns_last_terminal_state(self):
-        msgs = [
-            {"text": "[coder-1](boot) 2026-01-01T00:00:00Z: Starting.", "date": 1},
-            {"text": "[coder-1](ready) 2026-01-01T00:01:00Z: Done.", "date": 2},
-        ]
-        agent, state = parse_last_agent_message(msgs)
-        assert agent == "coder-1"
-        assert state == "ready"
-
-    def test_skips_informational_states(self):
-        msgs = [
-            {"text": "[qa-1](done) 2026-01-01T00:00:00Z: QA passed.", "date": 1},
-            {"text": "[coder-1](boot) 2026-01-01T00:01:00Z: Starting.", "date": 2},
-        ]
-        agent, state = parse_last_agent_message(msgs)
-        assert agent == "qa-1"
-        assert state == "done"
-
-    def test_returns_none_when_no_agent_messages(self):
-        msgs = [{"text": "Human message", "date": 1, "from": {"username": "human"}}]
-        agent, state = parse_last_agent_message(msgs)
-        assert agent is None
-        assert state is None
-
-    def test_empty_list(self):
-        assert parse_last_agent_message([]) == (None, None)

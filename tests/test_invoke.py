@@ -1,6 +1,5 @@
 """Tests for orc/invoke.py – credential resolution and CLI dispatch."""
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,85 +29,6 @@ class TestRequireConfig:
         monkeypatch.setattr(iv, "_CLI", "gpt")
         with pytest.raises(EnvironmentError, match="not supported"):
             iv._require_config()
-
-
-# ---------------------------------------------------------------------------
-# _resolve_gh_token
-# ---------------------------------------------------------------------------
-
-
-class TestResolveGhToken:
-    def test_env_var_takes_priority(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("GH_TOKEN", "ghp_env_token")
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
-        assert iv._resolve_gh_token() == "ghp_env_token"
-
-    def test_apps_json_fallback(self, monkeypatch, tmp_path):
-        import json
-
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        apps = tmp_path / "apps.json"
-        apps.write_text(json.dumps({"entry": {"oauth_token": "ghp_apps_json"}}))
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", apps)
-        with patch("subprocess.run", side_effect=FileNotFoundError):
-            assert iv._resolve_gh_token() == "ghp_apps_json"
-
-    def test_gh_cli_fallback(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
-        with patch("subprocess.run", return_value=MagicMock(stdout="ghp_gh_cli\n")):
-            assert iv._resolve_gh_token() == "ghp_gh_cli"
-
-    def test_gh_cli_called_process_error_falls_through(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
-        with patch(
-            "subprocess.run",
-            side_effect=subprocess.CalledProcessError(1, "gh"),
-        ):
-            with pytest.raises(EnvironmentError, match="GH_TOKEN"):
-                iv._resolve_gh_token()
-
-    def test_raises_when_nothing_available(self, monkeypatch, tmp_path):
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", tmp_path / "nonexistent.json")
-        with patch("subprocess.run", side_effect=FileNotFoundError):
-            with pytest.raises(EnvironmentError, match="GH_TOKEN"):
-                iv._resolve_gh_token()
-
-    def test_apps_json_bad_structure_falls_through(self, monkeypatch, tmp_path):
-        """Malformed apps.json must not crash – fall through to next method."""
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        apps = tmp_path / "apps.json"
-        apps.write_text("not valid json {{{")
-        monkeypatch.setattr(bk.CopilotBackend, "APPS_JSON", apps)
-        with patch("subprocess.run", return_value=MagicMock(stdout="ghp_fallback\n")):
-            assert iv._resolve_gh_token() == "ghp_fallback"
-
-
-# ---------------------------------------------------------------------------
-# _resolve_anthropic_key
-# ---------------------------------------------------------------------------
-
-
-class TestResolveAnthropicKey:
-    def test_returns_key_when_set(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-key")
-        assert iv._resolve_anthropic_key() == "sk-ant-key"
-
-    def test_strips_whitespace(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-key  ")
-        assert iv._resolve_anthropic_key() == "sk-ant-key"
-
-    def test_raises_when_not_set(self, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
-            iv._resolve_anthropic_key()
-
-    def test_raises_when_empty(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
-        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
-            iv._resolve_anthropic_key()
 
 
 # ---------------------------------------------------------------------------

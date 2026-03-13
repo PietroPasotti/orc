@@ -44,26 +44,6 @@ class TestPoolCoverage:
         assert pool.count_by_role("coder") == 1
         assert pool.count_by_role("qa") == 0
 
-    def test_running_by_role(self, tmp_path):
-        """Line 103: running_by_role returns matching agents."""
-        pool = AgentPool()
-        pool.add(_make_agent(tmp_path, role="coder"))
-        pool.add(
-            AgentProcess(
-                agent_id="qa-1",
-                role="qa",
-                model="copilot",
-                task_name="t2",
-                process=FakePopen(),
-                worktree=tmp_path,
-                log_path=tmp_path / "qa.log",
-                log_fh=None,
-                context_tmp=None,
-            )
-        )
-        assert len(pool.running_by_role("coder")) == 1
-        assert pool.running_by_role("planner") == []
-
     def test_kill_nonexistent_is_noop(self):
         AgentPool().kill("nope")
 

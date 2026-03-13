@@ -56,7 +56,6 @@ from orc.messaging.messages import (  # noqa: F401
     make_agent_id,
     messages_to_text,
     parse_agent_id,
-    parse_last_agent_message,
 )
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ Supported backends
 
 Adding a new backend
 --------------------
-1. Subclass :class:`BaseAIBackend` (or implement :class:`AIBackend` directly).
+1. Subclass :class:`BaseAIBackend`.
 2. Register it in :data:`_BACKEND_REGISTRY`.
 3. Users set ``COLONY_AI_CLI=<name>`` in their ``.env``.
 """
@@ -35,7 +35,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Protocol, runtime_checkable
+from typing import IO
 
 # ---------------------------------------------------------------------------
 # Spawn result
@@ -58,43 +58,6 @@ class SpawnResult:
 
     context_tmp: str
     """Path to the temporary prompt file; must be deleted after the process exits."""
-
-
-# ---------------------------------------------------------------------------
-# Protocol (structural typing contract)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class AIBackend(Protocol):
-    """Structural protocol for AI CLI backend implementations.
-
-    Any object that implements :meth:`invoke` and :meth:`spawn` satisfies this
-    protocol, whether or not it inherits from :class:`BaseAIBackend`.
-    """
-
-    @property
-    def name(self) -> str:
-        """Short identifier, e.g. ``'copilot'`` or ``'claude'``."""
-        ...
-
-    def invoke(self, context: str, cwd: Path | None = None, model: str | None = None) -> int:
-        """Invoke the AI CLI synchronously. Returns the subprocess exit code."""
-        ...
-
-    def spawn(
-        self,
-        context: str,
-        cwd: Path,
-        model: str | None = None,
-        log_path: Path | None = None,
-    ) -> SpawnResult:
-        """Spawn the AI CLI as a **non-blocking** subprocess.
-
-        Returns a :class:`SpawnResult` containing the process, optional log
-        file handle, and the temporary prompt file path.
-        """
-        ...
 
 
 # ---------------------------------------------------------------------------

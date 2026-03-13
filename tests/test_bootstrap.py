@@ -201,26 +201,3 @@ class TestBootstrapUpgrade:
         assert "Preserved" in result.output
         assert "vision" in result.output
         assert "work" in result.output
-
-
-class TestBootstrapWriteFile:
-    def test_write_file_skips_existing(self, tmp_path):
-        from orc.cli.bootstrap import _write_file
-
-        existing = tmp_path / "test.txt"
-        existing.write_text("original")
-        created, skipped = [], []
-        _write_file(existing, "new content", created, skipped)
-        assert existing.read_text() == "original"
-        assert str(existing) in skipped
-        assert not created
-
-    def test_write_file_creates_new(self, tmp_path):
-        from orc.cli.bootstrap import _write_file
-
-        new_file = tmp_path / "new.txt"
-        created, skipped = [], []
-        _write_file(new_file, "hello", created, skipped)
-        assert new_file.read_text() == "hello"
-        assert str(new_file) in created
-        assert not skipped

@@ -23,6 +23,7 @@ the task to QA.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -43,7 +44,14 @@ def main() -> None:
     if result.returncode != 0:
         sys.exit(result.returncode)
 
-    result = subprocess.run(["git", "commit", "--allow-empty", "-m", commit_msg])
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": args.agent_id,
+        "GIT_AUTHOR_EMAIL": f"{args.agent_id}@orc.local",
+        "GIT_COMMITTER_NAME": args.agent_id,
+        "GIT_COMMITTER_EMAIL": f"{args.agent_id}@orc.local",
+    }
+    result = subprocess.run(["git", "commit", "--allow-empty", "-m", commit_msg], env=env)
     sys.exit(result.returncode)
 
 
