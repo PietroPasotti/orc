@@ -53,6 +53,20 @@ class TestBootstrap:
         assert readme.exists()
         assert "vision" in readme.read_text().lower()
 
+    def test_creates_orc_readme(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        readme = tmp_path / ".orc" / "README.md"
+        assert readme.exists()
+        assert len(readme.read_text()) > 0
+
+    def test_creates_work_readme(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(m.app, ["bootstrap"])
+        readme = tmp_path / ".orc" / "work" / "README.md"
+        assert readme.exists()
+        assert len(readme.read_text()) > 0
+
     def test_creates_empty_board(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])

@@ -129,6 +129,8 @@ def _read_work() -> str:
 
     work_dir = board_path.parent if board_path.exists() else _cfg.WORK_DIR
     for task_file in sorted(work_dir.glob("*.md")):
+        if task_file.name.lower() == "readme.md":
+            continue
         parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
 
     return "\n\n".join(parts) if parts else "_No active work._"

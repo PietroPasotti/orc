@@ -83,3 +83,21 @@ class TestBoardCoverage:
         # The .tmp file must have been cleaned up
         tmp_file = tmp_path / "board.yaml.tmp"
         assert not tmp_file.exists()
+
+    def test_read_work_ignores_readme(self, tmp_path, monkeypatch):
+        """_read_work must not include README.md as a work item."""
+        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "WORK_DIR", tmp_path / ".orc" / "work")
+        work_dir = tmp_path / ".orc" / "work"
+        work_dir.mkdir(parents=True)
+        board_file = work_dir / "board.yaml"
+        board_file.write_text("counter: 1\nopen:\n  - name: 0001-task.md\ndone: []\n")
+        monkeypatch.setattr(_cfg, "BOARD_FILE", board_file)
+        (work_dir / "README.md").write_text("# This is the kanban README")
+        (work_dir / "0001-task.md").write_text("# Task 1")
+        result = _board._read_work()
+        assert "README.md" not in result
+        assert "This is the kanban README" not in result
+        assert "0001-task.md" in result
