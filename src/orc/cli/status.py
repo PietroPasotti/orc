@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 
 def _echo_wrapped(line: str) -> None:
     """Echo *line*, truncating each visual line to the current terminal width."""
-    width = shutil.get_terminal_size().columns - 2  # account for scrollbar
+    width = shutil.get_terminal_size().columns
     parts = line.split("\n")
     typer.echo("\n".join(p[:width] for p in parts))
 

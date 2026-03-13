@@ -12,7 +12,6 @@ import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.cli import _check_env_or_exit, app
-from orc.git.core import UntrackedFilesWouldBeOverwrittenError
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, SquadConfig
 
@@ -79,14 +78,9 @@ def _merge(auto: bool = False) -> None:
     if auto:
         try:
             merged = _git._complete_merge()
-        except UntrackedFilesWouldBeOverwrittenError as exc:
-            files_list = "\n".join(f"  - {f}" for f in exc.files)
-            typer.echo(
-                f"✗ Fast-forward merge aborted: the following untracked files in the main\n"
-                f"  worktree would be overwritten by the merge:\n{files_list}\n\n"
-                f"  Remove or move those files and re-run `orc merge --auto`.",
-                err=True,
-            )
+        except _git.UntrackedMergeBlockError as exc:
+            for f in exc.files:
+                typer.echo(f"✗ {f} exists as untracked in main worktree; remove it and re-run")
             raise typer.Exit(code=1)
         if merged:
             typer.echo("✓ dev merged into main.")

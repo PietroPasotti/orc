@@ -21,6 +21,14 @@ from orc.squad import AgentRole
 logger = structlog.get_logger(__name__)
 
 
+class UntrackedMergeBlockError(Exception):
+    """Raised when ``git merge --ff-only`` is blocked by untracked files in the main worktree."""
+
+    def __init__(self, files: list[str]) -> None:
+        self.files = files
+        super().__init__(f"untracked files would be overwritten by merge: {files}")
+
+
 class MergeConflictError(Exception):
     """Raised when ``git merge --no-ff`` stops with conflicts.
 
@@ -33,14 +41,6 @@ class MergeConflictError(Exception):
         self.worktree = worktree
         self.status_output = status_output
         super().__init__(f"merge conflict on {branch!r} in {worktree}")
-
-
-class UntrackedFilesWouldBeOverwrittenError(Exception):
-    """Raised when ``git merge --ff-only`` refuses because untracked files would be overwritten."""
-
-    def __init__(self, files: list[str]) -> None:
-        self.files = files
-        super().__init__(f"untracked files would be overwritten by merge: {files}")
 
 
 def _default_branch() -> str:
@@ -454,6 +454,22 @@ def _rebase_in_progress(worktree: Path) -> bool:
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
+def _parse_untracked_files(stderr: str) -> list[str]:
+    """Extract filenames from a git 'untracked files would be overwritten' error message."""
+    files: list[str] = []
+    in_list = False
+    for line in stderr.splitlines():
+        if "untracked working tree files would be overwritten" in line:
+            in_list = True
+            continue
+        if in_list:
+            if line.startswith("\t") and not line.strip().startswith("Please"):
+                files.append(line.strip())
+            else:
+                in_list = False
+    return files
+
+
 def _complete_merge() -> bool:
     """Fast-forward merge dev into main from the repo root worktree.
 
@@ -462,10 +478,8 @@ def _complete_merge() -> bool:
 
     Returns True if a merge was performed, False if already up to date.
 
-    Raises:
-        UntrackedFilesWouldBeOverwrittenError: if git refuses because untracked
-            files in the main worktree would be overwritten.
-        subprocess.CalledProcessError: for any other git failure.
+    Raises :class:`UntrackedMergeBlockError` if untracked files would be
+    overwritten, so the caller can surface a clear message to the user.
     """
     cfg = _cfg.get()
     result = subprocess.run(
@@ -474,30 +488,14 @@ def _complete_merge() -> bool:
         capture_output=True,
         text=True,
     )
-    if result.returncode == 0:
-        return "Already up to date" not in result.stdout
-
-    combined = result.stderr + result.stdout
-    if "would be overwritten" in combined:
-        files: list[str] = []
-        in_file_list = False
-        for line in combined.splitlines():
-            stripped = line.strip()
-            if "would be overwritten" in stripped:
-                in_file_list = True
-                continue
-            if in_file_list:
-                if (
-                    not stripped
-                    or stripped.lower().startswith("please")
-                    or stripped.lower().startswith("aborting")
-                ):
-                    break
-                files.append(stripped)
-        raise UntrackedFilesWouldBeOverwrittenError(files)
-
-    result.check_returncode()
-    return False  # unreachable
+    if result.returncode != 0:
+        if "untracked working tree files would be overwritten" in result.stderr:
+            files = _parse_untracked_files(result.stderr)
+            raise UntrackedMergeBlockError(files)
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, result.stdout, result.stderr
+        )
+    return "Already up to date" not in result.stdout
 
 
 def _conflict_status(worktree: Path) -> str:

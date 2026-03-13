@@ -401,7 +401,7 @@ class TestGitCoverage:
         assert result is False
 
     def test_complete_merge_raises_on_untracked_files(self, tmp_path, monkeypatch):
-        """_complete_merge raises UntrackedFilesWouldBeOverwrittenError when
+        """_complete_merge raises UntrackedMergeBlockError when
         git refuses because untracked files would be overwritten."""
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev", repo_root=tmp_path)
@@ -422,7 +422,7 @@ class TestGitCoverage:
         with patch("orc.git.core.subprocess.run", fake_run):
             import pytest
 
-            with pytest.raises(_git.UntrackedFilesWouldBeOverwrittenError) as exc_info:
+            with pytest.raises(_git.UntrackedMergeBlockError) as exc_info:
                 _git._complete_merge()
         assert "board.yaml" in exc_info.value.files
 

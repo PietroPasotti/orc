@@ -68,6 +68,11 @@ def get_open_tasks() -> list[dict]:
     return result
 
 
+def has_open_work() -> bool:
+    """Return True if there is at least one open task on the board."""
+    return bool(get_open_tasks())
+
+
 def assign_task(task_name: str, agent_id: str) -> None:
     """Write ``assigned_to: {agent_id}`` for *task_name* in board.yaml."""
     board = _read_board()

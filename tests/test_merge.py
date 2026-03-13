@@ -208,9 +208,8 @@ class TestMergeCommand:
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1
 
-    def test_auto_untracked_files_exits_with_clear_message(self, monkeypatch, tmp_path):
-        """With --auto: if main worktree has untracked files that would be overwritten,
-        exit non-zero with a message naming the files."""
+    def test_untracked_file_conflict_exits_with_message(self, monkeypatch, tmp_path):
+        """With --auto: if untracked files block the merge, exit 1 with a clear message."""
         self._setup(monkeypatch, tmp_path)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
@@ -221,17 +220,68 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        from orc.git.core import UntrackedFilesWouldBeOverwrittenError
-
         monkeypatch.setattr(
             _git,
             "_complete_merge",
-            lambda: (_ for _ in ()).throw(UntrackedFilesWouldBeOverwrittenError(["board.yaml"])),
+            lambda: (_ for _ in ()).throw(_git.UntrackedMergeBlockError([".orc/work/board.yaml"])),
         )
 
         result = runner.invoke(m.app, ["merge", "--auto"])
-        assert result.exit_code != 0
+        assert result.exit_code == 1
         assert "board.yaml" in result.output
+        assert "untracked" in result.output.lower()
+
+    def test_complete_merge_raises_on_untracked_files(self, monkeypatch, tmp_path):
+        """_complete_merge raises UntrackedMergeBlockError when git reports untracked files."""
+        from dataclasses import replace as _replace
+
+        import pytest
+
+        cfg = _replace(_cfg.get(), repo_root=tmp_path)
+        monkeypatch.setattr(_cfg, "_config", cfg)
+
+        stderr = (
+            "error: The following untracked working tree files would be overwritten by merge:\n"
+            "\t.orc/work/board.yaml\n"
+            "Please move or remove them before you merge.\nAborting\n"
+        )
+
+        def fake_run(cmd, cwd=None, check=False, capture_output=False, text=False, **kw):
+            r = MagicMock()
+            r.returncode = 1
+            r.stdout = ""
+            r.stderr = stderr
+            r.args = cmd
+            return r
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(_git.UntrackedMergeBlockError) as exc_info:
+            _git._complete_merge()
+
+        assert ".orc/work/board.yaml" in exc_info.value.files
+
+    def test_complete_merge_reraises_unknown_git_error(self, monkeypatch, tmp_path):
+        """_complete_merge re-raises CalledProcessError for unexpected git failures."""
+        from dataclasses import replace as _replace
+
+        import pytest
+
+        cfg = _replace(_cfg.get(), repo_root=tmp_path)
+        monkeypatch.setattr(_cfg, "_config", cfg)
+
+        def fake_run(cmd, cwd=None, check=False, capture_output=False, text=False, **kw):
+            r = MagicMock()
+            r.returncode = 1
+            r.stdout = ""
+            r.stderr = "fatal: some unexpected git error\n"
+            r.args = cmd
+            return r
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(subprocess.CalledProcessError):
+            _git._complete_merge()
 
     def test_manual_instructions_use_repo_root_not_dev_worktree(self, monkeypatch, tmp_path):
         """Without --auto: the printed git instructions use repo_root, not dev worktree."""
