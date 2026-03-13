@@ -71,15 +71,19 @@ def _ensure_dev_worktree() -> Path:
             ["git", "branch", cfg.work_dev_branch],
             cwd=cfg.repo_root,
             check=True,
+            capture_output=True,
         )
 
     if not cfg.dev_worktree.exists():
         cfg.dev_worktree.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "worktree", "prune"], cwd=cfg.repo_root, check=True)
+        subprocess.run(
+            ["git", "worktree", "prune"], cwd=cfg.repo_root, check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "worktree", "add", str(cfg.dev_worktree), cfg.work_dev_branch],
             cwd=cfg.repo_root,
             check=True,
+            capture_output=True,
         )
 
     return cfg.dev_worktree
@@ -144,16 +148,22 @@ def _ensure_feature_worktree(task_name: str) -> Path:
     )
     if not existing.stdout.strip():
         subprocess.run(
-            ["git", "branch", branch, _default_branch()], cwd=_cfg.get().repo_root, check=True
+            ["git", "branch", branch, _default_branch()],
+            cwd=_cfg.get().repo_root,
+            check=True,
+            capture_output=True,
         )
 
     if not wt_path.exists():
         wt_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "worktree", "prune"], cwd=_cfg.get().repo_root, check=True)
+        subprocess.run(
+            ["git", "worktree", "prune"], cwd=_cfg.get().repo_root, check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "worktree", "add", str(wt_path), branch],
             cwd=_cfg.get().repo_root,
             check=True,
+            capture_output=True,
         )
 
     return wt_path
@@ -195,6 +205,51 @@ def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pendin
         logger.info("deleted task file", path=str(task_md))
 
 
+def _commit_board_recovery(task_name: str, dev_wt: Path) -> None:
+    """Commit board changes in *dev_wt* after a crash-recovery board close.
+
+    Stages the work directory, then commits only if there are staged changes
+    (guards against re-running recovery when the commit already happened).
+    """
+    cfg = _cfg.get()
+    try:
+        config_rel = cfg.orc_dir.relative_to(cfg.repo_root)
+    except ValueError:
+        config_rel = Path(cfg.orc_dir.name)
+    board_path = dev_wt / config_rel / "work" / "board.yaml"
+    if not board_path.exists():
+        return
+    git_env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "orc",
+        "GIT_AUTHOR_EMAIL": "orc@orc.local",
+        "GIT_COMMITTER_NAME": "orc",
+        "GIT_COMMITTER_EMAIL": "orc@orc.local",
+    }
+    subprocess.run(
+        ["git", "add", str(config_rel / "work")],
+        cwd=dev_wt,
+        check=True,
+        capture_output=True,
+    )
+    has_staged = (
+        subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=dev_wt,
+            capture_output=True,
+        ).returncode
+        != 0
+    )
+    if has_staged:
+        subprocess.run(
+            ["git", "commit", "-m", f"chore(orc): close task {Path(task_name).stem} (recovery)"],
+            cwd=dev_wt,
+            check=True,
+            capture_output=True,
+            env=git_env,
+        )
+
+
 def _merge_feature_into_dev(task_name: str) -> None:
     """Merge the feature branch into dev, close the task in board.yaml, and clean up.
 
@@ -217,14 +272,20 @@ def _merge_feature_into_dev(task_name: str) -> None:
             worktree=str(dev_wt),
             branch=branch,
         )
-        subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=dev_wt, check=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD"], cwd=dev_wt, check=True, capture_output=True
+        )
 
     cfg = _cfg.get()
     logger.info("merging feature into dev", feature_branch=branch, dev_branch=cfg.work_dev_branch)
-    subprocess.run(["git", "checkout", cfg.work_dev_branch], cwd=dev_wt, check=True)
+    subprocess.run(
+        ["git", "checkout", cfg.work_dev_branch], cwd=dev_wt, check=True, capture_output=True
+    )
     merge_result = subprocess.run(
         ["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} into {cfg.work_dev_branch}"],
         cwd=dev_wt,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     if merge_result.returncode != 0:
         status_output = _conflict_status(dev_wt)
@@ -245,11 +306,14 @@ def _merge_feature_into_dev(task_name: str) -> None:
         config_rel = Path(cfg.orc_dir.name)
     board_path = dev_wt / config_rel / "work" / "board.yaml"
     if board_path.exists():
-        subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)
+        subprocess.run(
+            ["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "-m", f"chore(orc): close task {Path(task_name).stem}"],
             cwd=dev_wt,
             check=True,
+            capture_output=True,
             env={
                 **os.environ,
                 "GIT_AUTHOR_NAME": "orc",
@@ -266,12 +330,15 @@ def _merge_feature_into_dev(task_name: str) -> None:
             ["git", "worktree", "remove", str(wt_path), "--force"],
             cwd=cfg.repo_root,
             check=True,
+            capture_output=True,
         )
 
-    subprocess.run(["git", "worktree", "prune"], cwd=cfg.repo_root, check=True)
+    subprocess.run(["git", "worktree", "prune"], cwd=cfg.repo_root, check=True, capture_output=True)
 
     logger.info("deleting feature branch", branch=branch)
-    subprocess.run(["git", "branch", "-D", branch], cwd=cfg.repo_root, check=True)
+    subprocess.run(
+        ["git", "branch", "-D", branch], cwd=cfg.repo_root, check=True, capture_output=True
+    )
 
 
 def _feature_has_commits_ahead_of_main(branch: str) -> bool:

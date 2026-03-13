@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import re as _re
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import structlog
 import typer
 
-import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
 from orc.git.conflict import ConflictResolutionFailed, ConflictResolver
@@ -79,23 +77,7 @@ def _do_close_board(task_name: str) -> None:
     logger.warning("crash recovery: closing board for merged branch", task=task_name)
     typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
     _git._close_task_on_board(task_name, dev_wt)
-    try:
-        config_rel = _cfg.get().orc_dir.relative_to(_cfg.get().repo_root)
-    except ValueError:
-        config_rel = Path(_cfg.get().orc_dir.name)
-    board_path = dev_wt / config_rel / "work" / "board.yaml"
-    if board_path.exists():
-        subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)
-        subprocess.run(
-            [
-                "git",
-                "commit",
-                "-m",
-                f"chore(orc): close task {Path(task_name).stem} (recovery)",
-            ],
-            cwd=dev_wt,
-            check=True,
-        )
+    _git._commit_board_recovery(task_name, dev_wt)
 
 
 def _make_context_builder(
