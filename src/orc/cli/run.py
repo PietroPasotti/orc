@@ -33,7 +33,11 @@ _DEV_AHEAD_REFRESH_INTERVAL = 30.0  # seconds between git queries
 
 
 def _run(
-    maxcalls: int = 1, dry_run: bool = False, squad: str = "default", no_tui: bool = False
+    maxcalls: int = 1,
+    dry_run: bool = False,
+    squad: str = "default",
+    no_tui: bool = False,
+    only_role: str | None = None,
 ) -> None:
     _check_env_or_exit()
 
@@ -43,6 +47,7 @@ def _run(
         maxcalls=maxcalls,
         dry_run=dry_run,
         squad=squad,
+        only_role=only_role,
     )
 
     use_tui = not no_tui and sys.stdout.isatty()
@@ -118,7 +123,7 @@ def _run(
         return
 
     try:
-        dispatcher = _disp.Dispatcher(squad_cfg, callbacks, dry_run=dry_run)
+        dispatcher = _disp.Dispatcher(squad_cfg, callbacks, dry_run=dry_run, only_role=only_role)
         if use_tui and state is not None:
             # Wrap get_messages to keep state.current_loop and state.dev_ahead
             # fresh; the Textual app reads from state on its own timer.
@@ -179,6 +184,16 @@ def run(
         bool,
         typer.Option("--no-tui", help="Disable the live TUI panel (use plain log output)."),
     ] = False,
+    agent: Annotated[
+        str | None,
+        typer.Option(
+            "--agent",
+            help=(
+                "Only dispatch agents with this role (coder, qa, or planner). "
+                "Work for other roles is left untouched."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run the workflow, invoking agents as needed.
 
@@ -200,4 +215,20 @@ def run(
                 f"Invalid value {maxcalls!r}: must be > 0 or 'UNLIMITED'.",
                 param_hint="--maxcalls",
             )
-    return _run(maxcalls=maxcalls_int, dry_run=dry_run, squad=squad, no_tui=no_tui)
+
+    only_role: str | None = None
+    if agent is not None:
+        from orc.squad import AgentRole
+
+        normalized = agent.strip().lower()
+        valid = {r.value for r in AgentRole}
+        if normalized not in valid:
+            raise typer.BadParameter(
+                f"Invalid agent role {agent!r}. Must be one of: {', '.join(sorted(valid))}.",
+                param_hint="--agent",
+            )
+        only_role = normalized
+
+    return _run(
+        maxcalls=maxcalls_int, dry_run=dry_run, squad=squad, no_tui=no_tui, only_role=only_role
+    )

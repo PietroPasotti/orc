@@ -199,10 +199,12 @@ class Dispatcher:
         callbacks: DispatchCallbacks,
         *,
         dry_run: bool = False,
+        only_role: str | None = None,
     ) -> None:
         self.squad = squad
         self.cb = callbacks
         self.dry_run = dry_run
+        self.only_role = only_role
         self.pool = AgentPool()
         self._id_counters: dict[str, int] = defaultdict(int)
         self._merge_queue: list[str] = []
@@ -327,10 +329,22 @@ class Dispatcher:
             # Check idle-complete: nothing running, nothing to dispatch.
             if not at_limit and self.pool.is_empty() and dispatched == 0:
                 self._set_orc_status("running", "checking pending work")
-                if not Dispatcher.has_pending_work(self.cb, messages):
+                # When only_role is set, we can't rely on has_pending_work
+                # because it checks all roles.  If nothing was dispatched for
+                # the filtered role, the workflow is done for that role.
+                if self.only_role is not None or not Dispatcher.has_pending_work(self.cb, messages):
                     self._set_orc_status("shutting down")
-                    logger.info("no pending work and pool empty — workflow complete")
-                    self._echo("\n✓ No pending work. Workflow complete.")
+                    if self.only_role is not None:
+                        logger.info(
+                            "no dispatchable work for filtered role — stopping",
+                            only_role=self.only_role,
+                        )
+                        self._echo(
+                            f"\n✓ No dispatchable work for --agent {self.only_role}. Stopping."
+                        )
+                    else:
+                        logger.info("no pending work and pool empty — workflow complete")
+                        self._echo("\n✓ No pending work. Workflow complete.")
                     break
 
             time.sleep(_POLL_INTERVAL)
@@ -341,6 +355,10 @@ class Dispatcher:
 
     def _dispatch(self, messages: list[dict], call_budget: int) -> int:
         """Spawn up to `call_budget` agents for all unassigned work.
+
+        When ``self.only_role`` is set, only agents matching that role are
+        dispatched; merge-queue bookkeeping and board operations (QA_PASSED,
+        CLOSE_BOARD) still run so the workflow state stays consistent.
 
         Return number spawned.
         """
@@ -356,6 +374,9 @@ class Dispatcher:
             else:
                 logger.warning("skipped dispatch call: maxcalls reached")
                 return 0
+
+        def _role_allowed(role: str) -> bool:
+            return self.only_role is None or self.only_role == role
 
         dispatched = 0
         open_tasks = self.cb.get_open_tasks()
@@ -379,7 +400,7 @@ class Dispatcher:
                     dispatched += 1
             if not self.cb.get_pending_visions():
                 return dispatched
-            if self.pool.count_by_role(AgentRole.PLANNER) == 0:
+            if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 dispatched += self._spawn_planner(messages)
             return dispatched
         else:
@@ -388,7 +409,8 @@ class Dispatcher:
             # this, all coder slots may sit idle waiting for the last remaining
             # task to finish before a new planner run creates more work.
             if (
-                len(open_tasks) < self.squad.count(AgentRole.CODER)
+                _role_allowed(AgentRole.PLANNER)
+                and len(open_tasks) < self.squad.count(AgentRole.CODER)
                 and self.cb.get_pending_visions()
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
@@ -411,7 +433,7 @@ class Dispatcher:
         # Check for soft-block: route one planner to resolve it.
         blocked_agent, blocked_state = self.cb.has_unresolved_block(messages)
         if blocked_agent and blocked_state == "soft-blocked":
-            if self.pool.count_by_role(AgentRole.PLANNER) == 0:
+            if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 self._resolving_soft_block = (blocked_agent, blocked_state)
                 agent_id = self._next_id(AgentRole.PLANNER)
                 dispatched += _spawn(
@@ -440,6 +462,9 @@ class Dispatcher:
                 continue
 
             if token not in (AgentRole.CODER, AgentRole.QA):
+                continue
+
+            if not _role_allowed(token):
                 continue
 
             # Check squad capacity for this role.

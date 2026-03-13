@@ -11,7 +11,7 @@ helpers on top of a ``dict[agent_id → AgentProcess]``.
 
 Log layout::
 
-    .orc/logs/agents/{agent_id}.log
+    .orc//{agent_id}.log
 
 One file per agent invocation; truncated (not appended) at each spawn so the
 log always contains only the most recent run.  The base directory comes from
