@@ -17,6 +17,7 @@ import orc.git.core as _git
 from orc.cli import app
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
 from orc.engine.state_machine import LastCommit as _LastCommit
+from orc.engine.work import Work
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, load_squad
 
@@ -92,29 +93,39 @@ def _unmerged_feature_branches() -> list[str]:
 _pending_reviews = _unmerged_feature_branches
 
 
-def _get_wip_branches() -> list[str]:
+def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
     """Return feature branches where the coder has made their exit commit.
 
     These branches have a ``chore(coder-N.done.NNNN):`` tip commit — the coder
     is finished but QA has not yet run.  They represent work *in progress*
     (awaiting review) from the dispatcher's perspective.
+
+    When *branches* is provided, it is used instead of calling
+    :func:`_unmerged_feature_branches`, avoiding a redundant git query.
     """
+    if branches is None:
+        branches = _unmerged_feature_branches()
     result = []
-    for branch in _unmerged_feature_branches():
+    for branch in branches:
         last_msg = _git._last_feature_commit_message(branch)
         if _git._classify_last_commit(last_msg) == _LastCommit.CODER_DONE:
             result.append(branch)
     return result
 
 
-def _get_approved_branches() -> list[str]:
+def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
     """Return feature branches that QA has approved and are ready to merge.
 
     These branches have a ``chore(qa-N.approve.NNNN):`` tip commit — QA passed
     and the branch should be merged into dev.
+
+    When *branches* is provided, it is used instead of calling
+    :func:`_unmerged_feature_branches`, avoiding a redundant git query.
     """
     result = []
-    for branch in _unmerged_feature_branches():
+    if branches is None:
+        branches = _unmerged_feature_branches()
+    for branch in branches:
         last_msg = _git._last_feature_commit_message(branch)
         if _git._classify_last_commit(last_msg) == _LastCommit.QA_PASSED:
             result.append(branch)
@@ -136,7 +147,17 @@ def _dev_log_since_main() -> list[str]:
 
 def _status(squad: str = "default") -> None:
     messages = tg.get_messages()
+
+    # Build a single work snapshot — used for all display decisions below.
     blocked_agent, blocked_state = _wf._has_unresolved_block(messages)
+    stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
+    work = Work(
+        open_tasks=_board.get_open_tasks(),
+        open_visions=_pending_visions(),
+        open_todos_and_fixmes=_ctx._scan_todos(_cfg.get().repo_root),
+        open_PRs=_pending_reviews(),
+        stalled_agents=stalled,
+    )
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
@@ -154,8 +175,9 @@ def _status(squad: str = "default") -> None:
         )
 
     # --- Hard block warning --------------------------------------------------
-    if blocked_agent and blocked_state == "blocked":
-        typer.echo(f"\n⛔ Hard block: {blocked_agent} is waiting for human intervention.")
+    if work.hard_blocked:
+        hard_agent, _ = work.hard_blocked
+        typer.echo(f"\n⛔ Hard block: {hard_agent} is waiting for human intervention.")
 
     # --- dev vs main ---------------------------------------------------------
     ahead = _dev_ahead_of_main()
@@ -172,7 +194,7 @@ def _status(squad: str = "default") -> None:
         coder_tasks: list[tuple[str, str]] = []
         qa_tasks: list[tuple[str, str]] = []
         merge_pending: list[str] = []
-        for task in _board.get_open_tasks():
+        for task in work.open_tasks:
             name = task["name"]
             token, reason = _git._derive_task_state(name)
             if token == AgentRole.CODER:
@@ -182,21 +204,11 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
-        # FIXME: we should probably fold the 'agent is soft-blocked' case in the Work dataclass:
-        #  that's work which the planner could pick up just like refining visions and todos.
-        #  Something like:
-        #   _planner_pending_work = []
-        #   if work.planner.has_open_visions():
-        #       _planner_pending_work.append("X visions pending")
-        #   if work.planner.agents_soft_blocked():
-        #       _planner_pending_work.append("X agents need help")
-        #   if work.planner.todos_and_fixmes():
-        #       _planner_pending_work.append("X todos and fixmes pending")
-        #   planner_note = ", ".join(_planner_pending_work) if _planner_pending_work else "idle"
-        if not _board.has_open_work():
+        if not work.open_tasks:
             planner_note = "ready to plan  (board empty)"
-        elif blocked_agent and blocked_state == "soft-blocked":
-            planner_note = f"ready to clarify soft-block from {blocked_agent}"
+        elif work.soft_blocked:
+            soft_agent, _ = work.soft_blocked
+            planner_note = f"ready to clarify soft-block from {soft_agent}"
         else:
             planner_note = "idle"
 
@@ -246,12 +258,11 @@ def _status(squad: str = "default") -> None:
 
     # --- Board summary -------------------------------------------------------
     board = _board._read_board()
-    open_tasks = board.get("open", [])
     done_tasks = board.get("done", [])
 
-    if open_tasks:
+    if work.open_tasks:
         typer.echo("\nPending tasks:")
-        for task in open_tasks:
+        for task in work.open_tasks:
             name = task["name"] if isinstance(task, dict) else str(task)
             branch = _git._feature_branch(name)
             if _git._feature_branch_exists(branch):
@@ -261,15 +272,14 @@ def _status(squad: str = "default") -> None:
                 typer.echo(f"  • {name}  (no branch yet)")
 
     # --- Pending visions -----------------------------------------------------
-    visions = _pending_visions()
-    if visions:
-        shown = visions[:5]
-        typer.echo(f"\nPending visions ({len(shown)} of {len(visions)}):")
+    if work.open_visions:
+        shown = work.open_visions[:5]
+        typer.echo(f"\nPending visions ({len(shown)} of {len(work.open_visions)}):")
         for v in shown:
             typer.echo(f"  📄 {v}")
 
     # --- Branches awaiting QA review -----------------------------------------
-    wip = _get_wip_branches()
+    wip = _get_wip_branches(work.open_PRs)
     if wip:
         shown_w = wip[:5]
         typer.echo(f"\nAwaiting review ({len(shown_w)} of {len(wip)}):")
@@ -278,7 +288,7 @@ def _status(squad: str = "default") -> None:
             typer.echo(f"  🔍 {branch}  last: {last}")
 
     # --- Branches approved by QA, pending merge ------------------------------
-    approved = _get_approved_branches()
+    approved = _get_approved_branches(work.open_PRs)
     if approved:
         shown_a = approved[:5]
         typer.echo(f"\nApproved, pending merge ({len(shown_a)} of {len(approved)}):")

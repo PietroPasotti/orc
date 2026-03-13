@@ -27,6 +27,9 @@ class StubBoard:
     def get_pending_reviews(self) -> list[str]:
         return []
 
+    def scan_todos(self) -> list[dict]:
+        return []
+
 
 class StubWorktree:
     def ensure_feature_worktree(self, task_name: str) -> Path:

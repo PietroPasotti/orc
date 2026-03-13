@@ -24,7 +24,6 @@ class TestStatusCoverage:
         squad_cfg=None,
         open_tasks=None,
         done_tasks=None,
-        has_open_work=False,
         ahead=0,
         dev_log=None,
         derive_task_state=None,
@@ -44,12 +43,14 @@ class TestStatusCoverage:
             monkeypatch.setattr(_st, "load_squad", lambda n, orc_dir: squad_cfg)
         open_dicts = [{"name": t} if isinstance(t, str) else t for t in (open_tasks or [])]
         monkeypatch.setattr(_st._board, "get_open_tasks", lambda: open_dicts)
-        monkeypatch.setattr(_st._board, "has_open_work", lambda: has_open_work)
         monkeypatch.setattr(
             _st._board,
             "_read_board",
             lambda: {"open": open_dicts, "done": done_tasks or []},
         )
+        monkeypatch.setattr(_st, "_pending_visions", lambda: [])
+        monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
+        monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
         monkeypatch.setattr(_st, "_dev_log_since_main", lambda: dev_log or [])
         if derive_task_state:
@@ -115,7 +116,6 @@ class TestStatusCoverage:
         self._setup(
             monkeypatch,
             squad_cfg=squad,
-            has_open_work=False,
             ahead=2,
             dev_log=["abc feat: done", "def fix: merged"],
             done_tasks=[{"name": "0001-foo.md", "commit-tag": "v1", "timestamp": "2024-01-01"}],
@@ -132,7 +132,6 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             blocked=("coder-1", "blocked"),
-            has_open_work=True,
             ahead=0,
         )
         result = runner.invoke(m.app, ["status"])
@@ -146,7 +145,6 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             blocked=("coder-1", "soft-blocked"),
-            has_open_work=True,
             ahead=0,
         )
         _st._status()
@@ -167,7 +165,6 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             open_tasks=["0001-foo.md", "0002-bar.md", "0003-baz.md"],
-            has_open_work=True,
             derive_task_state=derive,
             feature_branch=lambda name: f"feat-{name}",
             feature_branch_exists=True,
@@ -184,7 +181,6 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             open_tasks=["0001-foo.md"],
-            has_open_work=True,
             derive_task_state=lambda name: ("coder", "r"),
             feature_branch=lambda name: "feat-foo",
             feature_branch_exists=False,
@@ -200,10 +196,6 @@ class TestStatusCoverage:
         assert "1 commits" not in result.output
 
     def test_status_planner_idle_with_open_work(self, tmp_path, monkeypatch):
-        squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
-        )
-        self._setup(monkeypatch, squad_cfg=squad, has_open_work=True, blocked=(None, None), ahead=0)
         _st._status()
 
     def test_status_merge_pending(self, tmp_path, monkeypatch):
@@ -215,7 +207,6 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             open_tasks=["0001-foo.md"],
-            has_open_work=True,
             derive_task_state=lambda name: (QA_PASSED, "r"),
             feature_branch=lambda name: "feat-foo",
             feature_branch_exists=False,

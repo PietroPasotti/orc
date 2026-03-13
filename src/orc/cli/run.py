@@ -23,6 +23,7 @@ from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
 from orc.engine import dispatcher as _disp
 from orc.engine.pool import AgentProcess
+from orc.engine.work import Work
 from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
@@ -53,6 +54,9 @@ class _BoardSvc:
 
     def get_pending_reviews(self) -> list[str]:
         return _status_mod._pending_reviews()
+
+    def scan_todos(self) -> list[dict]:
+        return _ctx._scan_todos(_cfg.get().repo_root)
 
 
 class _WorktreeSvc:
@@ -196,7 +200,16 @@ def _run(
             on_orc_status=_on_orc_status,
         )
 
-    if not _disp.Dispatcher.has_pending_work(board_svc, messaging_svc, messages):
+    blocked_agent, blocked_state = messaging_svc.has_unresolved_block(messages)
+    stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
+    initial_work = Work(
+        open_tasks=board_svc.get_open_tasks(),
+        open_visions=board_svc.get_pending_visions(),
+        open_todos_and_fixmes=board_svc.scan_todos(),
+        open_PRs=board_svc.get_pending_reviews(),
+        stalled_agents=stalled,
+    )
+    if not initial_work.any_work():
         typer.echo("No pending work. Go write some vision!")
         return
 

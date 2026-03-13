@@ -69,12 +69,20 @@ def _minimal_squad(**kw) -> SquadConfig:
 class _FakeBoard:
     """Mutable fake for BoardService — override attributes freely in tests."""
 
-    def __init__(self, *, get_open_tasks=None, get_pending_visions=None, get_pending_reviews=None):
+    def __init__(
+        self,
+        *,
+        get_open_tasks=None,
+        get_pending_visions=None,
+        get_pending_reviews=None,
+        scan_todos=None,
+    ):
         self.get_open_tasks = get_open_tasks or (lambda: [])
         self.assign_task = lambda task, agent: None
         self.unassign_task = lambda task: None
         self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
         self.get_pending_reviews = get_pending_reviews or (lambda: [])
+        self.scan_todos = scan_todos or (lambda: [])
 
 
 class _FakeWorktree:
@@ -127,6 +135,7 @@ def _make_services(
     wait_for_human_reply=None,
     get_pending_visions=None,
     get_pending_reviews=None,
+    scan_todos=None,
 ):
     """Return a SimpleNamespace of fully-wired fake services for Dispatcher tests."""
     import types
@@ -140,6 +149,7 @@ def _make_services(
             get_open_tasks=get_open_tasks,
             get_pending_visions=get_pending_visions,
             get_pending_reviews=get_pending_reviews,
+            scan_todos=scan_todos,
         ),
         worktree=_FakeWorktree(tmp_path),
         messaging=_FakeMessaging(
@@ -164,6 +174,11 @@ def _make_dispatcher(squad, svcs, *, dry_run: bool = False, only_role=None, hook
         dry_run=dry_run,
         only_role=only_role,
     )
+
+
+def _setup_work(d: Dispatcher) -> None:
+    """Populate d.work from its callbacks (simulates one loop cycle refresh)."""
+    d.work = d._refresh_work([])
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +534,7 @@ class TestDispatcherCoverage:
         svcs = _make_services(tmp_path, get_open_tasks=lambda: [{"name": "0001-foo.md"}])
         svcs.messaging.has_unresolved_block = lambda msgs: ("coder-1", "soft-blocked")
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         count = d._dispatch([], 100)
         assert count >= 1
 
@@ -530,6 +546,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: ("coder", "reason"),
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         count = d._dispatch([], 100)
         assert count == 0
 
@@ -543,6 +560,7 @@ class TestDispatcherCoverage:
         )
         svcs.workflow.do_close_board = lambda t: closed.append(t)
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         d._dispatch([], 100)
         assert "0001-foo.md" in closed
 
@@ -554,6 +572,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: ("unknown_token", "reason"),
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         assert d._dispatch([], 1000) == 0
 
     def test_dispatch_skips_when_role_at_capacity(self, tmp_path):
@@ -564,6 +583,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: ("coder", "reason"),
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         d.pool.add(_make_agent(tmp_path, role="coder"))  # coder-1 already running
         assert d._dispatch([], 1000) == 0
 
@@ -651,6 +671,7 @@ class TestDispatcherCoverage:
             derive_task_state=lambda t: (QA_PASSED, "qa passed"),
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         d._dispatch([], 100)
         assert "0001-foo.md" in d._merge_queue
 
@@ -708,44 +729,57 @@ class TestDispatcherCoverage:
 
 
 class TestDispatcherInternalCoverage:
-    def test_has_pending_work_open_tasks_returns_true(self, tmp_path):
-        """has_pending_work returns True when open tasks exist."""
-        svcs = _make_services(
-            tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
-        )
-        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
+    def test_any_work_open_tasks_returns_true(self, tmp_path):
+        """Work.any_work() returns True when open tasks exist."""
+        from orc.engine.work import Work
 
-    def test_has_pending_work_blocked_returns_true(self, tmp_path):
-        """has_pending_work returns True when blocked agent exists."""
-        svcs = _make_services(
-            tmp_path,
-            get_open_tasks=lambda: [],
+        w = Work(
+            open_tasks=[{"name": "0001-foo.md"}],
+            open_visions=[],
+            open_todos_and_fixmes=[],
+            open_PRs=[],
+            stalled_agents=[],
         )
-        svcs.messaging.has_unresolved_block = lambda msgs: ("agent-42", "blocked")
-        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
+        assert w.any_work() is True
 
-    def test_has_pending_work_no_work_returns_false(self, tmp_path):
-        """has_pending_work returns False when nothing pending."""
-        svcs = _make_services(
-            tmp_path,
-            get_open_tasks=lambda: [],
-            get_pending_visions=lambda: [],
-            get_pending_reviews=lambda: [],
-        )
-        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
-        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is False
+    def test_any_work_stalled_agents_returns_true(self, tmp_path):
+        """Work.any_work() returns True when a blocked agent exists."""
+        from orc.engine.work import Work
 
-    def test_has_pending_work_pending_reviews_returns_true(self, tmp_path):
-        """has_pending_work returns True when unmerged feat/* branches exist."""
-        svcs = _make_services(
-            tmp_path,
-            get_open_tasks=lambda: [],
-            get_pending_visions=lambda: [],
-            get_pending_reviews=lambda: ["feat/0001-foo"],
+        w = Work(
+            open_tasks=[],
+            open_visions=[],
+            open_todos_and_fixmes=[],
+            open_PRs=[],
+            stalled_agents=[("agent-42", "blocked")],
         )
-        svcs.messaging.has_unresolved_block = lambda msgs: (None, None)
-        assert Dispatcher.has_pending_work(svcs.board, svcs.messaging, []) is True
+        assert w.any_work() is True
+
+    def test_any_work_no_work_returns_false(self, tmp_path):
+        """Work.any_work() returns False when nothing pending."""
+        from orc.engine.work import Work
+
+        w = Work(
+            open_tasks=[],
+            open_visions=[],
+            open_todos_and_fixmes=[],
+            open_PRs=[],
+            stalled_agents=[],
+        )
+        assert w.any_work() is False
+
+    def test_any_work_pending_reviews_returns_true(self, tmp_path):
+        """Work.any_work() returns True when unmerged feat/* branches exist."""
+        from orc.engine.work import Work
+
+        w = Work(
+            open_tasks=[],
+            open_visions=[],
+            open_todos_and_fixmes=[],
+            open_PRs=["feat/0001-foo"],
+            stalled_agents=[],
+        )
+        assert w.any_work() is True
 
     def test_kill_all_and_unassign(self, tmp_path):
         """Lines 493-496: _kill_all_and_unassign unassigns tasks and kills agents."""
@@ -789,6 +823,7 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         result = d._dispatch([], 100)
         assert result == 0
 
@@ -802,6 +837,7 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         result = d._dispatch([], 100)
         assert result == 0  # merge-queue additions don't count as agent spawns
         assert "0001-foo.md" in d._merge_queue
@@ -816,9 +852,24 @@ class TestDispatcherInternalCoverage:
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
         d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
         d._dispatch([], 100)
         d._dispatch([], 100)
         assert d._merge_queue.count("0001-foo.md") == 1
+
+    def test_dispatch_queues_open_prs_when_tasks_also_present(self, tmp_path, monkeypatch):
+        """open_PRs are queued for merge even when open_tasks is non-empty (lines 453-459)."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = _make_services(
+            tmp_path,
+            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_pending_reviews=lambda: ["feat/0001-foo"],
+            derive_task_state=lambda t: ("coder", "no prior work"),
+        )
+        d = _make_dispatcher(_minimal_squad(), svcs)
+        _setup_work(d)
+        d._dispatch([], 100)
+        assert "0001-foo.md" in d._merge_queue
 
     def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
         """run() logs workflow-complete and exits when nothing to dispatch (lines 299-301)."""
@@ -977,6 +1028,7 @@ class TestProactivePlanner:
         # Squad with 2 coders so that 1 open task < 2 triggers the proactive path.
         squad = _minimal_squad(coder=2)
         d = _make_dispatcher(squad, svcs)
+        _setup_work(d)
         d._dispatch([], 100)
 
         # Should have spawned 1 coder + 1 planner
@@ -994,6 +1046,7 @@ class TestProactivePlanner:
         # 2 open tasks, 2 coders → at capacity, no proactive planner
         squad = _minimal_squad(coder=2)
         d = _make_dispatcher(squad, svcs)
+        _setup_work(d)
         d._dispatch([], 100)
 
         pool_roles = [a.role for a in d.pool.all_agents()]
@@ -1009,6 +1062,7 @@ class TestProactivePlanner:
         )
         squad = _minimal_squad(coder=2)
         d = _make_dispatcher(squad, svcs)
+        _setup_work(d)
         d._dispatch([], 100)
 
         pool_roles = [a.role for a in d.pool.all_agents()]
@@ -1024,6 +1078,7 @@ class TestProactivePlanner:
         )
         squad = _minimal_squad(coder=2)
         d = _make_dispatcher(squad, svcs)
+        _setup_work(d)
         # Pre-populate pool with a planner.
         d.pool.add(_make_agent(tmp_path, role="planner", task=""))
         d._dispatch([], 100)
@@ -1067,6 +1122,7 @@ class TestDispatchBudgetExhaustion:
         # Squad allows 2 coders, but budget is capped at 1.
         squad = _minimal_squad(coder=2)
         d = _make_dispatcher(squad, svcs)
+        _setup_work(d)
         count = d._dispatch([], call_budget=1)
         assert count == 1
         assert len(d.pool.all_agents()) == 1
@@ -1089,6 +1145,7 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs, only_role="coder")
+        _setup_work(d)
         count = d._dispatch([], call_budget=10)
         assert count == 0
         assert d.pool.is_empty()
@@ -1102,6 +1159,7 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs, only_role="planner")
+        _setup_work(d)
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1120,6 +1178,7 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs, only_role="coder")
+        _setup_work(d)
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1137,6 +1196,7 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs, only_role="qa")
+        _setup_work(d)
         count = d._dispatch([], call_budget=10)
         assert count == 1
         agents = d.pool.all_agents()
@@ -1154,6 +1214,7 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
         )
         d = _make_dispatcher(_minimal_squad(), svcs, only_role=None)
+        _setup_work(d)
         count = d._dispatch([], call_budget=10)
         assert count == 2
         roles = {a.role for a in d.pool.all_agents()}

@@ -41,10 +41,8 @@ class TestRunBareRaise:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
         monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
+        monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-        monkeypatch.setattr(
-            _disp.Dispatcher, "has_pending_work", staticmethod(lambda board, messaging, msgs: True)
-        )
 
         def boom(*a, **kw):
             raise RuntimeError("crashed")
@@ -66,11 +64,8 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
     monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-    monkeypatch.setattr(
-        _disp.Dispatcher,
-        "has_pending_work",
-        staticmethod(lambda board, messaging, msgs: True),
-    )
+    # Return a non-empty task list so initial_work.any_work() is True.
+    monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
     if dispatcher_run is not None:
         monkeypatch.setattr(_disp.Dispatcher, "run", dispatcher_run)
     else:
@@ -212,11 +207,10 @@ class TestTuiPath:
 
 class TestEarlyExit:
     def test_no_pending_work_skips_dispatcher(self, tmp_path, monkeypatch):
-        """_run() exits early without creating a Dispatcher when has_pending_work is False."""
+        """_run() exits early without creating a Dispatcher when no work."""
         _patch_run_deps(monkeypatch, tmp_path)
-        monkeypatch.setattr(
-            _disp.Dispatcher, "has_pending_work", staticmethod(lambda board, messaging, msgs: False)
-        )
+        # Override get_open_tasks to return nothing so all work sources are empty.
+        monkeypatch.setattr(_board, "get_open_tasks", lambda: [])
         dispatcher_run_called = []
         monkeypatch.setattr(
             _disp.Dispatcher, "run", lambda self, **kw: dispatcher_run_called.append(True)

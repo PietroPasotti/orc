@@ -69,6 +69,7 @@ from orc.engine.services import (
     WorkflowService,
     WorktreeService,
 )
+from orc.engine.work import Work
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, SquadConfig
 
@@ -167,6 +168,7 @@ class Dispatcher:
         self._merge_queue: list[str] = []
         self._total_spawned = 0
         self._loop_count: int = 0
+        self.work: Work = Work([], [], [], [], [])
         # Soft-block tracking: when a planner is dispatched to resolve one
         # we record (blocked_agent_id, blocked_state) so we can post [orc](resolved).
         self._resolving_soft_block: tuple[str, str] | None = None
@@ -178,6 +180,23 @@ class Dispatcher:
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
+
+    def _refresh_work(self, messages: list[dict]) -> Work:
+        """Build a fresh :class:`Work` snapshot from the current callbacks.
+
+        Called once at the top of every dispatch cycle so that the rest of
+        the cycle can read ``self.work`` instead of re-querying board,
+        git, and the file-system on every decision point.
+        """
+        blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
+        stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
+        return Work(
+            open_tasks=self.board.get_open_tasks(),
+            open_visions=self.board.get_pending_visions(),
+            open_todos_and_fixmes=self.board.scan_todos(),
+            open_PRs=self.board.get_pending_reviews(),
+            stalled_agents=stalled,
+        )
 
     def _set_orc_status(self, status: str, task: str | None = None) -> None:
         """Update the orchestrator card via the optional callback."""
@@ -251,13 +270,17 @@ class Dispatcher:
             for agent in self.pool.check_watchdog(timeout_sec):
                 self._handle_watchdog(agent)
 
-            # 4. Check for hard-blocked state (pauses all new dispatches).
-            blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
-            if blocked_agent and blocked_state == "blocked":
+            # 4. Build a fresh work snapshot for this cycle.
+            self.work = self._refresh_work(messages)
+
+            # 5. Check for hard-blocked state (pauses all new dispatches).
+            if self.work.hard_blocked:
+                blocked_agent, _ = self.work.hard_blocked
                 self._handle_hard_block(blocked_agent, messages)
                 messages = self.messaging.get_messages()
+                self.work = self._refresh_work(messages)
 
-            # 5. Dispatch new agents (skip when the call limit is already reached).
+            # 6. Dispatch new agents (skip when the call limit is already reached).
             at_limit = self._total_spawned >= maxcalls
             if not at_limit:
                 if not self.dry_run or self._total_spawned == 0:
@@ -269,7 +292,7 @@ class Dispatcher:
             else:
                 dispatched = 0
 
-            # 6. Check termination.
+            # 7. Check termination.
             if self.dry_run:
                 logger.info("dry-run mode: printed one cycle, stopping")
                 break
@@ -286,12 +309,10 @@ class Dispatcher:
             # Check idle-complete: nothing running, nothing to dispatch.
             if not at_limit and self.pool.is_empty() and dispatched == 0:
                 self._set_orc_status("running", "checking pending work")
-                # When only_role is set, we can't rely on has_pending_work
+                # When only_role is set, we can't rely on any_work()
                 # because it checks all roles.  If nothing was dispatched for
                 # the filtered role, the workflow is done for that role.
-                if self.only_role is not None or not Dispatcher.has_pending_work(
-                    self.board, self.messaging, messages
-                ):
+                if self.only_role is not None or not self.work.any_work():
                     self._set_orc_status("shutting down")
                     if self.only_role is not None:
                         logger.info(
@@ -314,6 +335,10 @@ class Dispatcher:
 
     def _dispatch(self, messages: list[dict], call_budget: int) -> int:
         """Spawn up to `call_budget` agents for all unassigned work.
+
+        Reads pending work from ``self.work`` (populated by ``_refresh_work``
+        at the top of each cycle) rather than re-querying board/git on every
+        decision point.
 
         When ``self.only_role`` is set, only agents matching that role are
         dispatched; merge-queue bookkeeping and board operations (QA_PASSED,
@@ -338,15 +363,13 @@ class Dispatcher:
             return self.only_role is None or self.only_role == role
 
         dispatched = 0
-        open_tasks = self.board.get_open_tasks()
 
-        if not open_tasks:
+        if not self.work.open_tasks:
             # No open tasks — queue any unmerged feat/* branches for merge
-            # and/or dispatch a planner for unplanned vision docs.
+            # and/or dispatch a planner for unplanned vision docs / TODOs.
             # _do_merge handles clean merges automatically; a coder is only
             # spawned if there are conflicts.
-            pending_reviews = self.board.get_pending_reviews()
-            for branch in pending_reviews:
+            for branch in self.work.open_PRs:
                 # Convert branch name → task name.
                 # With a branch prefix (e.g. "orc"), branches look like
                 # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
@@ -356,7 +379,7 @@ class Dispatcher:
                 task_name = task_stem + ".md"
                 if task_name not in self._merge_queue:
                     self._merge_queue.append(task_name)
-            if not self.board.get_pending_visions():
+            if not self.work.has_planner_work:
                 return dispatched
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 dispatched += self._spawn_planner(messages)
@@ -368,14 +391,13 @@ class Dispatcher:
             # task to finish before a new planner run creates more work.
             if (
                 _role_allowed(AgentRole.PLANNER)
-                and len(open_tasks) < self.squad.count(AgentRole.CODER)
-                and self.board.get_pending_visions()
+                and len(self.work.open_tasks) < self.squad.count(AgentRole.CODER)
+                and self.work.has_planner_work
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
                 dispatched += _spawn(lambda: self._spawn_planner(messages))
 
-        pending_reviews = self.board.get_pending_reviews()
-        for branch in pending_reviews:
+        for branch in self.work.open_PRs:
             # Convert branch name → task name.
             # With a branch prefix (e.g. "orc"), branches look like
             # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
@@ -388,8 +410,8 @@ class Dispatcher:
                 self._merge_queue.append(task_name)
 
         # Check for soft-block: route one planner to resolve it.
-        blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
-        if blocked_agent and blocked_state == "soft-blocked":
+        if self.work.soft_blocked:
+            blocked_agent, blocked_state = self.work.soft_blocked
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
                 self._resolving_soft_block = (blocked_agent, blocked_state)
                 agent_id = self._next_id(AgentRole.PLANNER)
@@ -399,7 +421,7 @@ class Dispatcher:
             return dispatched
 
         # Dispatch coder/QA for each unassigned task up to squad capacity.
-        for task in open_tasks:
+        for task in self.work.open_tasks:
             task_name = task["name"] if isinstance(task, dict) else str(task)
             assigned_to = task.get("assigned_to") if isinstance(task, dict) else None
 
@@ -608,27 +630,6 @@ class Dispatcher:
         # Post [orc](resolved) so _has_unresolved_block returns (None, None) on
         # the next cycle instead of seeing the block as still active.
         self.messaging.post_resolved(blocked_agent_id, "blocked", "human-reply")
-
-    # ------------------------------------------------------------------
-    # Idle / done detection
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def has_pending_work(
-        board: BoardService, messaging: MessagingService, messages: list[dict]
-    ) -> bool:
-        """Return True if there is any work that *could* be dispatched next cycle.
-
-        Exposed as a public static method so callers (e.g. ``orc run``) can
-        perform an early-exit check before entering the dispatch loop.
-        """
-        if board.get_open_tasks():
-            return True
-        if board.get_pending_visions() or board.get_pending_reviews():
-            return True
-        # Check if blocked: hard-blocked means work exists but is stalled.
-        blocked_agent, _ = messaging.has_unresolved_block(messages)
-        return blocked_agent is not None
 
     # ------------------------------------------------------------------
     # Graceful shutdown

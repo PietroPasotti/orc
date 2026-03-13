@@ -51,6 +51,10 @@ class BoardService(Protocol):
         """Return feat/* branches not yet merged into dev."""
         ...
 
+    def scan_todos(self) -> list[dict]:
+        """Return TODO/FIXME comment dicts from the repository source."""
+        ...
+
 
 @runtime_checkable
 class WorktreeService(Protocol):
