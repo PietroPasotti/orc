@@ -39,7 +39,7 @@ class TestLoggerCoverage:
         """ORC_LOG_FILE overrides ORC_LOG_DIR when both are set."""
         log_file = tmp_path / "explicit.log"
         log_dir = tmp_path / "dir"
-        log_dir.mkdir()
+        log_dir.mkdir(exist_ok=True)
         monkeypatch.setenv("ORC_LOG_FILE", str(log_file))
         monkeypatch.setenv("ORC_LOG_DIR", str(log_dir))
         _log.setup()

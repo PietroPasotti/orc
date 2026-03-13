@@ -34,6 +34,7 @@ Reusable fixtures
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace as _replace
 from pathlib import Path
 
 import pytest
@@ -128,13 +129,20 @@ def orc_env(git_project, monkeypatch):
     # Mirror the default DEV_WORKTREE convention (sibling of repo root)
     dev_wt = root.parent / f"{root.name}-dev"
 
-    monkeypatch.setattr(_cfg, "REPO_ROOT", root)
-    monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
-    monkeypatch.setattr(_cfg, "WORK_DIR", agents_dir / "work")
-    monkeypatch.setattr(_cfg, "BOARD_FILE", agents_dir / "work" / "board.yaml")
-    monkeypatch.setattr(_cfg, "ROLES_DIR", agents_dir / "roles")
-    monkeypatch.setattr(_cfg, "ENV_FILE", root / ".env")
-    monkeypatch.setattr(_cfg, "DEV_WORKTREE", dev_wt)
+    monkeypatch.setattr(
+        _cfg,
+        "_config",
+        _replace(
+            _cfg.get(),
+            repo_root=root,
+            agents_dir=agents_dir,
+            work_dir=agents_dir / "work",
+            board_file=agents_dir / "work" / "board.yaml",
+            roles_dir=agents_dir / "roles",
+            env_file=root / ".env",
+            dev_worktree=dev_wt,
+        ),
+    )
 
     return root
 

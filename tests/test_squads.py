@@ -1,5 +1,7 @@
 """Tests for orc/cli/squads.py."""
 
+from dataclasses import replace as _replace
+
 from typer.testing import CliRunner
 
 import orc.config as _cfg
@@ -19,7 +21,7 @@ class TestSquadsCommand:
 
     def test_squads_with_profiles(self, tmp_path, monkeypatch):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "test.yaml").write_text(
             "name: test\ndescription: A test squad.\n"
             "composition:\n"
@@ -28,7 +30,7 @@ class TestSquadsCommand:
             "  - role: qa\n    count: 1\n"
             "timeout_minutes: 120\n"
         )
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         result = runner.invoke(m.app, ["squads"])
         assert result.exit_code == 0
         assert "test" in result.output

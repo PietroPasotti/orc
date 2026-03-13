@@ -1,5 +1,6 @@
 """Tests for orc/workflow.py."""
 
+from dataclasses import replace as _replace
 from unittest.mock import patch
 
 from conftest import make_msg
@@ -224,12 +225,13 @@ class TestWorkflowCoverage:
 
         import orc.engine.workflow as _wf
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
 
         dev_wt = tmp_path / "dev"
         orc_work = dev_wt / ".orc" / "work"
-        orc_work.mkdir(parents=True)
+        orc_work.mkdir(parents=True, exist_ok=True)
         (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
 
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
@@ -256,15 +258,16 @@ class TestWorkflowCoverage:
         import orc.engine.workflow as _wf
 
         repo_root = tmp_path / "repo"
-        repo_root.mkdir()
+        repo_root.mkdir(exist_ok=True)
         agents_dir = tmp_path / "other" / ".orc"
-        agents_dir.mkdir(parents=True)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
-        monkeypatch.setattr(_cfg, "REPO_ROOT", repo_root)
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=agents_dir, repo_root=repo_root)
+        )
 
         dev_wt = tmp_path / "dev"
         orc_work = dev_wt / ".orc" / "work"
-        orc_work.mkdir(parents=True)
+        orc_work.mkdir(parents=True, exist_ok=True)
         (orc_work / "board.yaml").write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
 
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)

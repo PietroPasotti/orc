@@ -2,6 +2,7 @@
 
 import subprocess
 import time
+from dataclasses import replace as _replace
 
 from conftest import make_msg
 
@@ -19,27 +20,43 @@ class TestBootMessageBody:
     def test_single_open_task(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        )
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md."
 
     def test_multiple_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        )
         assert _ctx._boot_message_body() == "picking up work/0002-foo.md, work/0003-bar.md."
 
     def test_no_open_tasks(self, tmp_path, monkeypatch):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen: []\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        )
         assert _ctx._boot_message_body() == "no open tasks on board."
 
     def test_missing_board(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "nonexistent.yaml")
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                board_file=tmp_path / "nonexistent.yaml",
+                dev_worktree=tmp_path / "dev-wt",
+            ),
+        )
         assert _ctx._boot_message_body() == "no open tasks on board."
 
 
@@ -192,23 +209,24 @@ class TestWaitForHumanReply:
 
 class TestContextCoverage:
     def test_read_adrs_empty_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
         result = _ctx._read_adrs()
         assert result == "_No ADRs found._"
 
     def test_read_adrs_with_files(self, tmp_path, monkeypatch):
         adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True)
+        adr_dir.mkdir(parents=True, exist_ok=True)
         (adr_dir / "001-decision.md").write_text("# ADR 001\n\nSome decision.")
         (adr_dir / "README.md").write_text("# ADRs index")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
         result = _ctx._read_adrs()
         assert "001-decision.md" in result
         assert "README.md" not in result
 
     def test_parse_role_file_missing_returns_default(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "ROLES_DIR", tmp_path / "roles")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=tmp_path / "roles"))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("wizard")
         assert "wizard" in result
@@ -217,11 +235,11 @@ class TestContextCoverage:
         """Directory format: _main.md loaded first, then remaining files alphabetically."""
         roles_dir = tmp_path / "roles"
         role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True)
+        role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nIdentity section.")
         (role_dir / "constraints.md").write_text("Constraints section.")
         (role_dir / "exit-states.md").write_text("Exit states section.")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "Identity section." in result
@@ -235,10 +253,10 @@ class TestContextCoverage:
         """When both directory and .md file exist, directory wins."""
         roles_dir = tmp_path / "roles"
         role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True)
+        role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("Directory version.")
         (roles_dir / "coder.md").write_text("Flat file version.")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "Directory version." in result
@@ -248,8 +266,8 @@ class TestContextCoverage:
         """Empty directory returns a fallback string."""
         roles_dir = tmp_path / "roles"
         role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True)
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        role_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "coder" in result
@@ -258,12 +276,12 @@ class TestContextCoverage:
         """Project-level directory overrides package-level flat file."""
         roles_dir = tmp_path / "roles"
         role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True)
+        role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("Project directory version.")
         pkg_roles = tmp_path / "pkg_roles"
-        pkg_roles.mkdir()
+        pkg_roles.mkdir(exist_ok=True)
         (pkg_roles / "coder.md").write_text("Package flat version.")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", pkg_roles)
         result = _ctx._parse_role_file("coder")
         assert "Project directory version." in result
@@ -273,52 +291,59 @@ class TestContextCoverage:
         """_role_symbol reads from _main.md when role is a directory."""
         roles_dir = tmp_path / "roles"
         role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True)
+        role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nYou are a coder.\n")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == "🛠️"
 
     def test_parse_role_file_with_frontmatter(self, tmp_path, monkeypatch):
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are the coder agent.")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         result = _ctx._parse_role_file("coder")
         assert "coder agent" in result
         assert "symbol" not in result
 
     def test_role_symbol_returns_empty_when_no_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "ROLES_DIR", tmp_path / "roles")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=tmp_path / "roles"))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("wizard") == ""
 
     def test_role_symbol_no_frontmatter(self, tmp_path, monkeypatch):
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         (roles_dir / "coder.md").write_text("You are the coder.")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == ""
 
     def test_role_symbol_frontmatter_no_end(self, tmp_path, monkeypatch):
         """Frontmatter with no closing --- → symbol not extracted."""
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\nno closing marker")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == ""
 
     def test_build_agent_context_planner(self, tmp_path, monkeypatch):
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "WORK_DIR", tmp_path / ".orc" / "work")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / ".orc" / "work" / "board.yaml")
-        (tmp_path / ".orc" / "work").mkdir(parents=True)
+        roles_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=roles_dir,
+                agents_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                work_dir=tmp_path / ".orc" / "work",
+                board_file=tmp_path / ".orc" / "work" / "board.yaml",
+            ),
+        )
+        (tmp_path / ".orc" / "work").mkdir(parents=True, exist_ok=True)
         (tmp_path / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
@@ -329,18 +354,25 @@ class TestContextCoverage:
     def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
         """QA agent with an active feature branch gets review-specific git info."""
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(
             "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
         )
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
-        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=roles_dir,
+                agents_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+                board_file=work_dir / "board.yaml",
+            ),
+        )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
@@ -352,27 +384,34 @@ class TestContextCoverage:
     def test_role_symbol_with_symbol_in_frontmatter(self, tmp_path, monkeypatch):
         """Lines 65-67: role file has valid frontmatter containing 'symbol' key."""
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are a coder.\n")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == "🧑‍💻"
 
     def test_build_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
         """Line 136: else-branch with feature_branch set (agent_name not coder/qa)."""
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(
             "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
         )
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
-        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=roles_dir,
+                agents_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+                board_file=work_dir / "board.yaml",
+            ),
+        )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feature/0001-task")
@@ -383,17 +422,24 @@ class TestContextCoverage:
     def test_build_context_agents_dir_outside_repo_root(self, tmp_path, monkeypatch):
         """Lines 86-87: AGENTS_DIR not under REPO_ROOT → falls back to dir name."""
         repo = tmp_path / "repo"
-        repo.mkdir()
+        repo.mkdir(exist_ok=True)
         agents_dir = tmp_path / "external-orc"
-        agents_dir.mkdir()
-        (agents_dir / "work").mkdir()
+        agents_dir.mkdir(exist_ok=True)
+        (agents_dir / "work").mkdir(exist_ok=True)
         (agents_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", agents_dir / "roles")
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
-        monkeypatch.setattr(_cfg, "REPO_ROOT", repo)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", agents_dir / "work")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", agents_dir / "work" / "board.yaml")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=agents_dir / "roles",
+                agents_dir=agents_dir,
+                repo_root=repo,
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=agents_dir / "work",
+                board_file=agents_dir / "work" / "board.yaml",
+            ),
+        )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: repo)
         _, ctx = _ctx.build_agent_context("planner", [])
@@ -503,18 +549,25 @@ class TestFormatTodos:
 
 class TestHasPlannerWork:
     def _patch(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                agents_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                dev_worktree=tmp_path / "dev-wt",
+            ),
+        )
         board = tmp_path / ".orc" / "work" / "board.yaml"
-        (tmp_path / ".orc" / "work").mkdir(parents=True)
+        (tmp_path / ".orc" / "work").mkdir(parents=True, exist_ok=True)
         board.write_text("counter: 1\nopen: []\ndone: []\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
 
     def test_returns_true_when_pending_vision_exists(self, tmp_path, monkeypatch):
         self._patch(monkeypatch, tmp_path)
         vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True)
+        vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "0001-idea.md").write_text("# Vision\n")
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
         assert _ctx._has_planner_work() is True
@@ -524,7 +577,7 @@ class TestHasPlannerWork:
         board = tmp_path / ".orc" / "work" / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0001-idea.md\ndone: []\n")
         vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True)
+        vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "0001-idea.md").write_text("# Vision\n")
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
         assert _ctx._has_planner_work() is False
@@ -546,7 +599,7 @@ class TestHasPlannerWork:
     def test_skips_readme_and_dotfiles_in_vision(self, tmp_path, monkeypatch):
         self._patch(monkeypatch, tmp_path)
         vision_dir = tmp_path / ".orc" / "vision"
-        vision_dir.mkdir(parents=True)
+        vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "README.md").write_text("# Index\n")
         (vision_dir / ".hidden.md").write_text("# Hidden\n")
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: [])
@@ -566,16 +619,23 @@ class TestHasPlannerWork:
 class TestBuildContextTodos:
     def _setup(self, tmp_path, monkeypatch):
         roles_dir = tmp_path / "roles"
-        roles_dir.mkdir()
+        roles_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text("open: []\ndone: []\n")
-        monkeypatch.setattr(_cfg, "ROLES_DIR", roles_dir)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
-        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=roles_dir,
+                agents_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+                board_file=work_dir / "board.yaml",
+            ),
+        )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
 
@@ -647,14 +707,14 @@ class TestAdrSummarize:
 
     def test_read_adrs_summarize_mode(self, tmp_path, monkeypatch):
         adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True)
+        adr_dir.mkdir(parents=True, exist_ok=True)
         (adr_dir / "0001-first.md").write_text(
             "# ADR 001\n\n**Status:** Accepted\n\n---\n\n"
             "## Context\n\nSome decision context.\n\n"
             "## Decision\n\nLots of detail here that should not appear.\n"
         )
         (adr_dir / "README.md").write_text("# Index")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
         result = _ctx._read_adrs(summarize=True)
         assert "ADR 001" in result
         assert "Full text:" in result
@@ -662,9 +722,9 @@ class TestAdrSummarize:
 
     def test_read_adrs_full_mode(self, tmp_path, monkeypatch):
         adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True)
+        adr_dir.mkdir(parents=True, exist_ok=True)
         (adr_dir / "0001-first.md").write_text("# ADR 001\n\nFull body text.\n")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
         result = _ctx._read_adrs(summarize=False)
         assert "Full body text." in result
         assert "Full text:" not in result
@@ -794,13 +854,20 @@ class TestWindowChat:
 class TestReadWorkScoped:
     def test_active_only_includes_only_target_task(self, tmp_path, monkeypatch):
         work_dir = tmp_path / "work"
-        work_dir.mkdir()
+        work_dir.mkdir(exist_ok=True)
         (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
         (work_dir / "0001-a.md").write_text("Task A content.")
         (work_dir / "0002-b.md").write_text("Task B content.")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                board_file=work_dir / "board.yaml",
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+            ),
+        )
 
         import orc.board as _board
 
@@ -812,12 +879,19 @@ class TestReadWorkScoped:
 
     def test_no_active_only_includes_all(self, tmp_path, monkeypatch):
         work_dir = tmp_path / "work"
-        work_dir.mkdir()
+        work_dir.mkdir(exist_ok=True)
         (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n")
         (work_dir / "0001-a.md").write_text("Task A content.")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", work_dir / "board.yaml")
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
-        monkeypatch.setattr(_cfg, "WORK_DIR", work_dir)
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                board_file=work_dir / "board.yaml",
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+            ),
+        )
 
         import orc.board as _board
 

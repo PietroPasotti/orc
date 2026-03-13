@@ -1,24 +1,106 @@
-"""orc – path globals and environment validation."""
+"""orc – configuration, path resolution, and environment validation.
+
+No side effects at import time.  Call :func:`init` once during CLI
+bootstrap, then use :func:`get` everywhere else.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 import subprocess
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import structlog
 import yaml
-from dotenv import load_dotenv
 
 logger = structlog.get_logger(__name__)
 
+# ── Package-relative constants (truly static, safe at import time) ─────────
 _PACKAGE_DIR = Path(__file__).parent
 _PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "default"
 
 
-def _find_config_dir(base: Path | None = None) -> Path | None:
+# ── Immutable config object ───────────────────────────────────────────────
+@dataclass(frozen=True)
+class Config:
+    """All resolved paths and settings for the current orc session."""
+
+    agents_dir: Path
+    repo_root: Path
+    work_dir: Path
+    board_file: Path
+    roles_dir: Path
+    env_file: Path
+    dev_worktree: Path
+    worktree_base: Path
+    work_dev_branch: str
+    branch_prefix: str
+    log_dir: Path
+
+
+_config: Config | None = None
+
+
+def init(agents_dir: Path, repo_root: Path | None = None) -> Config:
+    """Create and store the module-level :class:`Config` singleton.
+
+    *repo_root* is the project root (where ``README.md`` and git live).
+    When omitted it falls back to ``agents_dir.parent``, which is correct
+    for the common case where the config dir sits directly inside the project
+    root (e.g. ``{project}/.orc/``).
+
+    ``.env`` is always resolved relative to ``Path.cwd()`` so that orc reads
+    the credentials of the project you are running it *from*, regardless of
+    where the config dir lives.
+    """
+    global _config
+
+    orc_yaml = load_orc_config(agents_dir)
+    work_dev_branch = orc_yaml.get("orc-dev-branch", "dev")
+    branch_prefix = orc_yaml.get("orc-branch-prefix", "")
+    raw_base = orc_yaml.get("orc-worktree-base", str(agents_dir / "worktrees"))
+    worktree_base = Path(raw_base).expanduser().resolve()
+    raw_log_dir = orc_yaml.get("orc-log-dir", str(agents_dir / "logs"))
+    log_dir = Path(raw_log_dir).expanduser().resolve()
+    work_dir = agents_dir / "work"
+
+    _config = Config(
+        agents_dir=agents_dir,
+        repo_root=(repo_root or agents_dir.parent).resolve(),
+        work_dir=work_dir,
+        board_file=work_dir / "board.yaml",
+        roles_dir=agents_dir / "roles",
+        env_file=Path.cwd() / ".env",
+        dev_worktree=worktree_base / work_dev_branch,
+        worktree_base=worktree_base,
+        work_dev_branch=work_dev_branch,
+        branch_prefix=branch_prefix,
+        log_dir=log_dir,
+    )
+    return _config
+
+
+def get() -> Config:
+    """Return the current :class:`Config`.
+
+    Raises :class:`RuntimeError` if :func:`init` has not been called yet.
+    """
+    if _config is None:
+        raise RuntimeError(
+            "orc.config.get() called before init(). "
+            "Call orc.config.init(agents_dir) during CLI bootstrap."
+        )
+    return _config
+
+
+# ── Discovery helpers ─────────────────────────────────────────────────────
+
+
+def find_config_dir(base: Path | None = None) -> Path | None:
     """Find the orc configuration directory.
 
     Resolution order:
@@ -35,12 +117,12 @@ def _find_config_dir(base: Path | None = None) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _load_orc_config(agents_dir: Path | None = None) -> dict:
-    """Load ``config.yaml`` from *agents_dir* (defaults to :data:`AGENTS_DIR`).
+def load_orc_config(agents_dir: Path) -> dict:
+    """Load ``config.yaml`` from *agents_dir*.
 
     Returns an empty dict if the file is absent or unreadable.
     """
-    config_file = (agents_dir or AGENTS_DIR) / "config.yaml"
+    config_file = agents_dir / "config.yaml"
     if not config_file.exists():
         return {}
     try:
@@ -50,47 +132,9 @@ def _load_orc_config(agents_dir: Path | None = None) -> dict:
         return {}
 
 
-def _init_paths(agents_dir: Path, repo_root: Path | None = None) -> None:
-    """(Re)initialise all module-level path globals.
-
-    *repo_root* is the project root (where ``README.md`` and git live).
-    When omitted it falls back to ``agents_dir.parent``, which is correct
-    for the common case where the config dir sits directly inside the project
-    root (e.g. ``{project}/.orc/``).
-
-    Pass ``repo_root=Path.cwd()`` explicitly when the config dir is nested
-    deeper (e.g. ``{project}/src/.orc/`` with ``--config-dir src``).
-
-    ``.env`` is always resolved relative to ``Path.cwd()`` so that orc reads
-    the credentials of the project you are running it *from*, regardless of
-    where the config dir lives.
-    """
-    global AGENTS_DIR, WORK_DIR, BOARD_FILE, ROLES_DIR, REPO_ROOT, ENV_FILE
-    global DEV_WORKTREE, WORKTREE_BASE, WORK_DEV_BRANCH, BRANCH_PREFIX, LOG_DIR
-    AGENTS_DIR = agents_dir
-    REPO_ROOT = (repo_root or agents_dir.parent).resolve()
-    WORK_DIR = agents_dir / "work"
-    BOARD_FILE = WORK_DIR / "board.yaml"
-    ROLES_DIR = agents_dir / "roles"
-    ENV_FILE = Path.cwd() / ".env"
-    load_dotenv(ENV_FILE)
-    _orc_config = _load_orc_config(agents_dir)
-    WORK_DEV_BRANCH = _orc_config.get("orc-dev-branch", "dev")
-    BRANCH_PREFIX = _orc_config.get("orc-branch-prefix", "")
-    raw_base = _orc_config.get("orc-worktree-base", str(agents_dir / "worktrees"))
-    WORKTREE_BASE = Path(raw_base).expanduser().resolve()
-    DEV_WORKTREE = WORKTREE_BASE / WORK_DEV_BRANCH
-    raw_log_dir = _orc_config.get("orc-log-dir", str(agents_dir / "logs"))
-    LOG_DIR = Path(raw_log_dir).expanduser().resolve()
-
-
-# Initialise at import time (best-effort; commands re-validate at runtime).
-_found_at_import = _find_config_dir()
-_init_paths(_found_at_import if _found_at_import is not None else Path.cwd() / ".orc")
-
-
+@lru_cache(maxsize=1)
 def _load_placeholders() -> frozenset[str]:
-    """Read unfilled placeholder values from .env.example."""
+    """Read unfilled placeholder values from .env.example (cached)."""
     values: set[str] = {""}
     env_example = _TEMPLATES_DIR / ".env.example"
     for line in env_example.read_text().splitlines():
@@ -104,16 +148,16 @@ def _load_placeholders() -> frozenset[str]:
     return frozenset(values)
 
 
-_PLACEHOLDERS = _load_placeholders()
-
-
 def validate_env() -> list[str]:
     """Check that all required .env variables are present and not placeholders."""
+    cfg = get()
+    placeholders = _load_placeholders()
     errors: list[str] = []
 
-    if not ENV_FILE.exists():
+    if not cfg.env_file.exists():
         errors.append(
-            f".env not found at {ENV_FILE}. Copy .env.example to .env and fill in your credentials."
+            f".env not found at {cfg.env_file}. "
+            "Copy .env.example to .env and fill in your credentials."
         )
         return errors
 
@@ -121,21 +165,21 @@ def validate_env() -> list[str]:
     # (see src/orc/telegram.py for graceful-degradation behaviour)
 
     ai_cli = os.environ.get("COLONY_AI_CLI", "").strip().lower()
-    if not ai_cli or ai_cli in _PLACEHOLDERS:
+    if not ai_cli or ai_cli in placeholders:
         errors.append("COLONY_AI_CLI is not set. Valid values: copilot, claude.")
     elif ai_cli not in {"copilot", "claude"}:
         errors.append(f"COLONY_AI_CLI={ai_cli!r} is not supported. Valid values: copilot, claude.")
 
     if ai_cli == "claude":
         key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        if not key or key in _PLACEHOLDERS:
+        if not key or key in placeholders:
             errors.append(
                 "ANTHROPIC_API_KEY is not set. "
                 "For claude, set it to your Anthropic API key in .env."
             )
     else:
         gh_token = os.environ.get("GH_TOKEN", "").strip()
-        if not gh_token or gh_token in _PLACEHOLDERS:
+        if not gh_token or gh_token in placeholders:
             apps_json = Path.home() / ".config" / "github-copilot" / "apps.json"
             has_apps_token = False
             if apps_json.exists():

@@ -110,7 +110,7 @@ def _default_branch() -> str:
     """Return the repo's default branch name (e.g. 'main' or 'master')."""
     result = subprocess.run(
         ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -120,7 +120,7 @@ def _default_branch() -> str:
     # Fallback: use the current branch name from HEAD (works in fresh local repos)
     result = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
         check=True,
@@ -130,29 +130,30 @@ def _default_branch() -> str:
 
 def _ensure_dev_worktree() -> Path:
     """Ensure the ``dev`` branch and its worktree exist."""
+    cfg = _cfg.get()
     existing = subprocess.run(
-        ["git", "branch", "--list", _cfg.WORK_DEV_BRANCH],
-        cwd=_cfg.REPO_ROOT,
+        ["git", "branch", "--list", cfg.work_dev_branch],
+        cwd=cfg.repo_root,
         capture_output=True,
         text=True,
     )
     if not existing.stdout.strip():
         subprocess.run(
-            ["git", "branch", _cfg.WORK_DEV_BRANCH],
-            cwd=_cfg.REPO_ROOT,
+            ["git", "branch", cfg.work_dev_branch],
+            cwd=cfg.repo_root,
             check=True,
         )
 
-    if not _cfg.DEV_WORKTREE.exists():
-        _cfg.DEV_WORKTREE.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
+    if not cfg.dev_worktree.exists():
+        cfg.dev_worktree.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "worktree", "prune"], cwd=cfg.repo_root, check=True)
         subprocess.run(
-            ["git", "worktree", "add", str(_cfg.DEV_WORKTREE), _cfg.WORK_DEV_BRANCH],
-            cwd=_cfg.REPO_ROOT,
+            ["git", "worktree", "add", str(cfg.dev_worktree), cfg.work_dev_branch],
+            cwd=cfg.repo_root,
             check=True,
         )
 
-    return _cfg.DEV_WORKTREE
+    return cfg.dev_worktree
 
 
 def _is_worktree_dirty(worktree: Path) -> bool:
@@ -187,8 +188,8 @@ def _feature_branch(task_name: str) -> str:
     e.g. prefix ``"orc"`` → ``"orc/feat/0001-foo"``; no prefix → ``"feat/0001-foo"``.
     """
     branch = f"feat/{Path(task_name).stem}"
-    if _cfg.BRANCH_PREFIX:
-        return f"{_cfg.BRANCH_PREFIX}/{branch}"
+    if _cfg.get().branch_prefix:
+        return f"{_cfg.get().branch_prefix}/{branch}"
     return branch
 
 
@@ -198,7 +199,7 @@ def _feature_worktree_path(task_name: str) -> Path:
     Worktrees are placed under ``WORKTREE_BASE / task_stem``,
     e.g. ``.orc/worktrees/0001-foo`` for task ``0001-foo.md``.
     """
-    return _cfg.WORKTREE_BASE / Path(task_name).stem
+    return _cfg.get().worktree_base / Path(task_name).stem
 
 
 def _ensure_feature_worktree(task_name: str) -> Path:
@@ -208,19 +209,21 @@ def _ensure_feature_worktree(task_name: str) -> Path:
 
     existing = subprocess.run(
         ["git", "branch", "--list", branch],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
     if not existing.stdout.strip():
-        subprocess.run(["git", "branch", branch, _default_branch()], cwd=_cfg.REPO_ROOT, check=True)
+        subprocess.run(
+            ["git", "branch", branch, _default_branch()], cwd=_cfg.get().repo_root, check=True
+        )
 
     if not wt_path.exists():
         wt_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
+        subprocess.run(["git", "worktree", "prune"], cwd=_cfg.get().repo_root, check=True)
         subprocess.run(
             ["git", "worktree", "add", str(wt_path), branch],
-            cwd=_cfg.REPO_ROOT,
+            cwd=_cfg.get().repo_root,
             check=True,
         )
 
@@ -229,10 +232,11 @@ def _ensure_feature_worktree(task_name: str) -> Path:
 
 def _close_task_on_board(task_name: str, dev_wt: Path, commit_tag: str = "pending") -> None:
     """Move *task_name* from ``open`` to ``done`` in board.yaml and delete its .md file."""
+    cfg = _cfg.get()
     try:
-        config_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+        config_rel = cfg.agents_dir.relative_to(cfg.repo_root)
     except ValueError:
-        config_rel = Path(_cfg.AGENTS_DIR.name)
+        config_rel = Path(cfg.agents_dir.name)
     board_path = dev_wt / config_rel / "work" / "board.yaml"
     if not board_path.exists():
         logger.warning("board.yaml not found in dev worktree, skipping board update")
@@ -286,10 +290,11 @@ def _merge_feature_into_dev(task_name: str) -> None:
         )
         subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=dev_wt, check=True)
 
-    logger.info("merging feature into dev", feature_branch=branch, dev_branch=_cfg.WORK_DEV_BRANCH)
-    subprocess.run(["git", "checkout", _cfg.WORK_DEV_BRANCH], cwd=dev_wt, check=True)
+    cfg = _cfg.get()
+    logger.info("merging feature into dev", feature_branch=branch, dev_branch=cfg.work_dev_branch)
+    subprocess.run(["git", "checkout", cfg.work_dev_branch], cwd=dev_wt, check=True)
     merge_result = subprocess.run(
-        ["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} into {_cfg.WORK_DEV_BRANCH}"],
+        ["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} into {cfg.work_dev_branch}"],
         cwd=dev_wt,
     )
     if merge_result.returncode != 0:
@@ -306,9 +311,9 @@ def _merge_feature_into_dev(task_name: str) -> None:
 
     _close_task_on_board(task_name, dev_wt, commit_tag=merge_sha)
     try:
-        config_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+        config_rel = cfg.agents_dir.relative_to(cfg.repo_root)
     except ValueError:
-        config_rel = Path(_cfg.AGENTS_DIR.name)
+        config_rel = Path(cfg.agents_dir.name)
     board_path = dev_wt / config_rel / "work" / "board.yaml"
     if board_path.exists():
         subprocess.run(["git", "add", str(config_rel / "work")], cwd=dev_wt, check=True)
@@ -323,23 +328,21 @@ def _merge_feature_into_dev(task_name: str) -> None:
         logger.info("removing feature worktree", path=str(wt_path))
         subprocess.run(
             ["git", "worktree", "remove", str(wt_path), "--force"],
-            cwd=_cfg.REPO_ROOT,
+            cwd=cfg.repo_root,
             check=True,
         )
 
-    # Prune stale worktree references so git no longer considers the branch
-    # "checked out", even if the worktree directory was already gone from disk.
-    subprocess.run(["git", "worktree", "prune"], cwd=_cfg.REPO_ROOT, check=True)
+    subprocess.run(["git", "worktree", "prune"], cwd=cfg.repo_root, check=True)
 
     logger.info("deleting feature branch", branch=branch)
-    subprocess.run(["git", "branch", "-D", branch], cwd=_cfg.REPO_ROOT, check=True)
+    subprocess.run(["git", "branch", "-D", branch], cwd=cfg.repo_root, check=True)
 
 
 def _feature_has_commits_ahead_of_main(branch: str) -> bool:
     """Return True if *branch* has at least one commit not in the default branch."""
     result = subprocess.run(
         ["git", "log", _default_branch() + ".." + branch, "--oneline"],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -349,8 +352,8 @@ def _feature_has_commits_ahead_of_main(branch: str) -> bool:
 def _feature_merged_into_dev(branch: str) -> bool:
     """Return True if *branch* has been merged into dev (is an ancestor)."""
     result = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", branch, _cfg.WORK_DEV_BRANCH],
-        cwd=_cfg.REPO_ROOT,
+        ["git", "merge-base", "--is-ancestor", branch, _cfg.get().work_dev_branch],
+        cwd=_cfg.get().repo_root,
     )
     return result.returncode == 0
 
@@ -359,7 +362,7 @@ def _feature_branch_exists(branch: str) -> bool:
     """Return True if *branch* exists locally."""
     result = subprocess.run(
         ["git", "branch", "--list", branch],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -370,7 +373,7 @@ def _last_feature_commit_message(branch: str) -> str | None:
     """Return the subject line of the most recent commit on *branch*, or None."""
     result = subprocess.run(
         ["git", "log", "-1", "--format=%s", branch],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -514,13 +517,13 @@ def _complete_merge(worktree: Path) -> bool:
     """
     subprocess.run(["git", "checkout", "main"], cwd=worktree, check=True)
     result = subprocess.run(
-        ["git", "merge", "--ff-only", _cfg.WORK_DEV_BRANCH],
+        ["git", "merge", "--ff-only", _cfg.get().work_dev_branch],
         cwd=worktree,
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(["git", "checkout", _cfg.WORK_DEV_BRANCH], cwd=worktree, check=True)
+    subprocess.run(["git", "checkout", _cfg.get().work_dev_branch], cwd=worktree, check=True)
     return "Already up to date" not in result.stdout
 
 

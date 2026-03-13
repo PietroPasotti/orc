@@ -1,6 +1,7 @@
 """Tests for orc/git.py."""
 
 import subprocess
+from dataclasses import replace as _replace
 from unittest.mock import MagicMock, patch
 
 import yaml
@@ -8,7 +9,6 @@ import yaml
 import orc.config as _cfg
 import orc.git.core as _git
 from orc.board import _active_task_name
-from orc.config import DEV_WORKTREE  # noqa: F401
 from orc.git.core import (
     _close_task_on_board,
     _derive_state_from_git,
@@ -143,11 +143,12 @@ class TestDeriveStateFromGit:
 
 class TestBoardReconciliation:
     def test_close_task_moves_to_done(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
-        board_path.parent.mkdir(parents=True)
+        board_path.parent.mkdir(parents=True, exist_ok=True)
         existing_done = (
             "done:\n  - name: 0002-bar.md\n    commit-tag: abc\n"
             "    timestamp: 2026-01-01T00:00:00Z\n"
@@ -165,11 +166,12 @@ class TestBoardReconciliation:
         assert done_entry["commit-tag"] == "deadbeef"
 
     def test_close_task_deletes_md_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
-        board_path.parent.mkdir(parents=True)
+        board_path.parent.mkdir(parents=True, exist_ok=True)
         board_path.write_text("counter: 1\nopen:\n  - name: 0003-foo.md\ndone: []\n")
         task_md = tmp_path / ".orc" / "work" / "0003-foo.md"
         task_md.write_text("# Task\n")
@@ -179,17 +181,19 @@ class TestBoardReconciliation:
         assert not task_md.exists()
 
     def test_close_task_missing_board_does_not_raise(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
 
         _close_task_on_board("0003-foo.md", tmp_path, commit_tag="abc")
 
     def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
 
         board_path = tmp_path / ".orc" / "work" / "board.yaml"
-        board_path.parent.mkdir(parents=True)
+        board_path.parent.mkdir(parents=True, exist_ok=True)
         board_path.write_text(
             "counter: 3\nopen:\n  - name: 0003-foo.md\n  - name: 0004-bar.md\ndone: []\n"
         )
@@ -213,36 +217,47 @@ class TestFeatureWorktree:
         assert _feature_branch("0001-foo.md") == "feat/0001-foo"
 
     def test_feature_branch_naming_with_prefix(self, monkeypatch):
-        monkeypatch.setattr(_cfg, "BRANCH_PREFIX", "orc")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), branch_prefix="orc"))
         assert _feature_branch("0001-foo.md") == "orc/feat/0001-foo"
         assert _feature_branch("0003-resource-type-enum.md") == "orc/feat/0003-resource-type-enum"
 
     def test_feature_branch_naming_empty_prefix_has_no_prefix(self, monkeypatch):
-        monkeypatch.setattr(_cfg, "BRANCH_PREFIX", "")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), branch_prefix=""))
         assert _feature_branch("0001-foo.md") == "feat/0001-foo"
 
     def test_feature_worktree_path_under_worktree_base(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(_cfg, "WORKTREE_BASE", tmp_path / "wt")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), worktree_base=tmp_path / "wt"))
         wt = _feature_worktree_path("0003-resource-type-enum.md")
         assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
     def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 2\nopen:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        )
         assert _active_task_name() == "0001-foo.md"
 
     def test_active_task_name_returns_none_when_empty(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), board_file=board, dev_worktree=tmp_path / "dev-wt"),
+        )
         assert _active_task_name() is None
 
     def test_active_task_name_returns_none_when_no_board(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(_cfg, "BOARD_FILE", tmp_path / "missing.yaml")
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), board_file=tmp_path / "missing.yaml", dev_worktree=tmp_path / "dev-wt"
+            ),
+        )
         assert _active_task_name() is None
 
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):
@@ -256,7 +271,7 @@ class TestFeatureWorktree:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
         absent_wt = tmp_path / "feat-0001-foo"
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: absent_wt)
 
@@ -278,17 +293,18 @@ class TestFeatureWorktree:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, agents_dir=tmp_path / ".orc")
+        )
 
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
         board_yaml = work_dir / "board.yaml"
         board_yaml.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\ndone: []\n")
         (work_dir / "0001-foo.md").write_text("task content")
 
         fake_wt = tmp_path / "colony-feat-0001-foo"
-        fake_wt.mkdir()
+        fake_wt.mkdir(exist_ok=True)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: fake_wt)
 
         _merge_feature_into_dev("0001-foo.md")
@@ -309,7 +325,7 @@ class TestFeatureWorktree:
 
 class TestGitCoverage:
     def test_ensure_dev_worktree_creates_if_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "DEV_WORKTREE", tmp_path / "dev-wt")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         runs = []
 
         def fake_run(cmd, **kw):
@@ -324,10 +340,11 @@ class TestGitCoverage:
 
     def test_close_task_on_board_missing_board(self, tmp_path, monkeypatch):
         """Lines 142-148: board.yaml not found in dev worktree → warns and returns."""
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path / ".orc", repo_root=tmp_path)
+        )
         dev_wt = tmp_path / "dev"
-        dev_wt.mkdir()
+        dev_wt.mkdir(exist_ok=True)
         _git._close_task_on_board("0001-foo.md", dev_wt)  # no board → no crash
 
     def test_rebase_in_progress_false(self, tmp_path):
@@ -344,7 +361,7 @@ class TestGitCoverage:
 
     def test_complete_merge_calls_git(self, tmp_path, monkeypatch):
         """_complete_merge runs checkout and merge, returns True when a merge occurred."""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         runs = []
 
         def fake_run(cmd, **kw):
@@ -363,7 +380,7 @@ class TestGitCoverage:
 
     def test_complete_merge_returns_false_when_already_up_to_date(self, tmp_path, monkeypatch):
         """_complete_merge returns False when git reports 'Already up to date.'"""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -393,11 +410,12 @@ class TestGitCoverage:
         import orc.git.core as _git
 
         agents_dir = tmp_path / "other" / "orc"
-        agents_dir.mkdir(parents=True)
+        agents_dir.mkdir(parents=True, exist_ok=True)
         repo_root = tmp_path / "repo"
-        repo_root.mkdir()
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", agents_dir)
-        monkeypatch.setattr(_cfg, "REPO_ROOT", repo_root)
+        repo_root.mkdir(exist_ok=True)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), agents_dir=agents_dir, repo_root=repo_root)
+        )
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir()
         # board.yaml not in dev_wt → function returns early (warning path)
@@ -410,14 +428,18 @@ class TestGitCoverage:
 
         # Set up minimal git-shaped directory structure
         dev_wt = tmp_path / "dev"
-        (dev_wt / ".orc" / "work").mkdir(parents=True)
+        (dev_wt / ".orc" / "work").mkdir(parents=True, exist_ok=True)
         (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         feat_wt = tmp_path / "feat"
-        feat_wt.mkdir()
+        feat_wt.mkdir(exist_ok=True)
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+            ),
+        )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
 
@@ -444,17 +466,21 @@ class TestGitCoverage:
         import orc.git.core as _git
 
         repo_root = tmp_path / "repo"
-        repo_root.mkdir()
+        repo_root.mkdir(exist_ok=True)
         dev_wt = tmp_path / "dev"
-        (dev_wt / ".orc" / "work").mkdir(parents=True)
+        (dev_wt / ".orc" / "work").mkdir(parents=True, exist_ok=True)
         (dev_wt / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir()
 
         # AGENTS_DIR is outside REPO_ROOT → triggers except ValueError
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", repo_root)
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=repo_root, work_dev_branch="dev"
+            ),
+        )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
 
@@ -481,13 +507,17 @@ class TestGitCoverage:
         import orc.git.core as _git
 
         dev_wt = tmp_path / "dev"
-        dev_wt.mkdir()
+        dev_wt.mkdir(exist_ok=True)
         feat_wt = tmp_path / "feat"
-        feat_wt.mkdir()
+        feat_wt.mkdir(exist_ok=True)
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+            ),
+        )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
 
@@ -520,13 +550,17 @@ class TestGitCoverage:
         import orc.git.core as _git
 
         dev_wt = tmp_path / "dev"
-        dev_wt.mkdir()
+        dev_wt.mkdir(exist_ok=True)
         feat_wt = tmp_path / "feat"
-        feat_wt.mkdir()
+        feat_wt.mkdir(exist_ok=True)
 
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", dev_wt / ".orc")
-        monkeypatch.setattr(_cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), agents_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+            ),
+        )
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
         monkeypatch.setattr(_git, "_is_worktree_dirty", lambda p: True)
@@ -568,7 +602,7 @@ class TestGitCoverage:
 
     def test_merge_in_progress_true(self, tmp_path):
         git_dir = tmp_path / ".git"
-        git_dir.mkdir()
+        git_dir.mkdir(exist_ok=True)
         (git_dir / "MERGE_HEAD").write_text("abc1234\n")
 
         def fake_run(cmd, **kw):
@@ -581,7 +615,7 @@ class TestGitCoverage:
 
     def test_merge_in_progress_false(self, tmp_path):
         git_dir = tmp_path / ".git"
-        git_dir.mkdir()
+        git_dir.mkdir(exist_ok=True)
 
         def fake_run(cmd, **kw):
             r = MagicMock()

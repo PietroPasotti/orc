@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace as _replace
 from unittest.mock import patch
 
 import pytest
@@ -34,7 +35,7 @@ def _make_resolver():
 class TestResolveMergeConflict:
     def test_success(self, tmp_path, monkeypatch):
         """Coder resolves conflict, merge completes, no exception raised."""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (
@@ -47,7 +48,7 @@ class TestResolveMergeConflict:
 
     def test_coder_nonzero_raises_exit(self, tmp_path, monkeypatch):
         """Coder exits non-zero → ConflictResolutionFailed raised."""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (
@@ -59,7 +60,7 @@ class TestResolveMergeConflict:
 
     def test_merge_still_in_progress_raises_exit(self, tmp_path, monkeypatch):
         """Coder succeeds but merge still in progress → ConflictResolutionFailed raised."""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (
@@ -79,7 +80,7 @@ class TestResolveMergeConflict:
 class TestResolveRebaseConflict:
     def test_success(self, tmp_path, monkeypatch):
         """Coder resolves rebase conflict, no exception raised."""
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (
@@ -90,7 +91,7 @@ class TestResolveRebaseConflict:
             resolver.resolve_rebase_conflict(tmp_path, "M src/foo.py")
 
     def test_coder_nonzero_raises_exit(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (
@@ -101,7 +102,7 @@ class TestResolveRebaseConflict:
                 resolver.resolve_rebase_conflict(tmp_path, "UU src/bar.py")
 
     def test_rebase_still_in_progress_raises_exit(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), work_dev_branch="dev"))
         resolver = _make_resolver()
 
         with (

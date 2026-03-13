@@ -1,10 +1,12 @@
 """Tests for orc/cli/status.py."""
 
+from dataclasses import replace as _replace
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 import orc.cli.status as _st
+import orc.config as _cfg
 import orc.main as m
 from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main
 from orc.engine.dispatcher import QA_PASSED
@@ -225,12 +227,12 @@ class TestStatusCoverage:
     def test_pending_visions_returns_unmatched_files(self, tmp_path, monkeypatch):
         """Lines 42-54: vision dir exists with files; unmatched ones are returned."""
         vision_dir = tmp_path / "vision"
-        vision_dir.mkdir()
+        vision_dir.mkdir(exist_ok=True)
         (vision_dir / "README.md").write_text("")
         (vision_dir / ".hidden.md").write_text("")
         (vision_dir / "feature-a.md").write_text("")
         (vision_dir / "feature-b.md").write_text("")
-        monkeypatch.setattr(_st._cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         monkeypatch.setattr(
             _st._board,
             "_read_board",
@@ -243,8 +245,9 @@ class TestStatusCoverage:
 
     def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path):
         """Lines 65-73: feat/* branches with nonzero merge-base exit → unmerged."""
-        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
+        )
 
         call_num = 0
 
@@ -264,8 +267,9 @@ class TestStatusCoverage:
 
     def test_pending_reviews_strips_worktree_plus_prefix(self, monkeypatch, tmp_path):
         """Line 65: git branch prefixes worktree branches with '+'; must be stripped."""
-        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
+        )
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -282,9 +286,11 @@ class TestStatusCoverage:
 
     def test_pending_reviews_with_branch_prefix(self, monkeypatch, tmp_path):
         """Line 67: when BRANCH_PREFIX is set, pattern uses prefix/feat/* glob."""
-        monkeypatch.setattr(_st._cfg, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(_st._cfg, "WORK_DEV_BRANCH", "dev")
-        monkeypatch.setattr(_st._cfg, "BRANCH_PREFIX", "orc")
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix="orc"),
+        )
 
         seen_patterns = []
 
@@ -323,11 +329,11 @@ class TestStatusCoverage:
 
     def test_status_tui_launched_when_isatty(self, monkeypatch):
         """status() launches the TUI when stdout is a TTY."""
-        import orc.cli.status as _st_module
+        import orc.cli.status as _st
 
         self._setup(monkeypatch, ahead=0)
         launched: list[str] = []
-        monkeypatch.setattr(_st_module, "_is_tty", lambda: True)
+        monkeypatch.setattr(_st, "_is_tty", lambda: True)
 
         with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--squad", "default"])

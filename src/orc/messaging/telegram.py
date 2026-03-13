@@ -71,8 +71,8 @@ _TOKEN = os.environ.get("COLONY_TELEGRAM_TOKEN")
 _CHAT_ID = os.environ.get("COLONY_TELEGRAM_CHAT_ID")
 _API_BASE = f"https://api.telegram.org/bot{_TOKEN}"
 
-# Sentinel — resolved lazily on first use so that config.AGENTS_DIR is fully
-# initialised before we compute the path.  Tests may patch this directly.
+# Sentinel — resolved lazily on first use so that config.init() has been
+# called before we compute the path.  Tests may patch this directly.
 _LOG_FILE: Path | None = None
 
 
@@ -82,7 +82,7 @@ def _get_log_file() -> Path:
     if _LOG_FILE is None:
         from orc import config  # import here to avoid circular-import at module level
 
-        _LOG_FILE = config.AGENTS_DIR / "chat.log"
+        _LOG_FILE = config.get().agents_dir / "chat.log"
     _LOG_FILE.touch(exist_ok=True)
     return _LOG_FILE
 

@@ -10,8 +10,7 @@ import typer
 
 from orc import config as _cfg
 from orc.cli import app
-
-_DEFAULT_LOG_DIR = _cfg.LOG_DIR
+from orc.squad import AgentRole
 
 
 @app.command("logs")
@@ -24,7 +23,9 @@ def _logs(
         str,
         typer.Option(
             "--agent",
-            help="Which logs to show: 'all' (default), 'orc', or a specific agent name.",
+            help="Which logs to show: 'all' (default), 'orc', or a specific role or agent name. "
+            "--agent coder-1 shows the logs for the agent named `coder-1` "
+            "--agent coder shows the concatenated logs for all agents with role `coder`.",
         ),
     ] = "all",
     tail: Annotated[
@@ -37,7 +38,7 @@ def _logs(
     ] = False,
 ) -> None:
     """Print or tail orc log files."""
-    log_dir = path if path is not None else _DEFAULT_LOG_DIR
+    log_dir = path if path is not None else _cfg.get().log_dir
 
     if wipe:
         files = sorted(log_dir.glob("*.log")) if log_dir.is_dir() else []
@@ -54,6 +55,8 @@ def _logs(
         files = sorted(log_dir.glob("*.log")) if log_dir.is_dir() else []
     elif agent == "orc":
         files = [log_dir / "orc.log"]
+    elif agent in AgentRole:
+        files = sorted(log_dir.glob(f"{agent}-*.log")) if log_dir.is_dir() else []
     else:
         files = [log_dir / f"{agent}.log"]
 

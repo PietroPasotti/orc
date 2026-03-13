@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace as _replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -111,7 +112,7 @@ def _make_callbacks(
 class TestBootMessageSentBeforeInvoke:
     def _common_patches(self, monkeypatch, tmp_path):
         """Patch git helpers so tests don't hit subprocess."""
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -123,7 +124,7 @@ class TestBootMessageSentBeforeInvoke:
         """Orchestrator sends (boot) message before invoking the agent."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         sent: list[str] = []
@@ -149,7 +150,7 @@ class TestBootMessageSentBeforeInvoke:
         """Boot message must be sent BEFORE spawn is called."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         call_order: list[str] = []
@@ -181,7 +182,7 @@ class TestBlockedResumption:
         return [make_msg(f"[{agent_id}](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
 
     def _common_patches(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -192,7 +193,7 @@ class TestBlockedResumption:
     def test_blocked_agent_resumes_after_reply(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
         self._common_patches(monkeypatch, tmp_path)
 
         blocked = self._blocked_msgs("coder-1")
@@ -223,7 +224,7 @@ class TestBlockedResumption:
 
     def test_blocked_resumes_correct_agent(self, monkeypatch, tmp_path):
         """After a hard-block reply, the dispatcher routes to the correct role."""
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
@@ -272,7 +273,7 @@ class TestBlockedResumption:
         for agent_id, board_content, git_map in cases:
             board = tmp_path / "board.yaml"
             board.write_text(board_content)
-            monkeypatch.setattr(_cfg, "BOARD_FILE", board)
+            monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), board_file=board))
             monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
             monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
             for attr, val in git_map.items():
@@ -298,8 +299,9 @@ class TestBlockedResumption:
     def test_timeout_posts_telegram_message_and_exits(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+        )
         monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
         monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
         monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
@@ -329,8 +331,9 @@ class TestBlockedResumption:
         """planner(done) is not a blocked state — git routes to planner (no tasks)."""
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen: []\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+        )
 
         # A vision doc gives the planner something to plan (otherwise no dispatch).
         (tmp_path / "vision").mkdir(exist_ok=True)
@@ -425,7 +428,7 @@ class TestDispatcherCoverage:
     def test_spawn_agent_log_path_is_under_log_dir_agents(self, tmp_path, monkeypatch):
         """Agent log path is LOG_DIR/agents/{agent_id}.log."""
         log_dir = tmp_path / "logs"
-        monkeypatch.setattr(_cfg, "LOG_DIR", log_dir)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), log_dir=log_dir))
 
         captured: dict = {}
 

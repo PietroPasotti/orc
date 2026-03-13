@@ -15,11 +15,13 @@ logger = structlog.get_logger(__name__)
 def _dev_board_file() -> Path:
     """Return the board.yaml that is currently authoritative."""
     try:
-        rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+        cfg = _cfg.get()
+        rel = cfg.agents_dir.relative_to(cfg.repo_root)
     except ValueError:
-        rel = Path(_cfg.AGENTS_DIR.name)
-    candidate = _cfg.DEV_WORKTREE / rel / "work" / "board.yaml"
-    return candidate if candidate.exists() else _cfg.BOARD_FILE
+        rel = Path(_cfg.get().agents_dir.name)
+    cfg = _cfg.get()
+    candidate = cfg.dev_worktree / rel / "work" / "board.yaml"
+    return candidate if candidate.exists() else cfg.board_file
 
 
 def _read_board() -> dict:
@@ -133,7 +135,7 @@ def _read_work(*, active_only: str | None = None) -> str:
     if board_path.exists():
         parts.append(f"### orc/work/board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
 
-    work_dir = board_path.parent if board_path.exists() else _cfg.WORK_DIR
+    work_dir = board_path.parent if board_path.exists() else _cfg.get().work_dir
     for task_file in sorted(work_dir.glob("*.md")):
         if task_file.name.lower() == "readme.md":
             continue
@@ -143,3 +145,10 @@ def _read_work(*, active_only: str | None = None) -> str:
             parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
 
     return "\n\n".join(parts) if parts else "_No active work._"
+
+
+if __name__ == "__main__":  # pragma: no cover
+    from orc.config import init
+
+    init(Path("/home/pietro/hacking/orc/.orc"))
+    print(_dev_board_file().read_text())  # noqa: T201

@@ -80,8 +80,8 @@ class CommitInfo:
 
 def _main_branch() -> str:
     """Return the main branch name from config or auto-detect via git."""
-    cfg = _cfg._load_orc_config()
-    configured = cfg.get("orc-main-branch", "").strip()
+    cfg_data = _cfg.load_orc_config(_cfg.get().agents_dir)
+    configured = cfg_data.get("orc-main-branch", "").strip()
     if configured:
         return configured
     return _git._default_branch()
@@ -100,7 +100,7 @@ def _git_log(branch: str, exclude: list[str]) -> list[tuple[str, str, str, int]]
         str(_MAX_COMMITS),
     ]
     try:
-        result = subprocess.run(args, cwd=_cfg.REPO_ROOT, capture_output=True, text=True)
+        result = subprocess.run(args, cwd=_cfg.get().repo_root, capture_output=True, text=True)
     except Exception:
         return []
 
@@ -119,12 +119,12 @@ def _git_log(branch: str, exclude: list[str]) -> list[tuple[str, str, str, int]]
 
 def _feat_branches() -> list[str]:
     """Return sorted list of coder-owned ``feat/*`` branches (prefix-aware)."""
-    prefix = _cfg.BRANCH_PREFIX
+    prefix = _cfg.get().branch_prefix
     pattern = f"{prefix}/feat/*" if prefix else "feat/*"
     try:
         result = subprocess.run(
             ["git", "branch", "--list", pattern],
-            cwd=_cfg.REPO_ROOT,
+            cwd=_cfg.get().repo_root,
             capture_output=True,
             text=True,
         )
@@ -151,7 +151,7 @@ def gather_git_tree() -> tuple[list[str], list[CommitInfo]]:
     except Exception:
         main = "main"
 
-    dev = _cfg.WORK_DEV_BRANCH
+    dev = _cfg.get().work_dev_branch
     feats = _feat_branches()
     branches = [main, dev] + feats
     col_map = {b: i for i, b in enumerate(branches)}

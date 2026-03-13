@@ -34,7 +34,8 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
 
     conflict_extra = (
         "## Startup rebase conflict — your task\n\n"
-        f"A `git rebase main` of the `{_cfg.WORK_DEV_BRANCH}` branch was attempted at session "
+        f"A `git rebase main` of the `{_cfg.get().work_dev_branch}` "
+        "branch was attempted at session "
         "start and stopped with conflicts.  The rebase is currently paused in the dev "
         "worktree.\n\n"
         f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
@@ -87,7 +88,7 @@ def _merge(auto: bool = False) -> None:
             f"✓ dev is up-to-date with main and ready to merge.\n"
             f"  Run the following to merge manually:\n\n"
             f"    git -C {dev_worktree} checkout main\n"
-            f"    git -C {dev_worktree} merge --ff-only {_cfg.WORK_DEV_BRANCH}\n\n"
+            f"    git -C {dev_worktree} merge --ff-only {_cfg.get().work_dev_branch}\n\n"
             f"  Or re-run with --auto to let orc do it."
         )
 

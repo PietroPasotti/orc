@@ -8,6 +8,7 @@ from typing import Annotated
 
 import structlog
 import typer
+from dotenv import load_dotenv
 
 import orc.config as _cfg
 from orc import logger as _obs
@@ -45,11 +46,11 @@ def _app_entry(
     ] = None,
 ) -> None:
     """Bootstrap observability and resolve the config directory."""
-    _obs.setup(default_log_file=_cfg.LOG_DIR / "orc.log")
     if project_dir is not None:
         os.chdir(project_dir.resolve())
+
     if config_dir is not None:
-        found = _cfg._find_config_dir(base=config_dir)
+        found = _cfg.find_config_dir(base=config_dir)
         if found is None:
             typer.echo(
                 f"✗ No orc config directory found in '{config_dir}'.\n"
@@ -58,18 +59,25 @@ def _app_entry(
                 err=True,
             )
             raise typer.Exit(code=1)
-        _cfg._init_paths(found, repo_root=Path.cwd())
-    elif project_dir is not None:
-        found = _cfg._find_config_dir()
-        if found is not None:
-            _cfg._init_paths(found)
+        _cfg.init(found, repo_root=Path.cwd())
+    else:
+        found = _cfg.find_config_dir()
+        _cfg.init(found if found is not None else Path.cwd() / ".orc")
+
+    cfg = _cfg.get()
+    load_dotenv(cfg.env_file)
+    if cfg.agents_dir.is_dir():
+        _obs.setup(default_log_file=cfg.log_dir / "orc.log")
+    else:
+        _obs.setup()
 
 
 def _check_env_or_exit() -> None:
-    if not _cfg.AGENTS_DIR.is_dir():
+    cfg = _cfg.get()
+    if not cfg.agents_dir.is_dir():
         typer.echo(
             f"✗ orc configuration directory not found.\n"
-            f"  Searched: {_cfg.AGENTS_DIR.parent}/.orc/\n"
+            f"  Searched: {cfg.agents_dir.parent}/.orc/\n"
             "  Run 'orc bootstrap' to create one, or pass --config-dir <base> to "
             "point to an existing configuration.",
             err=True,

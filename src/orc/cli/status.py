@@ -26,7 +26,7 @@ def _dev_ahead_of_main() -> int:
     """Return the number of commits dev is ahead of main (0 if even or behind)."""
     result = subprocess.run(
         ["git", "rev-list", "--count", "main..dev"],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -38,7 +38,7 @@ def _dev_ahead_of_main() -> int:
 
 def _pending_visions() -> list[str]:
     """Return vision .md filenames (excl. README.md) with no matching board task."""
-    vision_dir = _cfg.AGENTS_DIR / "vision"
+    vision_dir = _cfg.get().agents_dir / "vision"
     if not vision_dir.is_dir():
         return []
     board = _board._read_board()
@@ -64,13 +64,14 @@ def _pending_reviews() -> list[str]:
     Respects ``orc-branch-prefix``: when a prefix is configured (e.g. ``orc``),
     branches are listed as ``{prefix}/feat/*``; otherwise ``feat/*``.
     """
-    if _cfg.BRANCH_PREFIX:
-        pattern = f"{_cfg.BRANCH_PREFIX}/feat/*"
+    cfg = _cfg.get()
+    if cfg.branch_prefix:
+        pattern = f"{cfg.branch_prefix}/feat/*"
     else:
         pattern = "feat/*"
     result = subprocess.run(
         ["git", "branch", "--list", pattern],
-        cwd=_cfg.REPO_ROOT,
+        cwd=cfg.repo_root,
         capture_output=True,
         text=True,
     )
@@ -78,8 +79,8 @@ def _pending_reviews() -> list[str]:
     unmerged = []
     for branch in branches:
         merged = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", branch, _cfg.WORK_DEV_BRANCH],
-            cwd=_cfg.REPO_ROOT,
+            ["git", "merge-base", "--is-ancestor", branch, cfg.work_dev_branch],
+            cwd=cfg.repo_root,
         )
         if merged.returncode != 0:
             unmerged.append(branch)
@@ -90,7 +91,7 @@ def _dev_log_since_main() -> list[str]:
     """Return one-line summaries of commits on dev not yet in main."""
     result = subprocess.run(
         ["git", "log", "--oneline", "--no-decorate", "main..dev"],
-        cwd=_cfg.REPO_ROOT,
+        cwd=_cfg.get().repo_root,
         capture_output=True,
         text=True,
     )
@@ -105,7 +106,7 @@ def _status(squad: str = "default") -> None:
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
-        squad_cfg = load_squad(squad, agents_dir=_cfg.AGENTS_DIR)
+        squad_cfg = load_squad(squad, agents_dir=_cfg.get().agents_dir)
     except Exception:
         squad_cfg = None
 

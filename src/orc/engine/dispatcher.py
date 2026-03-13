@@ -419,7 +419,7 @@ class Dispatcher:
 
         _cv.bind_contextvars(agent_id=agent_id)
 
-        log_path = _cfg.LOG_DIR / "agents" / f"{agent_id}.log"
+        log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
         spawn_result = self.cb.spawn_fn(context, worktree, model, log_path)
 
         agent = AgentProcess(

@@ -43,7 +43,7 @@ class TestLoadSquad:
     def test_load_new_list_schema(self, tmp_path):
         """New list format with name/count/model per role is parsed correctly."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(_NEW_YAML)
         cfg = load_squad("default", agents_dir=tmp_path)
         assert cfg.planner == 1
@@ -59,7 +59,7 @@ class TestLoadSquad:
     def test_load_new_list_schema_different_models(self, tmp_path):
         """Each role can specify a different model in the list format."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "mixed.yaml").write_text(
             textwrap.dedent("""\
                 name: mixed
@@ -85,7 +85,7 @@ class TestLoadSquad:
 
     def test_load_broad_profile(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "broad.yaml").write_text(
             textwrap.dedent("""\
                 name: broad
@@ -113,7 +113,7 @@ class TestLoadSquad:
     def test_name_falls_back_to_file_stem(self, tmp_path):
         """When the YAML has no name: key the file stem is used."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "mypro.yaml").write_text(_MINIMAL_YAML)
         cfg = load_squad("mypro", agents_dir=tmp_path)
         assert cfg.name == "mypro"
@@ -121,7 +121,7 @@ class TestLoadSquad:
     def test_dict_composition_raises(self, tmp_path):
         """Dict-format composition (legacy) raises ValueError."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "bad.yaml").write_text(
             textwrap.dedent("""\
                 composition:
@@ -136,13 +136,13 @@ class TestLoadSquad:
 
     def test_missing_file_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         with pytest.raises(FileNotFoundError):
             load_squad("nonexistent", agents_dir=tmp_path)
 
     def test_planner_not_one_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "bad.yaml").write_text(
             textwrap.dedent("""\
                 composition:
@@ -160,7 +160,7 @@ class TestLoadSquad:
 
     def test_zero_count_raises(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "zero.yaml").write_text(
             textwrap.dedent("""\
                 composition:
@@ -179,7 +179,7 @@ class TestLoadSquad:
     def test_defaults_applied(self, tmp_path):
         """timeout_minutes omitted — should default to 120."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "notimeout.yaml").write_text(
             textwrap.dedent("""\
                 composition:
@@ -207,7 +207,7 @@ class TestLoadSquad:
     def test_project_overrides_package(self, tmp_path):
         """Project-level squad takes precedence over package bundled squad."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(
             textwrap.dedent("""\
                 composition:
@@ -282,7 +282,7 @@ class TestSquadConfig:
 class TestListSquads:
     def test_lists_yaml_files(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(_MINIMAL_YAML)
         (squads_dir / "broad.yaml").write_text(_MINIMAL_YAML)
         names = list_squads(agents_dir=tmp_path)
@@ -290,7 +290,7 @@ class TestListSquads:
 
     def test_empty_dir(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         assert list_squads(agents_dir=tmp_path) == []
 
     def test_no_agents_dir_returns_package_squads(self):
@@ -302,7 +302,7 @@ class TestListSquads:
 class TestLoadAllSquads:
     def test_returns_all_project_profiles(self, tmp_path):
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(_NEW_YAML)
         (squads_dir / "broad.yaml").write_text(
             textwrap.dedent("""\
@@ -329,7 +329,7 @@ class TestLoadAllSquads:
     def test_project_overrides_package_profile(self, tmp_path):
         """Project default.yaml shadows the package bundled one."""
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "default.yaml").write_text(
             textwrap.dedent("""\
                 name: default
@@ -412,7 +412,7 @@ class TestSquadCoverage:
         from orc.squad import load_all_squads
 
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "local.yaml").write_text(
             textwrap.dedent("""\
                 name: local
@@ -451,7 +451,7 @@ class TestSquadCoverage:
         from orc.squad import list_squads
 
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "alpha.yaml").write_text("")
         result = list_squads(agents_dir=tmp_path)
         assert "alpha" in result
@@ -473,7 +473,7 @@ class TestSquadCoverage:
         from orc.squad import load_all_squads
 
         squads_dir = tmp_path / "squads"
-        squads_dir.mkdir()
+        squads_dir.mkdir(exist_ok=True)
         (squads_dir / "broken.yaml").write_text(": : invalid yaml\n")
         # Should not raise; bad file is silently skipped
         profiles = load_all_squads(agents_dir=tmp_path)

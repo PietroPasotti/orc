@@ -1,6 +1,7 @@
 """Tests for orc/cli/merge.py."""
 
 import subprocess
+from dataclasses import replace as _replace
 from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
@@ -19,8 +20,9 @@ class TestMergeCommand:
     def _setup(self, monkeypatch, tmp_path):
         board = tmp_path / "board.yaml"
         board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_cfg, "BOARD_FILE", board)
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), board_file=board, agents_dir=tmp_path)
+        )
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
 
     def test_clean_rebase_default_shows_manual_instructions(self, monkeypatch, tmp_path):

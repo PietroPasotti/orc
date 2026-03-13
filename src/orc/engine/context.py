@@ -30,7 +30,7 @@ def _read_adrs(*, summarize: bool = False) -> str:
     When *summarize* is True, include only the title, status, and first
     non-empty paragraph of each ADR (for coder/QA who only need the gist).
     """
-    adr_dir = _cfg.REPO_ROOT / "docs" / "adr"
+    adr_dir = _cfg.get().repo_root / "docs" / "adr"
     parts: list[str] = []
     if not adr_dir.exists():
         return "_No ADRs found._"
@@ -259,7 +259,7 @@ def _has_planner_work() -> bool:
       not yet tracked on the kanban board), **or**
     - the codebase contains ``#TODO`` / ``#FIXME`` comments.
     """
-    vision_dir = _cfg.AGENTS_DIR / "vision"
+    vision_dir = _cfg.get().agents_dir / "vision"
     if vision_dir.is_dir():
         board = _board._read_board()
         all_task_stems = {
@@ -272,7 +272,7 @@ def _has_planner_work() -> bool:
                 continue
             if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
                 return True
-    return bool(_scan_todos(_cfg.REPO_ROOT))
+    return bool(_scan_todos(_cfg.get().repo_root))
 
 
 def _strip_frontmatter(raw: str) -> str:
@@ -316,7 +316,7 @@ def _parse_role_file(agent_name: str) -> str:
     Search order: project-level ``ROLES_DIR`` before the package-bundled
     ``_PACKAGE_ROLES_DIR``.
     """
-    for base_dir in (_cfg.ROLES_DIR, _cfg._PACKAGE_ROLES_DIR):
+    for base_dir in (_cfg.get().roles_dir, _cfg._PACKAGE_ROLES_DIR):
         role_dir = base_dir / agent_name
         if role_dir.is_dir():
             return _parse_role_dir(role_dir)
@@ -331,7 +331,7 @@ def _role_symbol(role: str) -> str:
 
     For directory-format roles, the frontmatter is read from ``_main.md``.
     """
-    for directory in (_cfg.ROLES_DIR, _cfg._PACKAGE_ROLES_DIR):
+    for directory in (_cfg.get().roles_dir, _cfg._PACKAGE_ROLES_DIR):
         role_dir = directory / role
         if role_dir.is_dir():
             role_file = role_dir / "_main.md"
@@ -364,17 +364,18 @@ def build_agent_context(
     role = _parse_role_file(agent_name)
 
     dev_worktree = _git._ensure_dev_worktree()
+    cfg = _cfg.get()
     try:
-        agents_rel = _cfg.AGENTS_DIR.relative_to(_cfg.REPO_ROOT)
+        agents_rel = cfg.agents_dir.relative_to(cfg.repo_root)
     except ValueError:
-        agents_rel = Path(_cfg.AGENTS_DIR.name)
+        agents_rel = Path(cfg.agents_dir.name)
 
     # -- shared docs (trimmed per role) ------------------------------------
-    readme_path = _cfg.REPO_ROOT / "README.md"
+    readme_path = cfg.repo_root / "README.md"
     readme_raw = readme_path.read_text() if readme_path.exists() else ""
     readme = _extract_readme(readme_raw)
 
-    contributing_path = _cfg.REPO_ROOT / "CONTRIBUTING.md"
+    contributing_path = cfg.repo_root / "CONTRIBUTING.md"
     contributing_raw = contributing_path.read_text() if contributing_path.exists() else ""
     contributing = _extract_contributing(contributing_raw, agent_name)
 
@@ -404,30 +405,30 @@ def build_agent_context(
         git_info = (
             f"Your branch: `{feature_branch}` (cut from `main`)\n"
             f"Your worktree: `{feature_wt}` — all edits and git commands go here\n"
-            f"Dev branch: `{_cfg.WORK_DEV_BRANCH}` (managed by planner and QA — do not touch)\n"
-            f"Main worktree: `{_cfg.REPO_ROOT}` (human's workspace — do not touch)\n\n"
+            f"Dev branch: `{cfg.work_dev_branch}` (managed by planner and QA — do not touch)\n"
+            f"Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
             f"Work exclusively in your feature worktree (`{feature_wt}`). "
             f"Commit to `{feature_branch}` only. "
             f"The orchestrator will merge your branch into "
-            f"`{_cfg.WORK_DEV_BRANCH}` after QA passes."
+            f"`{cfg.work_dev_branch}` after QA passes."
         )
     elif agent_name == AgentRole.QA and feature_branch:
         git_info = (
             f"Branch to review: `{feature_branch}`\n"
             f"Feature worktree: `{feature_wt}`\n"
-            f"Dev branch: `{_cfg.WORK_DEV_BRANCH}`\n"
+            f"Dev branch: `{cfg.work_dev_branch}`\n"
             f"Dev worktree: `{dev_worktree}`\n"
-            f"Main worktree: `{_cfg.REPO_ROOT}` (human's workspace — do not touch)\n\n"
-            f"Review `{feature_branch}` against `{_cfg.WORK_DEV_BRANCH}` "
-            f"(e.g. `git diff {_cfg.WORK_DEV_BRANCH}...{feature_branch}`).\n"
+            f"Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
+            f"Review `{feature_branch}` against `{cfg.work_dev_branch}` "
+            f"(e.g. `git diff {cfg.work_dev_branch}...{feature_branch}`).\n"
             f"Run in the dev worktree (`{dev_worktree}`). "
             f"**Do NOT merge** — the orchestrator merges after you signal `passed`."
         )
     else:
         git_info = (
-            f"Dev branch: `{_cfg.WORK_DEV_BRANCH}`\n"
+            f"Dev branch: `{cfg.work_dev_branch}`\n"
             f"Dev worktree path: `{dev_worktree}`\n"
-            f"Main worktree path: `{_cfg.REPO_ROOT}` (human's workspace — do not touch)\n\n"
+            f"Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
             f"All file edits and git commands must be performed inside the dev "
             f"worktree (`{dev_worktree}`)."
         )
@@ -438,7 +439,7 @@ def build_agent_context(
 
     todos_section = ""
     if agent_name == AgentRole.PLANNER:
-        todos = _scan_todos(_cfg.REPO_ROOT)
+        todos = _scan_todos(cfg.repo_root)
         todos_section = f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
 
     context = (

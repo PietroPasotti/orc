@@ -1,5 +1,7 @@
 """Tests for orc/cli/run.py."""
 
+from dataclasses import replace as _replace
+
 import pytest
 from typer.testing import CliRunner
 
@@ -33,7 +35,7 @@ def _minimal_squad(**kw) -> SquadConfig:
 class TestRunBareRaise:
     def test_run_loop_crash_reraises(self, tmp_path, monkeypatch):
         """Lines 62-67: exception from dispatcher.run() is logged and re-raised."""
-        monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
@@ -57,7 +59,7 @@ class TestRunBareRaise:
 
 def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     """Monkeypatch all external dependencies for _run() tests."""
-    monkeypatch.setattr(_cfg, "AGENTS_DIR", tmp_path)
+    monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=tmp_path))
     monkeypatch.setattr(_cfg, "validate_env", lambda: [])
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
     monkeypatch.setattr(tg, "get_messages", lambda: [])

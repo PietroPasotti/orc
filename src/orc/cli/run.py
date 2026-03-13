@@ -35,7 +35,7 @@ def _run(
 ) -> None:
     _check_env_or_exit()
 
-    squad_cfg = load_squad(squad, agents_dir=_cfg.AGENTS_DIR)
+    squad_cfg = load_squad(squad, agents_dir=_cfg.get().agents_dir)
     logger.info(
         "orc run starting",
         maxcalls=maxcalls,

@@ -130,7 +130,9 @@ class TestBootstrap:
 
 class TestBootstrapUpgrade:
     def test_upgrade_fails_without_orc_dir(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir(exist_ok=True)
+        monkeypatch.chdir(empty_dir)
         result = runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
         assert result.exit_code != 0
         assert ".orc/" in result.output

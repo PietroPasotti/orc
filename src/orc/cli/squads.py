@@ -15,7 +15,7 @@ logger = structlog.get_logger(__name__)
 
 def _squads() -> None:
     _obs.setup()
-    profiles = load_all_squads(agents_dir=_cfg.AGENTS_DIR)
+    profiles = load_all_squads(agents_dir=_cfg.get().agents_dir)
     if not profiles:
         typer.echo("No squad profiles found.")
         return

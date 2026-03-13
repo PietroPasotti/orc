@@ -92,7 +92,7 @@ class ConflictResolver:
 
         conflict_extra = (
             f"## Feature merge conflict — your task\n\n"
-            f"A `git merge --no-ff {branch}` into `{_cfg.WORK_DEV_BRANCH}` was attempted "
+            f"A `git merge --no-ff {branch}` into `{_cfg.get().work_dev_branch}` was attempted "
             f"and stopped with conflicts.  The merge is currently paused in the dev "
             f"worktree at `{worktree}`.\n\n"
             f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
@@ -155,7 +155,7 @@ class ConflictResolver:
 
         conflict_extra = (
             "## Startup rebase conflict — your task\n\n"
-            f"A `git rebase main` of the `{_cfg.WORK_DEV_BRANCH}` branch was attempted at "
+            f"A `git rebase main` of the `{_cfg.get().work_dev_branch}` branch was attempted at "
             "session start and stopped with conflicts.  The rebase is currently paused in "
             "the dev worktree.\n\n"
             f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
