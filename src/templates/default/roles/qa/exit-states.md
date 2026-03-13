@@ -41,7 +41,7 @@ uses to route the task. Do **not** craft the commit message by hand.
 ### Signalling `blocked`
 
 Write **one** message to the **Telegram chat**, then stop. Use
-`orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
+`.orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
 
 ```
 [qa](blocked) YYYY-MM-DDTHH:MM:SSZ: <what you need from a human>

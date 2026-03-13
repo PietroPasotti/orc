@@ -20,7 +20,7 @@ Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate co
 If the dev worktree is dirty when a feature branch is being merged (e.g. from a previously interrupted run), orc automatically resets it to `HEAD` before retrying.  If the merge itself produces conflicts, a coder agent is spawned to resolve them before the run continues.
 
 > **Tip:** the integration branch name (`dev`) is configurable via `orc-dev-branch` in `.orc/config.yaml`.
-> **Tip:** all orc-owned feature branches can be namespaced with a prefix via `orc-branch-prefix` in `.orc/config.yaml` (e.g. `orc-branch-prefix: orc` produces branches like `orc/feat/0001-foo`).
+> **Tip:** all orc-owned feature branches can be namespaced with a prefix via `orc-branch-prefix` in `.orc/config.yaml` (e.g. `orc-branch-prefix: orc` produces branches like `.orc/feat/0001-foo`).
 
 ## Installation
 
@@ -74,8 +74,8 @@ Existing files are **never overwritten** unless `--force` is passed.
 
 After bootstrapping, the only things left to do are:
 
-1. Customise `orc/roles/*.md` for your project's purposes
-2. Drop vision documents into `orc/vision/`, describing features you want implemented.
+1. Customise `.orc/roles/*.md` for your project's purposes
+2. Drop vision documents into `.orc/vision/`, describing features you want implemented.
 3. Fill in `.env`.
 
 ### .env
@@ -110,7 +110,7 @@ orc merge
 
 ## Squad profiles
 
-Squad profiles live in `orc/squads/{name}.yaml` (project-level) or are provided by the package (built-in `default`). They define how many agents of each role may run in parallel:
+Squad profiles live in `.orc/squads/{name}.yaml` (project-level) or are provided by the package (built-in `default`). They define how many agents of each role may run in parallel:
 
 ```yaml
 # orc/squads/broad.yaml
@@ -168,5 +168,5 @@ These are the supported variables, their defaults, and what they do:
 | Key | Default | Description |
 |---|---|---|
 | `orc-dev-branch` | `dev` | Integration branch name. Feature branches are merged here after QA passes; `orc merge` fast-forwards it into `main`. |
-| `orc-branch-prefix` | _(empty)_ | Optional prefix for all orc-owned branches. E.g. `orc` produces `orc/feat/0001-foo` instead of `feat/0001-foo`. |
+| `orc-branch-prefix` | _(empty)_ | Optional prefix for all orc-owned branches. E.g. `orc` produces `.orc/feat/0001-foo` instead of `feat/0001-foo`. |
 | `orc-worktree-base` | `.orc/worktrees` | Base directory for git worktrees. Worktrees are placed at `<base>/<task>`, e.g. `.orc/worktrees/0001-foo`. |

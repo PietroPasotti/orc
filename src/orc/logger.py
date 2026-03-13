@@ -1,7 +1,7 @@
 """Structlog bootstrap for the orc orchestrator.
 
 Call ``setup()`` once at process start (done automatically via the Typer
-app callback in ``main.py``).  Every other module in ``orc/`` then does::
+app callback in ``main.py``).  Every other module in ``.orc/`` then does::
 
     import structlog
     logger = structlog.get_logger(__name__)

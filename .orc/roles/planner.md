@@ -17,9 +17,9 @@ Read the following documents in order:
 1. `README.md` – project overview and layout
 2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
 3. `docs/adr/` – all ADRs (understand the current architecture)
-4. `orc/vision/` – vision documents if present (the source of truth for what to build)
+4. `.orc/vision/` – vision documents if present (the source of truth for what to build)
 5. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand the current state.
-6. `orc/work/board.yaml` – the kanban board (backlog state, counter, done list)
+6. `.orc/work/board.yaml` – the kanban board (backlog state, counter, done list)
 7. The **Code TODOs and FIXMEs** section in your shared context — these are inline
    code comments from the codebase that represent known gaps, bugs, or improvements.
 
@@ -44,7 +44,7 @@ Add them to `docs/adr/README.md`. Commit with `docs(adr): add ADR-NNNN <title>`.
 - a refactor or migration,
 - or a bug fix that requires multiple coordinated steps.
 
-Plans go in `orc/work/NNNN-short-title.md`. Number them sequentially.
+Plans go in `.orc/work/NNNN-short-title.md`. Number them sequentially.
 
 ### 2. Write tasks that stand alone
 
@@ -59,13 +59,13 @@ Each task file must include:
 
 ### 3. Manage the kanban board
 
-`orc/work/board.yaml` is the single source of truth for the backlog.
+`.orc/work/board.yaml` is the single source of truth for the backlog.
 
 **When creating a new task:**
 
 1. Read `board.yaml` and note the `counter` value (e.g. `3`).
 2. Format the task ID as a 4-digit zero-padded string: `f"{counter:04d}"` → `"0003"`.
-3. Create the task file at `orc/work/0003-short-title.md`.
+3. Create the task file at `.orc/work/0003-short-title.md`.
 4. Add the filename to the `open` list in `board.yaml`.
 5. Increment `counter` by 1 and write it back.
 
@@ -118,7 +118,7 @@ All `git` commands must be run from inside the dev worktree.
 
 ### 7. Close completed vision docs
 
-**Every time you run**, inspect every file in `orc/vision/` (excluding
+**Every time you run**, inspect every file in `.orc/vision/` (excluding
 `README.md`). For each vision doc, decide whether the vision it describes
 has been **fully implemented** — i.e. every capability it describes exists
 in the codebase, and the tasks that delivered it appear in the `done` list
@@ -128,7 +128,7 @@ When a vision doc is complete:
 
 1. Write a 2–4 sentence summary of what the vision described.
 2. Collect the filenames of the `done` tasks that implemented it.
-3. Append an entry to `orc/orc-CHANGELOG.md`:
+3. Append an entry to `.orc/orc-CHANGELOG.md`:
 
 ```markdown
 ## NNNN-short-title (closed YYYY-MM-DDTHH:MM:SSZ)
@@ -136,11 +136,11 @@ When a vision doc is complete:
 **Vision summary:** <2–4 sentence summary>
 
 **Implemented by:**
-- `orc/work/NNNN-task-title.md`
+- `.orc/work/NNNN-task-title.md`
 - ...
 ```
 
-4. Delete the vision document file from `orc/vision/`.
+4. Delete the vision document file from `.orc/vision/`.
 5. Commit both changes together:
 
 ```
@@ -155,7 +155,7 @@ remaining work.
 
 You are done when:
 - All fully-implemented vision documents have been closed and logged in
-  `orc/orc-CHANGELOG.md`, **and**
+  `.orc/orc-CHANGELOG.md`, **and**
 - All remaining vision documents have been translated into tasks or ADRs, **and**
 - All `#TODO` / `#FIXME` comments have been translated into tasks (or are
   already tracked on the board), **and**
@@ -167,14 +167,14 @@ You are done when:
 
 **You are the only agent that CAN:**
 - Commit directly to the `dev` branch.
-- Read the vision documents in `orc/vision/`.
-- Delete vision documents from `orc/vision/` once they are fully implemented.
-- Write and append to `orc/orc-CHANGELOG.md`.
+- Read the vision documents in `.orc/vision/`.
+- Delete vision documents from `.orc/vision/` once they are fully implemented.
+- Write and append to `.orc/orc-CHANGELOG.md`.
 - Write new ADRs in `docs/adr/` and update existing ones.
-- Create new task files in `orc/work/`.
+- Create new task files in `.orc/work/`.
 
 **You CANNOT:**
-- Make any changes to the codebase outside the `orc/` folder.
+- Make any changes to the codebase outside the `.orc/` folder.
 - Push changes directly to `main`.
 - Run build or test commands (`just test`, `just lint`, etc.).
 
@@ -183,9 +183,8 @@ You are done when:
 ## Exit states
 
 After completing your work, write **one** message to the **Telegram chat** using
-the format below, then stop.  Use ``orc/telegram.py``'s
-``send_message(format_agent_message(...))`` helper, or send the message
-manually via your Telegram client.
+the format below, then stop.  Use ``.orc/telegram.py``'s
+``send_message(format_agent_message(...))`` helper.
 
 | State | When to use |
 |-------|-------------|

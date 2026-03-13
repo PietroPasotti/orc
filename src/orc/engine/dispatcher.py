@@ -1,7 +1,7 @@
 """Parallel agent dispatcher for the orc orchestrator.
 
 The :class:`Dispatcher` replaces the sequential ``while True`` loop in
-``orc/main.py`` with a poll-based parallel scheduler that can run multiple
+``.orc/main.py`` with a poll-based parallel scheduler that can run multiple
 agents concurrently according to a :class:`~orc.squad.SquadConfig`.
 
 Architecture

@@ -1,6 +1,6 @@
 """Telegram Bot API client for the orc agent communication channel.
 
-Agents use this module to read and write messages instead of ``orc/chat.md``.
+Agents use this module to read and write messages instead of ``.orc/chat.md``.
 The bot token and target chat ID are loaded from a ``.env`` file
 (auto-discovered from the current working directory upward).
 

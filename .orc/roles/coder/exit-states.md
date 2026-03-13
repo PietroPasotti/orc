@@ -25,7 +25,7 @@ uses to route the task to QA. Do **not** craft the commit message by hand.
 ### Signalling `soft-blocked` or `blocked`
 
 Write **one** message to the **Telegram chat**, then stop. Use
-`orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
+`.orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
 
 ```
 [coder](soft-blocked) YYYY-MM-DDTHH:MM:SSZ: <what needs clarification>

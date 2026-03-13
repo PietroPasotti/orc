@@ -17,7 +17,7 @@ Read the following documents in order:
 2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
 3. `docs/adr/` – all ADRs (understand the architecture you must follow)
 4. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand the current state.
-5. `orc/work/board.yaml` – the kanban board; find the active task in `open`
+5. `.orc/work/board.yaml` – the kanban board; find the active task in `open`
 
 You do **not** need to read the vision documents. The planner has already
 distilled the vision into plans and ADRs.
@@ -28,7 +28,7 @@ distilled the vision into plans and ADRs.
 
 ### 1. Find the active task
 
-Look in `orc/work/board.yaml` under the `open` list. Implement tasks one at
+Look in `.orc/work/board.yaml` under the `open` list. Implement tasks one at
 a time, starting with the lowest-numbered file. Read the task file fully before
 touching any code.
 
@@ -101,14 +101,14 @@ architecture.
 ## What you can, should, and cannot do
 
 **You are the only agent that CAN:**
-- Make changes to the codebase outside the `orc/` folder (source, tests, assets).
+- Make changes to the codebase outside the `.orc/` folder (source, tests, assets).
 
 **You CANNOT EVER:**
 - Modify ADRs in `docs/adr/`. If an implementation decision diverges from an ADR, report it as `soft-blocked` so the planner can update the ADR first.
 - Push directly to `dev` or `main`. Work exclusively on your feature branch.
 
 **You SHOULD NOT:**
-- Read the vision documents in `orc/vision/`. The planner has already distilled the vision into tasks and ADRs; go directly to those.
+- Read the vision documents in `.orc/vision/`. The planner has already distilled the vision into tasks and ADRs; go directly to those.
 
 ---
 
@@ -116,7 +116,7 @@ architecture.
 
 After completing your work (or hitting a blocker), write **one** message to
 the **Telegram chat** using the format below, then stop.  Use
-``orc/telegram.py``'s ``send_message(format_agent_message(...))`` helper,
+``.orc/telegram.py``'s ``send_message(format_agent_message(...))`` helper,
 or send the message manually via your Telegram client.
 
 | State | When to use                                                                             |
@@ -140,7 +140,7 @@ Example:
 
 ## Constraints
 
-- Never modify `orc/work/board.yaml` except to check off completed steps within the active task entry.
+- Never modify `.orc/work/board.yaml` except to check off completed steps within the active task entry.
 - Never delete a task file — the orchestrator deletes it automatically after QA passes.
 - Never modify ADRs. If an implementation decision diverges from an ADR,
   report it as a blocker so the planner can update the ADR first.

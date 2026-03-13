@@ -150,7 +150,7 @@ def mock_telegram(orc_env, monkeypatch):
 
     - ``tg.send_message`` writes only to the local chat.log (no HTTP request).
     - ``tg._get_telegram_updates`` always returns an empty list.
-    - ``tg._LOG_FILE`` is redirected to the temp project's ``orc/chat.log``
+    - ``tg._LOG_FILE`` is redirected to the temp project's ``.orc/chat.log``
       so each test starts with a clean message history.
 
     Returns the path to the chat.log file.

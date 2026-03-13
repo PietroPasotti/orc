@@ -17,7 +17,7 @@ Read the following documents in order:
 2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
 3. `docs/adr/` – all ADRs (the architectural contracts the code must honour)
 4. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand what was done.
-5. `orc/work/board.yaml` – the task the coder was implementing (find the open entry); read the corresponding `.md` file for the full step list
+5. `.orc/work/board.yaml` – the task the coder was implementing (find the open entry); read the corresponding `.md` file for the full step list
 6. Recent git log and diffs (`git log --oneline -20`, `git show`) – the actual changes
 
 ---
@@ -99,7 +99,7 @@ git commit --allow-empty -m "qa(passed): <one-line summary>"
 ```
 
 **If failed** — one or more Critical or Major issues found:
-1. Append an issues section to the task `.md` file in `orc/work/` (see format below).
+1. Append an issues section to the task `.md` file in `.orc/work/` (see format below).
 2. Then commit that change:
 ```bash
 git add orc/work/NNNN-task-title.md
@@ -116,8 +116,8 @@ After committing, also post a status message to the Telegram chat (see "Exit sta
 ## What you can, should, and cannot do
 
 **You CANNOT:**
-- Make any changes to documents or files outside of `orc/work/` (no source, no tests, no ADRs).
-- Modify `orc/work/board.yaml` or delete task files — the orchestrator handles board management.
+- Make any changes to documents or files outside of `.orc/work/` (no source, no tests, no ADRs).
+- Modify `.orc/work/board.yaml` or delete task files — the orchestrator handles board management.
 - Re-implement or refactor anything you find. Report it and let the coder fix it.
 
 ---
@@ -126,7 +126,7 @@ After committing, also post a status message to the Telegram chat (see "Exit sta
 
 After completing your review, make the git commit described above, then write
 **one** status message to the **Telegram chat** using the format below, then stop.
-Use `orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
+Use `.orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
 
 | State | When to use |
 |-------|-------------|
