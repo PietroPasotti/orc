@@ -5,11 +5,30 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class TaskBody(BaseModel):
+    """Structured content for a task markdown file."""
+
+    overview: str
+    """Free-form description of what is being built and why."""
+    in_scope: list[str]
+    """Items explicitly in scope for this task."""
+    out_of_scope: list[str]
+    """Items explicitly out of scope for this task."""
+    steps: list[str]
+    """Ordered implementation steps."""
+    notes: str = ""
+    """Optional free-form notes: blockers, design decisions, tips for the coder."""
+
+
 class CreateTaskRequest(BaseModel):
     """Body for ``POST /board/tasks``."""
 
     title: str
     """Short dash-separated task title, e.g. ``add-user-auth``."""
+    vision: str
+    """Filename of the vision this task was refined from, e.g. ``0001-shark-fleet.md``."""
+    body: TaskBody
+    """Structured task content assembled into the markdown file by the server."""
 
 
 class CreateTaskResponse(BaseModel):

@@ -26,6 +26,23 @@ def _state(orc_dir: Path):
     return StateManager(orc_dir)
 
 
+def _make_create_request(title: str):
+    """Return a minimal valid CreateTaskRequest for testing."""
+    from orc.coordination.models import CreateTaskRequest, TaskBody
+
+    return CreateTaskRequest(
+        title=title,
+        vision="0001-test-vision.md",
+        body=TaskBody(
+            overview="Implement the feature.",
+            in_scope=["core logic"],
+            out_of_scope=["UI changes"],
+            steps=["Write tests", "Implement"],
+            notes="",
+        ),
+    )
+
+
 class TestBoardRoutes:
     """Test route handlers from orc.coordination.routes.board directly."""
 
@@ -46,21 +63,19 @@ class TestBoardRoutes:
         assert result == []
 
     def test_create_task_returns_filename_and_path(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest
         from orc.coordination.routes.board import _get_state, create_task
 
         req = self._req(tmp_path)
-        body = CreateTaskRequest(title="add-auth")
+        body = _make_create_request("add-auth")
         result = create_task(body=body, state=_get_state(req))
         assert result["filename"].endswith(".md")
         assert "add-auth" in result["filename"]
 
     def test_get_task_found(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest
         from orc.coordination.routes.board import _get_state, create_task, get_task
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
         result = get_task(task_name=created["filename"], state=_get_state(req))
         assert result["name"] == created["filename"]
 
@@ -75,22 +90,22 @@ class TestBoardRoutes:
         assert exc_info.value.status_code == 404
 
     def test_set_status(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest, SetStatusRequest
+        from orc.coordination.models import SetStatusRequest
         from orc.coordination.routes.board import _get_state, create_task, get_task, set_status
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
         name = created["filename"]
         set_status(task_name=name, body=SetStatusRequest(status="review"), state=_get_state(req))
         task = get_task(task_name=name, state=_get_state(req))
         assert task["status"] == "review"
 
     def test_add_comment(self, tmp_path):
-        from orc.coordination.models import AddCommentRequest, CreateTaskRequest
+        from orc.coordination.models import AddCommentRequest
         from orc.coordination.routes.board import _get_state, add_comment, create_task, get_task
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
         name = created["filename"]
         result = add_comment(
             task_name=name,

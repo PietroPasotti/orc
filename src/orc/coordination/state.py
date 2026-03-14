@@ -52,13 +52,16 @@ class StateManager:
 
     # ── Board: mutations ──────────────────────────────────────────────────
 
-    def create_task(self, title: str) -> tuple[str, Path]:
+    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
         """Create a task file and add a *planned* entry to board.yaml.
+
+        *vision* is the filename of the vision this task was refined from.
+        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
 
         Returns ``(filename, absolute_path)`` of the created task file.
         """
         with self._lock:
-            return self._mgr.create_task(title)
+            return self._mgr.create_task(title, vision, body)
 
     def set_task_status(self, task_name: str, status: str) -> None:
         """Set the ``status`` field of *task_name* in board.yaml."""

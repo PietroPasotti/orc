@@ -35,20 +35,31 @@ no commit-message parsing — the board is the single source of truth.
 ### Planner
 
 ```bash
-# 1. Create a new task (calls API → writes to .orc/work/, updates board)
-.orc/agent_tools/planner/create_task.py <task-title>
-# Example:
-.orc/agent_tools/planner/create_task.py add-user-auth
-# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned
-# → prints the absolute path of the created file
+# Create a new task and commit it to dev in one step.
+# The structured body (JSON) is read from stdin; the server assembles the markdown.
+echo '{
+  "overview":     "<what and why>",
+  "in_scope":     ["item 1", "item 2"],
+  "out_of_scope": ["item 1"],
+  "steps":        ["step 1", "step 2"],
+  "notes":        "<optional>"
+}' | .orc/agent_tools/planner/create_task.py <agent-id> <task-title> <vision-file> [extra-file...]
 
-# 2. Commit the task to dev (board lives in .orc/work/; optionally stage ADRs)
-.orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
 # Example:
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth docs/adr/0042-auth.md
+echo '{
+  "overview": "Add JWT-based authentication to the API.",
+  "in_scope": ["login endpoint", "token refresh"],
+  "out_of_scope": ["OAuth integration", "UI changes"],
+  "steps": ["Write failing tests", "Implement auth middleware", "Wire into routes"],
+  "notes": "See ADR-0042 for the chosen algorithm."
+}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md
+# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned, commits to dev
+# → prints the filename of the created task file
 
-# 3. Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
+# With an optional extra file (e.g. a new ADR):
+echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md docs/adr/0042-auth.md
+
+# Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 ```
 

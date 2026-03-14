@@ -107,11 +107,38 @@ class TestCoordinationServer:
 
 
 class TestModels:
-    def test_create_task_request(self):
-        from orc.coordination.models import CreateTaskRequest
+    def test_task_body_model(self):
+        from orc.coordination.models import TaskBody
 
-        m = CreateTaskRequest(title="foo-bar")
+        b = TaskBody(
+            overview="Do the thing.",
+            in_scope=["a", "b"],
+            out_of_scope=["c"],
+            steps=["step1"],
+        )
+        assert b.overview == "Do the thing."
+        assert b.in_scope == ["a", "b"]
+        assert b.out_of_scope == ["c"]
+        assert b.steps == ["step1"]
+        assert b.notes == ""  # default
+
+    def test_task_body_notes_default_empty(self):
+        from orc.coordination.models import TaskBody
+
+        b = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
+        assert b.notes == ""
+
+    def test_create_task_request(self):
+        from orc.coordination.models import CreateTaskRequest, TaskBody
+
+        m = CreateTaskRequest(
+            title="foo-bar",
+            vision="0001-foo.md",
+            body=TaskBody(overview="o", in_scope=[], out_of_scope=[], steps=[]),
+        )
         assert m.title == "foo-bar"
+        assert m.vision == "0001-foo.md"
+        assert m.body.overview == "o"
 
     def test_create_task_response(self):
         from orc.coordination.models import CreateTaskResponse
@@ -168,24 +195,96 @@ class TestFileBoardManagerCreateTask:
         (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
         return FileBoardManager(orc)
 
+    def _body(self, **overrides):
+        base = {
+            "overview": "Implement the feature.",
+            "in_scope": ["core logic"],
+            "out_of_scope": ["UI changes"],
+            "steps": ["Write tests", "Implement"],
+            "notes": "Check the ADR first.",
+        }
+        base.update(overrides)
+        return base
+
+    _VISION = "0001-test-vision.md"
+
     def test_create_task_returns_filename_and_path(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        filename, path = mgr.create_task("add-auth")
+        filename, path = mgr.create_task("add-auth", self._VISION, self._body())
         assert filename == "0000-add-auth.md"
         assert path.exists()
 
     def test_create_task_increments_counter(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        mgr.create_task("first")
-        f2, _ = mgr.create_task("second")
+        mgr.create_task("first", self._VISION, self._body())
+        f2, _ = mgr.create_task("second", self._VISION, self._body())
         assert f2.startswith("0001-")
 
     def test_create_task_adds_planned_entry_to_board(self, tmp_path):
         orc = tmp_path / ".orc"
         mgr = self._mgr(tmp_path)
-        mgr.create_task("my-task")
+        mgr.create_task("my-task", self._VISION, self._body())
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
         assert board["open"][0]["status"] == "planned"
+
+    def test_create_task_renders_markdown_with_vision_header(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body())
+        content = path.read_text()
+        assert "**Vision:** 0001-test-vision.md" in content
+
+    def test_create_task_renders_overview(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body())
+        assert "Implement the feature." in path.read_text()
+
+    def test_create_task_renders_in_scope_items(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body(in_scope=["a", "b"]))
+        content = path.read_text()
+        assert "- a\n" in content
+        assert "- b\n" in content
+
+    def test_create_task_renders_out_of_scope_items(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task(
+            "my-task", self._VISION, self._body(out_of_scope=["no UI", "no auth"])
+        )
+        content = path.read_text()
+        assert "- no UI\n" in content
+        assert "- no auth\n" in content
+
+    def test_create_task_renders_numbered_steps(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task(
+            "my-task", self._VISION, self._body(steps=["first step", "second step"])
+        )
+        content = path.read_text()
+        assert "- [ ] 1. first step\n" in content
+        assert "- [ ] 2. second step\n" in content
+
+    def test_create_task_renders_notes(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body(notes="Read the ADR."))
+        assert "Read the ADR." in path.read_text()
+
+    def test_create_task_empty_notes_renders_cleanly(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body(notes=""))
+        content = path.read_text()
+        assert "## Notes\n\n\n" in content
+
+    def test_create_task_empty_scope_lists_render_placeholder(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body(in_scope=[], out_of_scope=[]))
+        content = path.read_text()
+        assert "**In scope:**\n-\n" in content
+        assert "**Out of scope:**\n-\n" in content
+
+    def test_create_task_empty_steps_renders_placeholder(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        _, path = mgr.create_task("my-task", self._VISION, self._body(steps=[]))
+        assert "- [ ]\n" in path.read_text()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

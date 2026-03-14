@@ -26,6 +26,22 @@ def _state(orc_dir: Path):
     return StateManager(orc_dir)
 
 
+_VISION = "0001-test-vision.md"
+
+
+def _task_body(**overrides) -> dict:
+    """Return a minimal valid task body dict, with optional overrides."""
+    base = {
+        "overview": "Implement the feature.",
+        "in_scope": ["core logic"],
+        "out_of_scope": ["UI changes"],
+        "steps": ["Write tests", "Implement"],
+        "notes": "",
+    }
+    base.update(overrides)
+    return base
+
+
 class TestStateManagerBoardQueries:
     def test_get_open_tasks_empty(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -64,7 +80,7 @@ class TestStateManagerBoardMutations:
     def test_create_task_creates_file_and_board_entry(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
-        filename, path = s.create_task("add-user-auth")
+        filename, path = s.create_task("add-user-auth", _VISION, _task_body())
         assert filename == "0000-add-user-auth.md"
         assert path.exists()
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
@@ -75,8 +91,8 @@ class TestStateManagerBoardMutations:
     def test_create_task_increments_counter(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
-        f1, _ = s.create_task("first")
-        f2, _ = s.create_task("second")
+        f1, _ = s.create_task("first", _VISION, _task_body())
+        f2, _ = s.create_task("second", _VISION, _task_body())
         assert f1.startswith("0000-")
         assert f2.startswith("0001-")
 

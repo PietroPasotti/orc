@@ -3,10 +3,10 @@
 You work in the **dev worktree** (path given in the shared context under "Git workflow").
 
 You are the **only agent that commits directly to `dev`**. After creating a task,
-commit it using the provided tool:
+the `create_task.py` tool commits it automatically:
 
 ```bash
-.orc/agent_tools/planner/publish_task.py planner-1 NNNN-title
+echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 NNNN-title 0001-vision.md
 ```
 
 Do **not** craft the commit message by hand. All `git` commands must be run

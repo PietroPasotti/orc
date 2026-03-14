@@ -85,8 +85,11 @@ class BoardManager(abc.ABC):
     # ── Task file CRUD ───────────────────────────────────────────────────
 
     @abc.abstractmethod
-    def create_task(self, title: str) -> tuple[str, Path]:
+    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
         """Create a task .md file and add a *planned* entry to the board.
+
+        *vision* is the filename of the vision this task was refined from.
+        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
 
         Returns ``(filename, absolute_path)`` of the created file.
         The counter in board.yaml is atomically incremented.
@@ -253,15 +256,40 @@ class FileBoardManager(BoardManager):
 
     # ── Task file CRUD ───────────────────────────────────────────────────
 
-    _TASK_TEMPLATE = (
-        "# {task_id}-{task_title}\n\n"
-        "## Overview\n\n<!-- What and why -->\n\n"
-        "## Scope\n\n**In scope:**\n-\n\n**Out of scope:**\n-\n\n"
-        "## Steps\n\n- [ ]\n\n## Notes\n\n"
-    )
+    @staticmethod
+    def _render_task(task_id: str, title: str, vision: str, body: dict) -> str:
+        """Assemble a task markdown file from structured *body* content."""
+        in_scope = body.get("in_scope", [])
+        out_of_scope = body.get("out_of_scope", [])
+        steps = body.get("steps", [])
+        notes = body.get("notes", "")
 
-    def create_task(self, title: str) -> tuple[str, Path]:
+        in_scope_lines = "\n".join(f"- {item}" for item in in_scope) if in_scope else "-"
+        out_of_scope_lines = (
+            "\n".join(f"- {item}" for item in out_of_scope) if out_of_scope else "-"
+        )
+        steps_lines = (
+            "\n".join(f"- [ ] {i + 1}. {step}" for i, step in enumerate(steps))
+            if steps
+            else "- [ ]"
+        )
+
+        return (
+            f"# {task_id}-{title}\n\n"
+            f"**Vision:** {vision}\n\n"
+            f"## Overview\n\n{body.get('overview', '')}\n\n"
+            f"## Scope\n\n"
+            f"**In scope:**\n{in_scope_lines}\n\n"
+            f"**Out of scope:**\n{out_of_scope_lines}\n\n"
+            f"## Steps\n\n{steps_lines}\n\n"
+            f"## Notes\n\n{notes}\n"
+        )
+
+    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
         """Create a task .md file and add a *planned* entry to the board.
+
+        *vision* is the filename of the vision this task was refined from.
+        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
 
         The counter increment, file creation, and board write are performed
         atomically under the board lock.  Returns ``(filename, absolute_path)``.
@@ -272,7 +300,7 @@ class FileBoardManager(BoardManager):
             task_id = f"{counter:04d}"
             task_filename = f"{task_id}-{title}.md"
             task_file = self._work_dir / task_filename
-            task_file.write_text(self._TASK_TEMPLATE.format(task_id=task_id, task_title=title))
+            task_file.write_text(self._render_task(task_id, title, vision, body))
             board["open"].append({"name": task_filename, "status": "planned"})
             board["counter"] = counter + 1
             self._write_board_unlocked(board)

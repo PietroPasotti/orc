@@ -43,7 +43,7 @@ def get_task(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
 @router.post("/tasks", response_model=CreateTaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(body: CreateTaskRequest, state: StateManager = Depends(_get_state)) -> dict:
     """Create a new task file and board entry."""
-    filename, path = state.create_task(body.title)
+    filename, path = state.create_task(body.title, body.vision, body.body.model_dump())
     return {"filename": filename, "path": str(path)}
 
 
