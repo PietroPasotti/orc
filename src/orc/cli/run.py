@@ -12,7 +12,6 @@ from typing import Annotated
 import structlog
 import typer
 
-import orc.cli.merge as _merge_mod
 import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.engine.context as _ctx
@@ -158,7 +157,7 @@ def _run(
 
     typer.echo("⟳ Syncing dev on main…")
     messages = tg.get_messages()
-    _merge_mod._rebase_dev_on_main(messages, squad_cfg)
+    _git._rebase_dev_on_main(messages, squad_cfg)
 
     # Start the coordination API server so agent tools in worktrees always
     # write to the correct (main) .orc/ directory.

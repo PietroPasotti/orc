@@ -33,3 +33,15 @@
 
 **Implemented by:**
 - `.orc/work/0004-orc-status-plain-flag.md`
+
+## 0004-orc-status-plain-output (closed 2026-03-14T15:18:26Z)
+
+**Summary:** Added --plain flag to 'orc status' that prints current workflow state as plain text and exits without launching the TUI. Works in CI, scripts, pipes, and AI agent subprocesses. The plain output covers board state, agent statuses, and git branch summary.
+
+**Implemented by:** 0010-code-cleanup.md
+
+## 0005-orc-merge-auto-worktree-fix (closed 2026-03-14T15:18:33Z)
+
+**Summary:** Fixed 'orc merge --auto' to perform the fast-forward merge from the main worktree (cwd=repo_root) instead of inside the dev worktree. Added UntrackedMergeBlockError with clear per-file error messages when untracked files block the merge.
+
+**Implemented by:** 0010-code-cleanup.md

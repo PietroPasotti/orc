@@ -162,5 +162,10 @@ class StateManager:
                 changelog.write_text(changelog.read_text() + entry)
             else:
                 changelog.write_text(f"# Changelog\n{entry}")
-            vision_path.unlink()
+            # don't unlink vision path; instead move it to an 'old' subdir for record-keeping
+
+            done_dir = self._mgr.vision_dir / "old"
+            done_dir.mkdir(exist_ok=True)
+            vision_path.rename(done_dir / name)
+
             logger.info("closed vision", name=name)

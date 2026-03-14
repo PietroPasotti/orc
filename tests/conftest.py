@@ -228,9 +228,9 @@ def mock_validate_env(monkeypatch):
 @pytest.fixture()
 def mock_rebase(monkeypatch):
     """Suppress _rebase_dev_on_main so tests don't hit subprocess."""
-    import orc.cli.merge as _merge_mod
+    import orc.git.core as _git_mod
 
-    monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+    monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
 
 
 # ---------------------------------------------------------------------------

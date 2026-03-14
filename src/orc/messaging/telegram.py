@@ -82,7 +82,7 @@ def _get_log_file() -> Path:
     if _LOG_FILE is None:
         from orc import config  # import here to avoid circular-import at module level
 
-        _LOG_FILE = config.get().chat_log
+        _LOG_FILE = config.get().log_dir / "chat.log"
     _LOG_FILE.touch(exist_ok=True)
     return _LOG_FILE
 

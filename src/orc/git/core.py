@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
+import typer
 
 import orc.board as _board
 import orc.config as _cfg
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
-from orc.squad import AgentRole
+from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -444,29 +446,66 @@ def _rebase_on_main(worktree: Path) -> tuple[bool, str]:
 
 
 def _count_features_done() -> int:
-    """Count feature-merge commits on ``dev`` that are not yet on ``main``.
-
-    A "feature done" commit is a merge commit whose message matches
-    ``Merge feat/NNNN-*``.
-    """
+    """Count ``Merge feat/NNNN-*`` commits on dev that are not yet on main."""
     cfg = _cfg.get()
     result = subprocess.run(
-        [
-            "git",
-            "log",
-            cfg.work_dev_branch,
-            "--not",
-            "main",
-            "--merges",
-            "--oneline",
-            "--grep",
-            "^Merge feat/",
-        ],
+        ["git", "log", "--merges", "--oneline", f"main..{cfg.work_dev_branch}"],
         cwd=cfg.repo_root,
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
         return 0
-    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
-    return len(lines)
+    return sum(1 for line in result.stdout.splitlines() if re.search(r"feat/\d{4}-", line))
+
+
+def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
+    """Rebase dev on top of main so every session starts with the latest instructions."""
+    import orc.engine.context as _ctx
+
+    dev_worktree = _ensure_dev_worktree()
+
+    result = subprocess.run(
+        ["git", "rebase", "--autostash", "main"], cwd=dev_worktree, capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        typer.echo("✓ dev rebased on main.")
+        return
+
+    status_output = _conflict_status(dev_worktree)
+    typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")
+
+    conflict_extra = (
+        "## Startup rebase conflict — your task\n\n"
+        f"A `git rebase main` of the `{_cfg.get().work_dev_branch}` "
+        "branch was attempted at session "
+        "start and stopped with conflicts.  The rebase is currently paused in the dev "
+        "worktree.\n\n"
+        f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
+        "**What you must do:**\n"
+        "1. Open each conflicting file, resolve the conflict markers (`<<<<<<<`, "
+        "`=======`, `>>>>>>>`).\n"
+        "2. `git add <resolved-file>` for each resolved file.\n"
+        "3. `git rebase --continue` (repeat steps 1–3 if git stops again).\n"
+        "4. Do NOT `git rebase --abort`. Finish the rebase.\n"
+        "5. Exit when the rebase is complete.\n"
+    )
+
+    coder_model = squad_cfg.model(AgentRole.CODER) if squad_cfg is not None else _ctx._DEFAULT_MODEL
+    model, context = _ctx.build_agent_context(
+        AgentRole.CODER, messages, extra=conflict_extra, model=coder_model
+    )
+    rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
+
+    if rc != 0:
+        logger.error("coder agent failed to resolve startup rebase", exit_code=rc)
+        typer.echo(f"✗ Coder agent exited with code {rc} while resolving startup rebase.")
+        raise typer.Exit(code=rc)
+
+    if _rebase_in_progress(dev_worktree):
+        logger.error("rebase still in progress after coder exited")
+        typer.echo("✗ Rebase still in progress after agent exit. Manual intervention needed.")
+        raise typer.Exit(code=1)
+
+    logger.info("dev rebased on main after conflict resolution by coder")
+    typer.echo("✓ dev rebased on main (conflicts resolved by coder).")

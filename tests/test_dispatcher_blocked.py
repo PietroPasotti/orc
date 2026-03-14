@@ -6,10 +6,10 @@ from conftest import FakePopen, make_msg
 from typer.testing import CliRunner
 
 import orc.ai.invoke as inv
-import orc.cli.merge as _merge_mod
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.engine.dispatcher as _disp
+import orc.git.core as _git_mod
 import orc.main as m
 from orc.ai.backends import SpawnResult
 
@@ -68,7 +68,7 @@ class TestBlockedResumption:
 
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc"))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
 
         import orc.messaging.telegram as tg
 
@@ -158,7 +158,7 @@ class TestBlockedResumption:
         sent: list[str] = []
         monkeypatch.setattr(tg, "send_message", lambda t: sent.append(t))
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         def _timeout(msgs, **kw):
@@ -199,7 +199,7 @@ class TestBlockedResumption:
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
         monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
