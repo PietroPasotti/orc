@@ -109,7 +109,7 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
 class TestNoTuiFlag:
     def test_no_tui_disables_tui(self, tmp_path, monkeypatch):
         """--no-tui causes no run_tui call."""
-        import orc.tui as _tui_mod
+        import orc.cli.tui as _tui_mod
 
         tui_called = []
         monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
@@ -122,7 +122,7 @@ class TestNoTuiFlag:
         """Non-TTY stdout skips TUI even without --no-tui."""
         import sys
 
-        import orc.tui as _tui_mod
+        import orc.cli.tui as _tui_mod
 
         tui_called = []
         monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
@@ -154,7 +154,7 @@ class TestTuiPath:
 
         from conftest import FakePopen
 
-        import orc.tui as _tui_mod
+        import orc.cli.tui as _tui_mod
         from orc.engine.pool import AgentProcess
 
         tui_called = []

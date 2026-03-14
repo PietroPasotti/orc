@@ -338,7 +338,7 @@ def status(
 ) -> None:
     """Print current workflow state without running any agent."""
     if not plain and _is_tty():
-        from orc.tui.status_tui import run_status_tui  # noqa: PLC0415
+        from orc.cli.tui.status_tui import run_status_tui  # noqa: PLC0415
 
         run_status_tui(squad=squad)
     else:
