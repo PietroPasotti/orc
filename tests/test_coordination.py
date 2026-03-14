@@ -96,6 +96,34 @@ class TestStateManagerBoardQueries:
         assert result[0]["name"] == "0002-done.md"
         assert result[0]["commit_tag"] == "def456"
 
+    def test_get_done_tasks_returns_list(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open: []\ndone:\n"
+            "  - name: 0001-foo.md\n"
+            "    commit_tag: abc123\n"
+            "    timestamp: '2026-01-01T00:00:00Z'\n"
+        )
+        result = _state(orc).get_done_tasks()
+        assert len(result) == 1
+        assert result[0]["name"] == "0001-foo.md"
+
+    def test_get_all_tasks_combines_open_and_done(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = _state(orc).get_all_tasks()
+        names = [t["name"] for t in result]
+        assert "0001-open.md" in names
+        assert "0002-done.md" in names
+        assert len(result) == 2
+
+    def test_get_all_tasks_empty(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        assert _state(orc).get_all_tasks() == []
+
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
@@ -114,7 +142,11 @@ class TestStateManagerBoardMutations:
     def test_create_task_creates_file_and_board_entry(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
-        filename, path = s.create_task("add-user-auth")
+        filename, path = s.create_task(
+            "add-user-auth",
+            "0001-feat.md",
+            {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []},
+        )
         assert filename == "0000-add-user-auth.md"
         assert path.exists()
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
@@ -125,8 +157,9 @@ class TestStateManagerBoardMutations:
     def test_create_task_increments_counter(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
-        f1, _ = s.create_task("first")
-        f2, _ = s.create_task("second")
+        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        f1, _ = s.create_task("first", "0001-feat.md", _body)
+        f2, _ = s.create_task("second", "0001-feat.md", _body)
         assert f1.startswith("0000-")
         assert f2.startswith("0001-")
 
@@ -347,22 +380,88 @@ class TestBoardRoutes:
         assert result[0]["name"] == "0001-done.md"
         assert result[0]["commit_tag"] == "abc123"
 
+    def test_get_tasks_no_param_returns_open_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req))
+        names = [t["name"] for t in result]
+        assert names == ["0001-open.md"]
+
+    def test_get_tasks_status_open_returns_open_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="open")
+        names = [t["name"] for t in result]
+        assert names == ["0001-open.md"]
+
+    def test_get_tasks_status_done_returns_done_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="done")
+        names = [t["name"] for t in result]
+        assert names == ["0002-done.md"]
+
+    def test_get_tasks_status_all_returns_all(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="all")
+        names = [t["name"] for t in result]
+        assert "0001-open.md" in names
+        assert "0002-done.md" in names
+        assert len(result) == 2
+
     def test_create_task_returns_filename_and_path(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest
+        from orc.coordination.models import CreateTaskRequest, TaskBody
         from orc.coordination.routes.board import _get_state, create_task
 
         req = self._req(tmp_path)
-        body = CreateTaskRequest(title="add-auth")
+        body = CreateTaskRequest(
+            title="add-auth",
+            vision="0001-feat.md",
+            body=TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[]),
+        )
         result = create_task(body=body, state=_get_state(req))
         assert result["filename"].endswith(".md")
         assert "add-auth" in result["filename"]
 
+    def _make_task_req(self, title: str):
+        from orc.coordination.models import CreateTaskRequest, TaskBody
+
+        return CreateTaskRequest(
+            title=title,
+            vision="0001-feat.md",
+            body=TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[]),
+        )
+
     def test_get_task_found(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest
         from orc.coordination.routes.board import _get_state, create_task, get_task
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
         result = get_task(task_name=created["filename"], state=_get_state(req))
         assert result["name"] == created["filename"]
 
@@ -377,22 +476,22 @@ class TestBoardRoutes:
         assert exc_info.value.status_code == 404
 
     def test_set_status(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest, SetStatusRequest
+        from orc.coordination.models import SetStatusRequest
         from orc.coordination.routes.board import _get_state, create_task, get_task, set_status
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
         name = created["filename"]
         set_status(task_name=name, body=SetStatusRequest(status="review"), state=_get_state(req))
         task = get_task(task_name=name, state=_get_state(req))
         assert task["status"] == "review"
 
     def test_add_comment(self, tmp_path):
-        from orc.coordination.models import AddCommentRequest, CreateTaskRequest
+        from orc.coordination.models import AddCommentRequest
         from orc.coordination.routes.board import _get_state, add_comment, create_task, get_task
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
         name = created["filename"]
         result = add_comment(
             task_name=name,
@@ -629,9 +728,13 @@ class TestCoordinationServer:
 
 class TestModels:
     def test_create_task_request(self):
-        from orc.coordination.models import CreateTaskRequest
+        from orc.coordination.models import CreateTaskRequest, TaskBody
 
-        m = CreateTaskRequest(title="foo-bar")
+        m = CreateTaskRequest(
+            title="foo-bar",
+            vision="0001-feat.md",
+            body=TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[]),
+        )
         assert m.title == "foo-bar"
 
     def test_create_task_response(self):
@@ -668,7 +771,7 @@ class TestModels:
         assert m.commit_tag is None
         assert m.timestamp is None
 
-    def test_task_entry_with_commit_tag_and_timestamp(self):
+    def test_task_entry_done_fields(self):
         from orc.coordination.models import TaskEntry
 
         m = TaskEntry(name="0001-foo.md", commit_tag="abc123", timestamp="2026-01-01T00:00:00Z")
@@ -700,20 +803,23 @@ class TestFileBoardManagerCreateTask:
 
     def test_create_task_returns_filename_and_path(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        filename, path = mgr.create_task("add-auth")
+        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        filename, path = mgr.create_task("add-auth", "0001-feat.md", _body)
         assert filename == "0000-add-auth.md"
         assert path.exists()
 
     def test_create_task_increments_counter(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        mgr.create_task("first")
-        f2, _ = mgr.create_task("second")
+        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        mgr.create_task("first", "0001-feat.md", _body)
+        f2, _ = mgr.create_task("second", "0001-feat.md", _body)
         assert f2.startswith("0001-")
 
     def test_create_task_adds_planned_entry_to_board(self, tmp_path):
         orc = tmp_path / ".orc"
         mgr = self._mgr(tmp_path)
-        mgr.create_task("my-task")
+        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        mgr.create_task("my-task", "0001-feat.md", _body)
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
         assert board["open"][0]["status"] == "planned"
 

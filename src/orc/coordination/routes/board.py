@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from orc.coordination.models import (
     AddCommentRequest,
@@ -20,14 +20,25 @@ def _get_state(request: Request) -> StateManager:
     return request.app.state.coord_state  # type: ignore[no-any-return]
 
 
-# TODO: generalize this by adding a {status} path param and supporting
-#  filtering by status, e.g. /board/tasks?status=open
-#  that way, we can simplify the board data structure and let it be a flat list of Task
-#  objects with a 'status' field that can be set to 'planned', 'in-progress', 'review', 'closed',
-#  etc. instead of having 2 separate lists for open & everything else.
 @router.get("/tasks", response_model=list[TaskEntry])
-def get_tasks(state: StateManager = Depends(_get_state)) -> list[dict]:
-    """Return all open tasks from board.yaml."""
+def get_tasks(
+    state: StateManager = Depends(_get_state),
+    status_filter: str | None = Query(
+        None,
+        alias="status",
+        description="Filter tasks by status bucket: open (default), done, or all.",
+    ),
+) -> list[dict]:
+    """Return tasks from board.yaml.
+
+    - ``status=open`` (default, omitted) — open tasks only.
+    - ``status=done`` — done tasks only.
+    - ``status=all`` — open and done tasks combined.
+    """
+    if status_filter == "done":
+        return state.get_done_tasks()
+    if status_filter == "all":
+        return state.get_all_tasks()
     return state.get_open_tasks()
 
 
