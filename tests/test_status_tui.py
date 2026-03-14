@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace as _replace
 from unittest.mock import MagicMock, patch
 
+import pytest
 import rich.table
 
 import orc.config as _cfg
@@ -23,45 +24,23 @@ from orc.cli.tui.status_tui import (
 
 
 class TestClassifyCommit:
-    def test_qa_passed(self):
-        style, icon = _classify_commit("qa(passed): all checks green")
-        assert style == "bold green"
-        assert icon == "✅"
-
-    def test_qa_blocked(self):
-        style, icon = _classify_commit("qa(blocked): cannot run tests")
-        assert style == "bold red"
-        assert icon == "❌"
-
-    def test_qa_failed(self):
-        style, icon = _classify_commit("qa(failed): type errors")
-        assert style == "bold red"
-        assert icon == "❌"
-
-    def test_merge_feat(self):
-        style, icon = _classify_commit("Merge feat/0001-foo into dev")
-        assert style == "bold blue"
-        assert icon == "🔀"
-
-    def test_merge_feat_lowercase(self):
-        style, icon = _classify_commit("merge feat/0002-bar into dev")
-        assert style == "bold blue"
-        assert icon == "🔀"
-
-    def test_close_task(self):
-        style, icon = _classify_commit("chore(orc): close task 0001-foo")
-        assert style == "bold cyan"
-        assert icon == "📋"
-
-    def test_ordinary_commit(self):
-        style, icon = _classify_commit("feat: add user authentication")
-        assert style == ""
-        assert icon == ""
-
-    def test_empty_subject(self):
-        style, icon = _classify_commit("")
-        assert style == ""
-        assert icon == ""
+    @pytest.mark.parametrize(
+        "subject,expected_style,expected_icon",
+        [
+            ("qa(passed): all checks green", "bold green", "✅"),
+            ("qa(blocked): cannot run tests", "bold red", "❌"),
+            ("qa(failed): type errors", "bold red", "❌"),
+            ("Merge feat/0001-foo into dev", "bold blue", "🔀"),
+            ("merge feat/0002-bar into dev", "bold blue", "🔀"),
+            ("chore(orc): close task 0001-foo", "bold cyan", "📋"),
+            ("feat: add user authentication", "", ""),
+            ("", "", ""),
+        ],
+    )
+    def test_classify_commit(self, subject, expected_style, expected_icon):
+        style, icon = _classify_commit(subject)
+        assert style == expected_style
+        assert icon == expected_icon
 
 
 class TestGitLog:

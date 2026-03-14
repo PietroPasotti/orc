@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from orc.engine.services import BoardService, MessagingService, WorktreeService
 
 # ---------------------------------------------------------------------------
@@ -61,10 +63,19 @@ class StubMessaging:
 # ---------------------------------------------------------------------------
 
 
-class TestBoardServiceProtocol:
-    def test_stub_satisfies_protocol(self):
-        assert isinstance(StubBoard(), BoardService)
+@pytest.mark.parametrize(
+    "stub,protocol",
+    [
+        (StubBoard(), BoardService),
+        (StubWorktree(), WorktreeService),
+        (StubMessaging(), MessagingService),
+    ],
+)
+def test_stub_satisfies_protocol(stub, protocol):
+    assert isinstance(stub, protocol)
 
+
+class TestBoardServiceProtocol:
     def test_incomplete_class_does_not_satisfy_protocol(self):
         class Incomplete:
             def get_open_tasks(self):
@@ -79,9 +90,6 @@ class TestBoardServiceProtocol:
 
 
 class TestWorktreeServiceProtocol:
-    def test_stub_satisfies_protocol(self):
-        assert isinstance(StubWorktree(), WorktreeService)
-
     def test_class_missing_method_fails(self):
         class Partial:
             def ensure_dev_worktree(self) -> Path:
@@ -93,8 +101,5 @@ class TestWorktreeServiceProtocol:
 
 
 class TestMessagingServiceProtocol:
-    def test_stub_satisfies_protocol(self):
-        assert isinstance(StubMessaging(), MessagingService)
-
     def test_empty_class_fails(self):
         assert not isinstance(object(), MessagingService)

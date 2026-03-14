@@ -4,6 +4,7 @@ import subprocess
 import time
 from dataclasses import replace as _replace
 
+import pytest
 from conftest import make_msg
 
 import orc.config as _cfg
@@ -17,58 +18,55 @@ import orc.messaging.telegram as tg
 
 
 class TestBootMessageBody:
-    def _patch_board(self, monkeypatch, tmp_path, content: str):
+    def _write_board(self, content: str) -> None:
         board = _cfg.get().work_dir / "board.yaml"
         board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text(content)
 
-    def test_single_open_task(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        assert _ctx._boot_message_body("orc") == "picking up work/0002-foo.md."
-
-    def test_multiple_open_tasks(self, tmp_path, monkeypatch):
-        self._patch_board(
-            monkeypatch,
-            tmp_path,
-            "counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n",
-        )
-        assert _ctx._boot_message_body("orc") == "picking up work/0002-foo.md, work/0003-bar.md."
-
-    def test_no_open_tasks(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen: []\n")
-        assert _ctx._boot_message_body("orc") == "no open tasks on board."
-
-    def test_missing_board(self, tmp_path, monkeypatch):
-        # board.yaml not created → read_board returns default empty board
-        assert _ctx._boot_message_body("orc") == "no open tasks on board."
-
-    def test_boot_message_body_planner_with_open_task(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        assert _ctx._boot_message_body("planner-1") == "planning 0002-foo.md."
-
-    def test_boot_message_body_planner_no_tasks_with_visions(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen: []\nvisions:\n  - vision.md\n")
-        assert _ctx._boot_message_body("planner-1") == "translating vision docs."
-
-    def test_boot_message_body_planner_no_tasks(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen: []\n")
-        assert _ctx._boot_message_body("planner-1") == "no open tasks on board."
-
-    def test_boot_message_body_coder_with_open_task(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        assert _ctx._boot_message_body("coder-1") == "picking up work/0002-foo.md."
-
-    def test_boot_message_body_coder_no_tasks(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen: []\n")
-        assert _ctx._boot_message_body("coder-1") == "no open tasks on board."
-
-    def test_boot_message_body_qa_with_open_task(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen:\n  - name: 0002-foo.md\n")
-        assert _ctx._boot_message_body("qa-1") == "reviewing feat/0002-foo."
-
-    def test_boot_message_body_qa_no_tasks(self, tmp_path, monkeypatch):
-        self._patch_board(monkeypatch, tmp_path, "counter: 2\nopen: []\n")
-        assert _ctx._boot_message_body("qa-1") == "no open tasks on board."
+    @pytest.mark.parametrize(
+        "agent_id,board_content,expected",
+        [
+            (
+                "orc",
+                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "picking up work/0002-foo.md.",
+            ),
+            (
+                "orc",
+                "counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n",
+                "picking up work/0002-foo.md, work/0003-bar.md.",
+            ),
+            ("orc", "counter: 2\nopen: []\n", "no open tasks on board."),
+            ("orc", None, "no open tasks on board."),  # missing board
+            (
+                "planner-1",
+                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "planning 0002-foo.md.",
+            ),
+            (
+                "planner-1",
+                "counter: 2\nopen: []\nvisions:\n  - vision.md\n",
+                "translating vision docs.",
+            ),
+            ("planner-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+            (
+                "coder-1",
+                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "picking up work/0002-foo.md.",
+            ),
+            ("coder-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+            (
+                "qa-1",
+                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "reviewing feat/0002-foo.",
+            ),
+            ("qa-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+        ],
+    )
+    def test_boot_message_body(self, agent_id, board_content, expected):
+        if board_content is not None:
+            self._write_board(board_content)
+        assert _ctx._boot_message_body(agent_id) == expected
 
 
 # ---------------------------------------------------------------------------

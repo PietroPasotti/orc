@@ -22,46 +22,24 @@ def test_any_work_empty_returns_false():
     assert w.any_work() is False
 
 
-def test_any_work_open_tasks():
+@pytest.mark.parametrize(
+    "open_tasks,open_visions,open_todos_and_fixmes,open_PRs,stalled_agents",
+    [
+        ([{"name": "0001-foo.md"}], [], [], [], []),
+        ([], ["0002-vision.md"], [], [], []),
+        ([], [], [{"file": "src/foo.py", "line": 1, "tag": "TODO", "text": "fix me"}], [], []),
+        ([], [], [], ["feat/0003-bar"], []),
+    ],
+)
+def test_any_work_with_open_items(
+    open_tasks, open_visions, open_todos_and_fixmes, open_PRs, stalled_agents
+):
     w = Work(
-        open_tasks=[{"name": "0001-foo.md"}],
-        open_visions=[],
-        open_todos_and_fixmes=[],
-        open_PRs=[],
-        stalled_agents=[],
-    )
-    assert w.any_work() is True
-
-
-def test_any_work_open_visions():
-    w = Work(
-        open_tasks=[],
-        open_visions=["0002-vision.md"],
-        open_todos_and_fixmes=[],
-        open_PRs=[],
-        stalled_agents=[],
-    )
-    assert w.any_work() is True
-
-
-def test_any_work_open_todos():
-    w = Work(
-        open_tasks=[],
-        open_visions=[],
-        open_todos_and_fixmes=[{"file": "src/foo.py", "line": 1, "tag": "TODO", "text": "fix me"}],
-        open_PRs=[],
-        stalled_agents=[],
-    )
-    assert w.any_work() is True
-
-
-def test_any_work_open_prs():
-    w = Work(
-        open_tasks=[],
-        open_visions=[],
-        open_todos_and_fixmes=[],
-        open_PRs=["feat/0003-bar"],
-        stalled_agents=[],
+        open_tasks=open_tasks,
+        open_visions=open_visions,
+        open_todos_and_fixmes=open_todos_and_fixmes,
+        open_PRs=open_PRs,
+        stalled_agents=stalled_agents,
     )
     assert w.any_work() is True
 
