@@ -45,6 +45,16 @@ class StateManager:
             result.append(t if isinstance(t, dict) else {"name": str(t)})
         return result
 
+    def read_task_content(self, task_name: str) -> str:
+        """Return the raw markdown content of *task_name*'s task file.
+
+        Raises :class:`FileNotFoundError` if *task_name* is not found.
+        """
+        task_path = self._mgr.work_dir / task_name
+        if not task_path.exists():
+            raise FileNotFoundError(f"Task file not found: {task_name}")
+        return task_path.read_text()
+
     def get_task(self, task_name: str) -> dict | None:
         """Return the board entry for *task_name*, or ``None`` if absent."""
         with self._lock:

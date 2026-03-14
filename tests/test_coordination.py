@@ -78,6 +78,18 @@ class TestStateManagerBoardQueries:
         orc = _orc_dir(tmp_path)
         assert _state(orc).get_task("9999-missing.md") is None
 
+    def test_read_task_content_found(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        task_file = orc / "work" / "0001-foo.md"
+        task_file.write_text("# Task 0001\n\nSome content.")
+        content = _state(orc).read_task_content("0001-foo.md")
+        assert content == "# Task 0001\n\nSome content."
+
+    def test_read_task_content_not_found(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            _state(orc).read_task_content("9999-missing.md")
+
 
 class TestStateManagerBoardMutations:
     def test_create_task_creates_file_and_board_entry(self, tmp_path):
@@ -345,6 +357,27 @@ class TestBoardRoutes:
         assert result == {"ok": True}
         task = get_task(task_name=name, state=_get_state(req))
         assert task["comments"][0]["text"] == "See line 42"
+
+    def test_get_task_content_found(self, tmp_path):
+        from orc.coordination.models import CreateTaskRequest
+        from orc.coordination.routes.board import _get_state, create_task, get_task_content
+
+        req = self._req(tmp_path)
+        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        name = created["filename"]
+        result = get_task_content(task_name=name, state=_get_state(req))
+        assert result["name"] == name
+        assert isinstance(result["content"], str)
+
+    def test_get_task_content_not_found_raises_404(self, tmp_path):
+        from fastapi import HTTPException
+
+        from orc.coordination.routes.board import _get_state, get_task_content
+
+        req = self._req(tmp_path)
+        with pytest.raises(HTTPException) as exc_info:
+            get_task_content(task_name="9999-missing.md", state=_get_state(req))
+        assert exc_info.value.status_code == 404
 
 
 class TestVisionRoutes:

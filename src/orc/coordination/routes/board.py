@@ -31,6 +31,16 @@ def get_tasks(state: StateManager = Depends(_get_state)) -> list[dict]:
     return state.get_open_tasks()
 
 
+@router.get("/tasks/{task_name:path}/content")
+def get_task_content(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
+    """Return the raw markdown content of a task file by exact filename."""
+    try:
+        content = state.read_task_content(task_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Task file not found: {task_name}")
+    return {"name": task_name, "content": content}
+
+
 @router.get("/tasks/{task_name:path}", response_model=TaskEntry)
 def get_task(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
     """Return a single task entry by exact filename."""
