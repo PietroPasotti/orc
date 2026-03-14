@@ -16,27 +16,32 @@ import orc.messaging.telegram as tg
 runner = CliRunner()
 
 
+def _fake_run_success(cmd, cwd=None, check=False, **kw):
+    """Helper: returns a MagicMock with returncode=0."""
+    r = MagicMock()
+    r.returncode = 0
+    return r
+
+
 class TestMergeCommand:
-    def _setup(self, monkeypatch, tmp_path):
-        board = tmp_path / "board.yaml"
-        board.write_text("counter: 1\nopen:\n  - name: 0001-foo.md\n")
+    def _setup(self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git):
+        """Set up test with board file and mocked config."""
+        board_file("counter: 1\nopen:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), board_file=board, orc_dir=tmp_path)
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(), board_file=tmp_path / ".orc" / "work" / "board.yaml", orc_dir=tmp_path
+            ),
         )
-        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
 
-    def test_clean_rebase_default_shows_manual_instructions(self, monkeypatch, tmp_path):
+    def test_clean_rebase_default_shows_manual_instructions(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """Default (no --auto): rebase succeeds, user is told to merge manually."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True))
 
@@ -45,35 +50,25 @@ class TestMergeCommand:
         assert completed == []
         assert "--auto" in result.output
 
-    def test_nothing_to_merge_when_dev_even_with_main(self, monkeypatch, tmp_path):
+    def test_nothing_to_merge_when_dev_even_with_main(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """Default (no --auto): exits with 'nothing to merge' when dev has no new commits."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 0)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
         assert "Nothing to merge" in result.output
         assert "--auto" not in result.output
 
-    def test_clean_rebase_auto_completes_merge(self, monkeypatch, tmp_path):
+    def test_clean_rebase_auto_completes_merge(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """With --auto: rebase succeeds and _complete_merge is called."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
 
@@ -82,27 +77,23 @@ class TestMergeCommand:
         assert completed == [True]
         assert "merged into main" in result.output
 
-    def test_already_up_to_date(self, monkeypatch, tmp_path):
+    def test_already_up_to_date(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """With --auto: prints 'Already up to date.' when nothing to merge."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
         monkeypatch.setattr(_git, "_complete_merge", lambda: False)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
         assert "Already up to date" in result.output
 
-    def test_conflict_delegates_to_coder_then_completes(self, monkeypatch, tmp_path):
+    def test_conflict_delegates_to_coder_then_completes(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """On conflict the coder is invoked; with --auto the merge completes."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -133,10 +124,11 @@ class TestMergeCommand:
         assert invocations == ["coder"]
         assert completed == [True]
 
-    def test_conflict_agent_passes_conflict_extra_context(self, monkeypatch, tmp_path):
+    def test_conflict_agent_passes_conflict_extra_context(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """The coder agent receives an extra section describing the conflict."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -165,10 +157,11 @@ class TestMergeCommand:
         assert "rebase" in received_extra[0].lower()
         assert "UU src/foo.py" in received_extra[0]
 
-    def test_conflict_agent_failure_exits_nonzero(self, monkeypatch, tmp_path):
+    def test_conflict_agent_failure_exits_nonzero(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """If the coder agent fails, merge exits with its exit code."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -186,10 +179,11 @@ class TestMergeCommand:
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 2
 
-    def test_rebase_still_in_progress_after_agent_exits_nonzero(self, monkeypatch, tmp_path):
+    def test_rebase_still_in_progress_after_agent_exits_nonzero(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """If the agent exits 0 but rebase is still stalled, exit 1."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
 
@@ -208,17 +202,12 @@ class TestMergeCommand:
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1
 
-    def test_untracked_file_conflict_exits_with_message(self, monkeypatch, tmp_path):
+    def test_untracked_file_conflict_exits_with_message(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """With --auto: if untracked files block the merge, exit 1 with a clear message."""
-        self._setup(monkeypatch, tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
 
         monkeypatch.setattr(
             _git,
@@ -283,18 +272,15 @@ class TestMergeCommand:
         with pytest.raises(subprocess.CalledProcessError):
             _git._complete_merge()
 
-    def test_manual_instructions_use_repo_root_not_dev_worktree(self, monkeypatch, tmp_path):
+    def test_manual_instructions_use_repo_root_not_dev_worktree(
+        self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
+    ):
         """Without --auto: the printed git instructions use repo_root, not dev worktree."""
-        self._setup(monkeypatch, tmp_path)
+        self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
+        # Override mock_git's default to return a different worktree
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path / "dev_wt")
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
-
-        def fake_run(cmd, cwd=None, check=False, **kw):
-            r = MagicMock()
-            r.returncode = 0
-            return r
-
-        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(subprocess, "run", _fake_run_success)
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
