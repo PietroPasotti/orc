@@ -29,6 +29,28 @@ class TestBoardCoverage:
         tasks = _board.get_open_tasks()
         assert tasks == [{"name": "0001-foo.md"}]
 
+    def test_get_open_tasks_returns_dict_entries_as_is(self, tmp_path):
+        """Dict entries in the open list are returned unchanged."""
+        _board_file(tmp_path).write_text(
+            "open:\n  - name: 0001-foo.md\n    status: planned\ndone: []\n"
+        )
+        tasks = _board.get_open_tasks()
+        assert tasks == [{"name": "0001-foo.md", "status": "planned"}]
+
+    def test_unassign_task_clears_assigned_to(self, tmp_path):
+        """unassign_task removes the assigned_to field from a task."""
+        _board_file(tmp_path).write_text(
+            "open:\n  - name: 0001-foo.md\n    assigned_to: coder-1\ndone: []\n"
+        )
+        _board.unassign_task("0001-foo.md")
+        board = yaml.safe_load(_board_file(tmp_path).read_text())
+        assert board["open"][0].get("assigned_to") is None
+
+    def test_unassign_task_noop_when_not_found(self, tmp_path):
+        """unassign_task does nothing when the task name is not on the board."""
+        _board_file(tmp_path).write_text("open: []\ndone: []\n")
+        _board.unassign_task("nonexistent.md")  # should not raise
+
     def test_assign_task_not_found_warns(self, tmp_path):
         """Warning logged when task not found."""
         _board_file(tmp_path).write_text("open: []\ndone: []\n")

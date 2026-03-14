@@ -47,6 +47,8 @@ class Config:
     """Path to the local chat log file (JSONL)."""
     todo_scan_exclude: tuple[str, ...]
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
+    api_socket_path: Path
+    """Unix domain socket for the coordination API — ``orc_dir/run/orc.sock``."""
 
 
 _config: Config | None = None
@@ -98,6 +100,7 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         log_dir=log_dir,
         chat_log=log_dir / "chat.log",
         todo_scan_exclude=todo_scan_exclude,
+        api_socket_path=orc_dir / "run" / "orc.sock",
     )
     # Reinitialise the board manager to match the new config.
     import orc.board as _board  # noqa: PLC0415
