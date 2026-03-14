@@ -26,6 +26,7 @@ class TestStatusCoverage:
         done_tasks=None,
         ahead=0,
         dev_log=None,
+        features_pending=None,
         derive_task_state=None,
         feature_branch=None,
         feature_branch_exists=None,
@@ -54,6 +55,13 @@ class TestStatusCoverage:
         monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: open_todos or [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
         monkeypatch.setattr(_st, "_dev_log_since_main", lambda: dev_log or [])
+        # Patch the git helper used by _status() for dev-vs-main display.
+        _features = (
+            features_pending
+            if features_pending is not None
+            else ([] if ahead == 0 else [f"feat/000{i}-stub" for i in range(ahead)])
+        )
+        monkeypatch.setattr(_st._git, "_features_in_dev_not_main", lambda: _features)
         if derive_task_state:
             monkeypatch.setattr(_st._git, "_derive_task_state", derive_task_state)
         if feature_branch:
@@ -117,12 +125,12 @@ class TestStatusCoverage:
         self._setup(
             monkeypatch,
             squad_cfg=squad,
-            ahead=2,
-            dev_log=["abc feat: done", "def fix: merged"],
+            features_pending=["feat/0001-foo", "feat/0002-bar"],
             done_tasks=[{"name": "0001-foo.md", "commit-tag": "v1", "timestamp": "2024-01-01"}],
         )
         result = runner.invoke(m.app, ["status"])
-        assert "2 commits" in result.output
+        assert "2 feature" in result.output
+        assert "feat/0001-foo" in result.output
         assert "0001-foo.md" in result.output
 
     def test_status_hard_block(self, tmp_path, monkeypatch):
@@ -206,10 +214,10 @@ class TestStatusCoverage:
         assert "no branch yet" in result.output
 
     def test_status_dev_ahead_singular(self, tmp_path, monkeypatch):
-        self._setup(monkeypatch, ahead=1, dev_log=["abc feat: one thing"])
+        self._setup(monkeypatch, features_pending=["feat/0001-foo"])
         result = runner.invoke(m.app, ["status"])
-        assert "1 commit" in result.output
-        assert "1 commits" not in result.output
+        assert "1 feature" in result.output
+        assert "1 features" not in result.output
 
     def test_status_planner_idle_with_open_work(self, tmp_path, monkeypatch):
         self._setup(monkeypatch, ahead=0)

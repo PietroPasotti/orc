@@ -34,7 +34,7 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="close_vision.py",
-        description="Close a completed vision and log it to the changelog.",
+        description="Close a completed vision.",
     )
     parser.add_argument("vision_file", help="Path to the vision markdown")
     parser.add_argument("summary", help="2-4 sentence summary of the vision")

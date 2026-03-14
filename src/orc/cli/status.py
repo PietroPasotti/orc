@@ -31,10 +31,6 @@ def _echo_wrapped(line: str) -> None:
     typer.echo("\n".join(p[:width] for p in parts))
 
 
-# fixme: this is not too interesting; what we want to know is how many FEATURES dev is ahead
-#  of main by: for example we could list the feature branches that are in dev with
-#  `git log dev --merges --oneline | grep "Merge feat/"`
-#  and then compare that to what's still marked as open in the board.
 def _dev_ahead_of_main() -> int:
     """Return the number of commits dev is ahead of main (0 if even or behind)."""
     result = subprocess.run(
@@ -180,11 +176,12 @@ def _status(squad: str = "default") -> None:
         _echo_wrapped(f"\n⛔ Hard block: {hard_agent} is waiting for human intervention.")
 
     # --- dev vs main ---------------------------------------------------------
-    ahead = _dev_ahead_of_main()
-    if ahead:
-        _echo_wrapped(f"\ndev is {ahead} commit{'s' if ahead != 1 else ''} ahead of main")
-        for line in _dev_log_since_main():
-            _echo_wrapped(f"  {line}")
+    features_pending = _git._features_in_dev_not_main()
+    if features_pending:
+        n = len(features_pending)
+        _echo_wrapped(f"\ndev has {n} feature{'s' if n != 1 else ''} not yet in main:")
+        for branch in features_pending:
+            _echo_wrapped(f"  {branch}")
         _echo_wrapped("\nRun `orc merge` to fast-forward main.")
     else:
         _echo_wrapped("\nmain is up to date with dev.")

@@ -143,6 +143,10 @@ class StateManager:
             raise FileNotFoundError(f"Vision not found: {name}")
         return vision_path.read_text()
 
+    # FIXME: close_vision should not be editing the changelog.
+    #  Changelog should be an append-only log of feature branches merged into dev (and then main).
+    #  so probably it's more of a finalize_task side-effect? Whenever the task branch is
+    #  merged on dev, that's when we should add an entry to the changelog.
     def close_vision(self, name: str, summary: str, task_files: list[str]) -> None:
         """Close a vision: append an entry to ``orc-CHANGELOG.md`` and delete the file.
 

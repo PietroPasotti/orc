@@ -45,3 +45,15 @@
 **Summary:** Fixed 'orc merge --auto' to perform the fast-forward merge from the main worktree (cwd=repo_root) instead of inside the dev worktree. Added UntrackedMergeBlockError with clear per-file error messages when untracked files block the merge.
 
 **Implemented by:** 0010-code-cleanup.md
+
+## 0008-agent-tools-cleanup (closed 2026-03-14T15:40:55Z)
+
+**Summary:** Unified approve_task.py and reject_task.py into a single review_task.py with approved|rejected outcome parameter. Added get_vision.py for planners and get_task.py for coders to fetch file content from the coordination server without direct filesystem access.
+
+**Implemented by:** 0016-agent-tools-cleanup.md
+
+## 0007-orc-status-board-view (closed 2026-03-14T15:47:17Z)
+
+**Summary:** Added Board tab to orc status TUI showing kanban swimlane view (To refine, To do, In progress, Awaiting review, Done) fetched from the coordination API. Falls back gracefully when the server is unreachable.
+
+**Implemented by:** 0014-orc-status-board-view.md

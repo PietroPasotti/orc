@@ -719,3 +719,69 @@ class TestCountFeaturesDone:
         with patch("orc.git.core.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=128, stdout="")
             assert _git._count_features_done() == 0
+
+
+class TestFeaturesInDevNotMain:
+    """Tests for _features_in_dev_not_main."""
+
+    def test_returns_empty_when_no_merges(self):
+        """Returns [] when git log produces no output."""
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            assert _git._features_in_dev_not_main() == []
+
+    def test_returns_empty_on_git_error(self):
+        """Returns [] when git exits non-zero."""
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=128, stdout="")
+            assert _git._features_in_dev_not_main() == []
+
+    def test_extracts_branch_names_no_prefix(self, monkeypatch):
+        """Extracts branch names from merge commit subjects (no branch prefix)."""
+        log_output = (
+            "abc1234 Merge feat/0001-foo into dev\n"
+            "def5678 Merge feat/0002-bar into dev\n"
+            "ghi9012 Merge feat/0003-baz into dev\n"
+        )
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
+            result = _git._features_in_dev_not_main()
+        assert result == ["feat/0001-foo", "feat/0002-bar", "feat/0003-baz"]
+
+    def test_extracts_branch_names_with_prefix(self, monkeypatch, tmp_path):
+        """Extracts branch names when orc-branch-prefix is set."""
+        from dataclasses import replace as _replace
+
+        import orc.config as _cfg
+
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), branch_prefix="orc"),
+        )
+        log_output = (
+            "abc1234 Merge orc/feat/0001-foo into dev\ndef5678 Merge orc/feat/0002-bar into dev\n"
+        )
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
+            result = _git._features_in_dev_not_main()
+        assert result == ["orc/feat/0001-foo", "orc/feat/0002-bar"]
+
+    def test_ignores_non_feat_merge_commits(self):
+        """Skips merge commits that don't match the feat/* pattern."""
+        log_output = (
+            "abc1234 Merge feat/0001-foo into dev\n"
+            "xyz9999 Merge refactor/phase2-dedup: Phase 2\n"
+            "def5678 chore: merge dev into main\n"
+        )
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
+            result = _git._features_in_dev_not_main()
+        assert result == ["feat/0001-foo"]
+
+    def test_count_features_done_delegates(self):
+        """_count_features_done returns len(_features_in_dev_not_main())."""
+        log_output = "abc1234 Merge feat/0001-foo into dev\ndef5678 Merge feat/0002-bar into dev\n"
+        with patch("orc.git.core.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
+            assert _git._count_features_done() == 2

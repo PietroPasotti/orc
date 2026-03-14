@@ -445,8 +445,16 @@ def _rebase_on_main(worktree: Path) -> tuple[bool, str]:
     return False, _conflict_status(worktree)
 
 
-def _count_features_done() -> int:
-    """Count ``Merge feat/NNNN-*`` commits on dev that are not yet on main."""
+def _features_in_dev_not_main() -> list[str]:
+    """Return orc feature branches merged into dev but not yet into main.
+
+    Parses merge-commit subject lines from ``git log --merges main..<dev>``,
+    matching the format produced by :func:`_merge_feature_into_dev`:
+    ``Merge [<prefix>/]feat/<slug> into <dev-branch>``.
+
+    Works even after local branches have been deleted (orc removes them
+    post-merge), because the branch name is preserved in the commit subject.
+    """
     cfg = _cfg.get()
     result = subprocess.run(
         ["git", "log", "--merges", "--oneline", f"main..{cfg.work_dev_branch}"],
@@ -455,8 +463,20 @@ def _count_features_done() -> int:
         text=True,
     )
     if result.returncode != 0:
-        return 0
-    return sum(1 for line in result.stdout.splitlines() if re.search(r"feat/\d{4}-", line))
+        return []
+    prefix_pat = re.escape(cfg.branch_prefix + "/") if cfg.branch_prefix else ""
+    pat = re.compile(rf"Merge ({prefix_pat}feat/\S+) into \S+")
+    branches: list[str] = []
+    for line in result.stdout.splitlines():
+        m = pat.search(line)
+        if m:
+            branches.append(m.group(1))
+    return branches
+
+
+def _count_features_done() -> int:
+    """Count orc feature branches merged into dev that are not yet on main."""
+    return len(_features_in_dev_not_main())
 
 
 def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
