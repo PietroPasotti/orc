@@ -440,6 +440,43 @@ class TestGitCoverage:
             result = _git._conflict_status(tmp_path)
         assert "conflict" in result
 
+    def test_count_features_done_counts_feat_merges(self, tmp_path, monkeypatch):
+        """_count_features_done returns count of Merge feat/NNNN-* lines."""
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
+        )
+        log_output = (
+            "abc1234 Merge feat/0001-foo into dev\n"
+            "def5678 Merge feat/0002-bar into dev\n"
+            "ghi9012 Merge pull request #5\n"
+        )
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = log_output
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            result = _git._count_features_done()
+        assert result == 2
+
+    def test_count_features_done_returns_zero_on_git_error(self, tmp_path, monkeypatch):
+        """_count_features_done returns 0 when git exits non-zero."""
+        monkeypatch.setattr(
+            _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
+        )
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 1
+            r.stdout = ""
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            result = _git._count_features_done()
+        assert result == 0
+
     def test_merge_feature_updates_board(self, tmp_path, monkeypatch):
         """_merge_feature_into_dev updates board (moves task to done) without a git commit."""
         import orc.config as _cfg

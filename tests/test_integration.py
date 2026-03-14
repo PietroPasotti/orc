@@ -43,10 +43,9 @@ from conftest import FakePopen
 from typer.testing import CliRunner
 
 import orc.ai.invoke as inv
-import orc.cli.bootstrap as _boot  # noqa: F401 (kept for potential direct test use)
-import orc.cli.merge as _merge_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
+import orc.git.core as _git
 import orc.main as m
 import orc.messaging.telegram as tg
 from orc.ai.backends import SpawnResult
@@ -381,7 +380,7 @@ class TestFullWorkflowLoop:
     ):
         """Run four agent invocations and assert the full workflow state machine."""
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
 
         result = runner.invoke(m.app, ["run", "--maxcalls", "4"], catch_exceptions=False)
 
@@ -447,7 +446,7 @@ class TestNoWorkExitsCleanly:
         """Running ``orc run`` in a fully-idle project must exit 0 and print
         a human-readable message instead of spawning any agents."""
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         # Remove all vision docs so the project is genuinely idle: no unplanned

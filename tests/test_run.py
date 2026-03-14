@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
@@ -52,7 +51,7 @@ class TestRunBareRaise:
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda msgs, squad: None)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         _mock_coord(monkeypatch)
 
@@ -72,7 +71,7 @@ class TestRunBareRaise:
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+        monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda msgs, squad: None)
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         _mock_coord(monkeypatch)
 
@@ -97,7 +96,7 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_cfg, "validate_env", lambda: [])
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
     monkeypatch.setattr(tg, "get_messages", lambda: [])
-    monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+    monkeypatch.setattr(_git, "_rebase_dev_on_main", lambda msgs, squad: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
     _mock_coord(monkeypatch)
     if dispatcher_run is not None:
