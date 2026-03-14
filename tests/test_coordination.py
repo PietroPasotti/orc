@@ -515,11 +515,10 @@ class TestBoardRoutes:
         assert task["comments"][0]["text"] == "See line 42"
 
     def test_get_task_content_found(self, tmp_path):
-        from orc.coordination.models import CreateTaskRequest
         from orc.coordination.routes.board import _get_state, create_task, get_task_content
 
         req = self._req(tmp_path)
-        created = create_task(body=CreateTaskRequest(title="my-task"), state=_get_state(req))
+        created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
         name = created["filename"]
         result = get_task_content(task_name=name, state=_get_state(req))
         assert result["name"] == name
