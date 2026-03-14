@@ -201,8 +201,7 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
-        # TODO: use has_ready_visions instead of has_open_work for the planner check
-        if not _board.has_open_work():
+        if work.has_planner_work:
             planner_note = "ready (visions pending)"
         elif blocked_agent and blocked_state == "soft-blocked":
             planner_note = f"ready to clarify soft-block from {blocked_agent}"

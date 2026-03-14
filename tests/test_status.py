@@ -32,6 +32,7 @@ class TestStatusCoverage:
         feature_branch_exists=None,
         last_commit=None,
         open_todos=None,
+        open_visions=None,
     ):
         monkeypatch.setattr(_st.tg, "get_messages", lambda: [])
         monkeypatch.setattr(_st._wf, "_has_unresolved_block", lambda msgs: blocked)
@@ -50,7 +51,8 @@ class TestStatusCoverage:
             "_read_board",
             lambda: {"open": open_dicts, "done": done_tasks or []},
         )
-        monkeypatch.setattr(_st, "_pending_visions", lambda: [])
+        _visions = open_visions if open_visions is not None else []
+        monkeypatch.setattr(_st, "_pending_visions", lambda: _visions)
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
         monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: open_todos or [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
@@ -222,6 +224,38 @@ class TestStatusCoverage:
     def test_status_planner_idle_with_open_work(self, tmp_path, monkeypatch):
         self._setup(monkeypatch, ahead=0)
         _st._status()
+
+    def test_status_planner_ready_when_visions_pending(self, tmp_path, monkeypatch):
+        """Planner note is 'ready (visions pending)' when open_visions is non-empty."""
+        squad = SquadConfig(
+            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+        )
+        self._setup(
+            monkeypatch,
+            squad_cfg=squad,
+            open_visions=["some-vision.md"],
+            ahead=0,
+        )
+        result = runner.invoke(m.app, ["status"])
+        assert result.exit_code == 0
+        assert "ready (visions pending)" in result.output
+
+    def test_status_planner_idle_when_no_visions_and_no_todos(self, tmp_path, monkeypatch):
+        """Planner note is 'idle' when open_visions is empty and no todos."""
+        squad = SquadConfig(
+            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+        )
+        self._setup(
+            monkeypatch,
+            squad_cfg=squad,
+            open_visions=[],
+            open_todos=[],
+            ahead=0,
+        )
+        result = runner.invoke(m.app, ["status"])
+        assert result.exit_code == 0
+        assert "idle" in result.output
+        assert "ready (visions pending)" not in result.output
 
     def test_status_merge_pending(self, tmp_path, monkeypatch):
         """Lines 86, 126: qa-passed token → merge_pending populated and printed."""
