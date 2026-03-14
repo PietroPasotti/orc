@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import shutil
-import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -28,19 +29,98 @@ def _is_preserved(rel: Path) -> bool:
     return rel.parts[0] in _UPGRADE_PRESERVE
 
 
-def _ensure_project_id(config_path: Path) -> str:
-    """Read or create project-id in config.yaml; return the UUID string."""
+# ---------------------------------------------------------------------------
+# Interactive bootstrap config fields
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _BootstrapField:
+    """A single config field prompted interactively during bootstrap.
+
+    To add a new prompt, append an instance to BOOTSTRAP_FIELDS below.
+    """
+
+    key: str
+    """Config key written to config.yaml (e.g. ``project-id``)."""
+    prompt: str
+    """Human-readable prompt shown to the user."""
+    default: Callable[[dict, Path], str]
+    """Callable(existing_config, project_root) → default string."""
+    applies_format: bool = False
+    """When True, ``str.format_map`` is applied to the entered value using
+    previously collected fields (hyphens replaced with underscores, e.g.
+    ``{project_id}`` expands to the ``project-id`` value)."""
+    save_to_config: bool = True
+    """When False the value is used at bootstrap time only and not written to
+    config.yaml (e.g. ``orc-dir`` is the directory path itself)."""
+
+
+# Ordered list of fields prompted on a fresh bootstrap.
+# Add / remove entries here to change what gets prompted.
+BOOTSTRAP_FIELDS: tuple[_BootstrapField, ...] = (
+    _BootstrapField(
+        key="project-id",
+        prompt="Project ID",
+        default=lambda cfg, root: cfg.get("project-id") or root.name,
+    ),
+    _BootstrapField(
+        key="orc-dir",
+        prompt="Orc config directory",
+        default=lambda cfg, root: cfg.get("orc-dir") or ".orc",
+        applies_format=True,
+        save_to_config=False,
+    ),
+)
+
+
+def _prompt_bootstrap_fields(project_root: Path, existing_cfg: dict) -> dict[str, str]:
+    """Interactively prompt for each entry in BOOTSTRAP_FIELDS.
+
+    Each field's default is computed from *existing_cfg* and *project_root*.
+    Fields with ``applies_format=True`` have their value (and default) expanded
+    via ``str.format_map`` using the values collected so far, so that e.g.
+    an ``orc-dir`` value of ``".{project_id}"`` resolves to ``".myproject"``
+    once ``project-id`` has been entered.
+
+    Returns a dict mapping field key → final (formatted) value.
+    """
+    collected: dict[str, str] = {}
+    fmt: dict[str, str] = {}
+
+    for field in BOOTSTRAP_FIELDS:
+        default = field.default(existing_cfg, project_root)
+        if field.applies_format:
+            try:
+                default = default.format_map(fmt)
+            except (KeyError, ValueError):
+                pass
+
+        value = typer.prompt(field.prompt, default=default)
+
+        if field.applies_format:
+            try:
+                value = value.format_map(fmt)
+            except (KeyError, ValueError):
+                pass
+
+        collected[field.key] = value
+        fmt[field.key.replace("-", "_")] = value
+
+    return collected
+
+
+def _write_bootstrap_config(config_path: Path, values: dict[str, str]) -> None:
+    """Merge prompted *values* into config.yaml, preserving unrelated existing keys."""
     cfg: dict = {}
     if config_path.exists():
         cfg = yaml.safe_load(config_path.read_text()) or {}
-    project_id = str(cfg.get("project-id", "")).strip()
-    if not project_id:
-        project_id = str(uuid.uuid4())
-        cfg["project-id"] = project_id
-        tmp = config_path.with_suffix(".yaml.tmp")
-        tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
-        tmp.replace(config_path)
-    return project_id
+    for field in BOOTSTRAP_FIELDS:
+        if field.save_to_config:
+            cfg[field.key] = values[field.key]
+    tmp = config_path.with_suffix(".yaml.tmp")
+    tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
+    tmp.replace(config_path)
 
 
 def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> None:
@@ -92,7 +172,17 @@ def _copy_tree(
 def _bootstrap(force: bool = False) -> None:
     _obs.setup()
     project_root = Path.cwd()
-    to = ".orc"
+
+    # Read any existing config at the default location to use as prompt defaults.
+    _default_cfg_path = project_root / ".orc" / "config.yaml"
+    existing_cfg: dict = {}
+    if _default_cfg_path.exists():
+        existing_cfg = yaml.safe_load(_default_cfg_path.read_text()) or {}
+
+    # ── Interactive prompts ───────────────────────────────────────────────────
+    prompted = _prompt_bootstrap_fields(project_root, existing_cfg)
+    project_id = prompted["project-id"]
+    to = prompted["orc-dir"]
     target = (project_root / to).resolve()
 
     created: list[str] = []
@@ -110,9 +200,11 @@ def _bootstrap(force: bool = False) -> None:
         special={".env.example": project_root / ".env.example"},
     )
 
-    # ── project cache (board + vision docs) ──────────────────────────────────
+    # ── Write prompted values to config.yaml ─────────────────────────────────
     config_path = target / "config.yaml"
-    project_id = _ensure_project_id(config_path)
+    _write_bootstrap_config(config_path, prompted)
+
+    # ── Project cache (board + vision docs) ──────────────────────────────────
     cache_dir = _orc_cache_root() / project_id
     cache_created: list[str] = []
     _copy_tree(_WORK_STATE_TEMPLATE, cache_dir, cache_created, skipped, _copy)
@@ -200,8 +292,14 @@ def _upgrade(*, yes: bool = False) -> None:
         shutil.copy2(src, dst)
         updated.append(str(dst))
 
-    # Ensure project-id is present after upgrade
-    _ensure_project_id(target / "config.yaml")
+    # Ensure project-id is preserved after upgrade (no prompting during upgrade)
+    config_path = target / "config.yaml"
+    cfg: dict = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
+    if not cfg.get("project-id"):
+        cfg["project-id"] = target.parent.name
+        tmp = config_path.with_suffix(".yaml.tmp")
+        tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
+        tmp.replace(config_path)
 
     rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
 

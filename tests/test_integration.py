@@ -109,7 +109,7 @@ def git_project(tmp_path, monkeypatch):
     (tmp_path / "README.md").write_text("# Test Project\n")
 
     # Bootstrap the orc/ structure using the real CLI
-    result = runner.invoke(m.app, ["bootstrap"], catch_exceptions=False)
+    result = runner.invoke(m.app, ["bootstrap"], input="\n\n", catch_exceptions=False)
     assert result.exit_code == 0, f"bootstrap failed:\n{result.output}"
 
     # Derive the project cache dir from the generated project-id
