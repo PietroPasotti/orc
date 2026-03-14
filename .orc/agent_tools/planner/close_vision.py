@@ -15,10 +15,7 @@ Example:
     "Implement distributed task processing using gRPC. Added worker pool management." \\
     0001-grpc-transport 0002-worker-pool
 
-This script calls the orc coordination API to:
-1. Append an entry to orc-CHANGELOG.md
-2. Delete the vision file from .orc/vision/
-3. Print a confirmation message
+This script calls the orc coordination API to close a vision.
 
 IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
 access to ``.orc/`` is forbidden — use this script instead.

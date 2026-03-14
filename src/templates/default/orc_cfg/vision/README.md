@@ -22,5 +22,8 @@ includes:
 
 ## Getting started
 
-Add `.md` files here describing what you want to build. The planner will pick
+Add `.md` files to `./ready` describing what you want to build. The planner will pick
 them up on the next `orc run`.
+When the planner translates a vision document into work, it will move the source file from `./ready` to `./done`.
+If you need a staging area for work-in-progress vision documents, you can use the `./drafts` folder and put your visions there until they're ready for the planner.
+The planner only looks at `ready` and only writes to `done`.
