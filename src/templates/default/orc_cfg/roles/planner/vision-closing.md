@@ -12,8 +12,7 @@ implemented and merged.
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-file...]
 ```
 
-The tool appends a changelog entry to `.orc/orc-CHANGELOG.md`, deletes the
-vision file from the project cache, and prints a confirmation.
+The tool moves the vision file from `.orc/vision/ready/` to `.orc/vision/done/`, and prints a confirmation.
 
 ## When you are done
 

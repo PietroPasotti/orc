@@ -1,0 +1,2 @@
+This folder will be used by orc to store all visions that have been refined by a planner.
+This doesn't mean that the vision is fully implemented yet, but it means that the planner has done its job and the vision is ready to be implemented by other agents.

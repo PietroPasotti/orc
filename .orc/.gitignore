@@ -2,4 +2,10 @@
 worktrees/
 logs/
 work/
-vision/
+
+vision/ready/*.md
+!vision/ready/README.md
+vision/drafts/*.md
+!vision/drafts/README.md
+vision/done/*.md
+!vision/done/README.md

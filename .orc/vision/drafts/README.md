@@ -1,0 +1,1 @@
+This folder is your staging area for vision docs. When you're ready to have a vision refined by a planner, move it to the ../ready folder. The planner will then take it from there, refine it, and move it to the ../done folder when it's ready for implementation.

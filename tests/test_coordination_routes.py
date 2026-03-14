@@ -14,7 +14,7 @@ def _orc_dir(tmp_path: Path) -> Path:
     orc = tmp_path / ".orc"
     orc.mkdir(exist_ok=True)
     (orc / "work").mkdir(exist_ok=True)
-    (orc / "vision").mkdir(exist_ok=True)
+    (orc / "vision" / "ready").mkdir(parents=True, exist_ok=True)
     (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
     return orc
 
@@ -138,7 +138,7 @@ class TestVisionRoutes:
         from orc.coordination.routes.visions import _get_state, get_pending_visions
 
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feat.md").write_text("# Vision")
+        (orc / "vision" / "ready" / "0001-feat.md").write_text("# Vision")
         req = self._req(tmp_path)
         result = get_pending_visions(state=_get_state(req))
         assert "0001-feat.md" in result
@@ -147,7 +147,7 @@ class TestVisionRoutes:
         from orc.coordination.routes.visions import _get_state, get_vision
 
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feat.md").write_text("# Vision content")
+        (orc / "vision" / "ready" / "0001-feat.md").write_text("# Vision content")
         req = self._req(tmp_path)
         result = get_vision(name="0001-feat.md", state=_get_state(req))
         assert result["content"] == "# Vision content"
@@ -168,14 +168,14 @@ class TestVisionRoutes:
         from orc.coordination.routes.visions import _get_state, close_vision
 
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feat.md").write_text("# Vision")
+        (orc / "vision" / "ready" / "0001-feat.md").write_text("# Vision")
         req = self._req(tmp_path)
         close_vision(
             name="0001-feat.md",
             body=CloseVisionRequest(summary="Done.", task_files=["0001-task.md"]),
             state=_get_state(req),
         )
-        assert not (orc / "vision" / "0001-feat.md").exists()
+        assert not (orc / "vision" / "ready" / "0001-feat.md").exists()
 
     def test_close_vision_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException

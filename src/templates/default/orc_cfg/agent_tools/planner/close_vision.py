@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
-"""close_vision.py — close a completed vision and log it to the changelog.
+"""close_vision.py — close a completed vision by moving it from ready/ to done/.
 
 Usage:
   .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 
 Arguments:
-  vision-file   Full path (or just filename) of the vision markdown in .orc/vision/
+  vision-file   Full path (or just filename) of the vision markdown in .orc/vision/ready/
   summary       2-4 sentence summary of what the vision described (quoted string)
   task-name     Optional task names that implemented this vision
 
 Example:
   .orc/agent_tools/planner/close_vision.py \\
-    .orc/vision/0001-shark-fleet.md \\
+    .orc/vision/ready/0001-shark-fleet.md \\
     "Implement distributed task processing using gRPC. Added worker pool management." \\
     0001-grpc-transport 0002-worker-pool
 
-This script calls the orc coordination API to:
-1. Append an entry to orc-CHANGELOG.md
-2. Delete the vision file from .orc/vision/
-3. Print a confirmation message
+This script calls the orc coordination API to move the vision file from
+``.orc/vision/ready/`` to ``.orc/vision/done/``.
 
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
+Direct filesystem access to ``.orc/`` is forbidden.
 """
 
 from __future__ import annotations

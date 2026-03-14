@@ -14,7 +14,7 @@ def _orc_dir(tmp_path: Path) -> Path:
     orc = tmp_path / ".orc"
     orc.mkdir(exist_ok=True)
     (orc / "work").mkdir(exist_ok=True)
-    (orc / "vision").mkdir(exist_ok=True)
+    (orc / "vision" / "ready").mkdir(parents=True, exist_ok=True)
     (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
     return orc
 
@@ -184,23 +184,23 @@ class TestStateManagerVisions:
 
     def test_get_pending_visions_with_file(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Vision")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
         visions = _state(orc).get_pending_visions()
         assert visions == ["0001-feature.md"]
 
     def test_get_pending_visions_skips_dotfiles(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / ".future-work.md").write_text("# Future")
+        (orc / "vision" / "ready" / ".future-work.md").write_text("# Future")
         assert _state(orc).get_pending_visions() == []
 
     def test_get_pending_visions_skips_readme(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "README.md").write_text("# README")
+        (orc / "vision" / "ready" / "README.md").write_text("# README")
         assert _state(orc).get_pending_visions() == []
 
     def test_get_pending_visions_skips_matched_tasks(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Vision")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
         (orc / "work" / "board.yaml").write_text(
             "open:\n  - name: 0001-feature.md\n    status: planned\ndone: []\n"
         )
@@ -208,13 +208,13 @@ class TestStateManagerVisions:
 
     def test_get_pending_visions_skips_stem_matched_tasks(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Vision")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
         (orc / "work" / "board.yaml").write_text("done:\n  - name: 0001-feature.md\nopen: []\n")
         assert _state(orc).get_pending_visions() == []
 
     def test_read_vision_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Feature Vision")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Feature Vision")
         content = _state(orc).read_vision("0001-feature.md")
         assert "Feature Vision" in content
 
@@ -223,16 +223,16 @@ class TestStateManagerVisions:
         with pytest.raises(FileNotFoundError, match="Vision not found"):
             _state(orc).read_vision("9999-missing.md")
 
-    def test_close_vision_archives_file_to_old_subdir(self, tmp_path):
+    def test_close_vision_moves_file_to_done_subdir(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Feature")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Feature")
         _state(orc).close_vision("0001-feature.md", "Built the feature.", ["0001-task.md"])
-        assert not (orc / "vision" / "0001-feature.md").exists()
-        assert (orc / "vision" / "old" / "0001-feature.md").exists()
+        assert not (orc / "vision" / "ready" / "0001-feature.md").exists()
+        assert (orc / "vision" / "done" / "0001-feature.md").exists()
 
     def test_close_vision_does_not_write_changelog(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Feature")
+        (orc / "vision" / "ready" / "0001-feature.md").write_text("# Feature")
         _state(orc).close_vision("0001-feature.md", "Built the feature.", ["0001-task.md"])
         assert not (orc / "orc-CHANGELOG.md").exists()
 

@@ -160,9 +160,9 @@ class StateManager:
 
     @_locked
     def get_pending_visions(self) -> list[str]:
-        """Return vision ``.md`` filenames that have no matching board task."""
-        vision_dir = self._mgr.vision_dir
-        if not vision_dir.is_dir():
+        """Return vision ``.md`` filenames from ``vision/ready/`` with no matching board task."""
+        ready_dir = self._mgr.vision_dir / "ready"
+        if not ready_dir.is_dir():
             return []
         board = self._mgr.read_board()
         all_task_stems = {
@@ -171,7 +171,7 @@ class StateManager:
             for t in tasks
         }
         result = []
-        for f in sorted(vision_dir.glob("*.md")):
+        for f in sorted(ready_dir.glob("*.md")):
             if f.name.lower().startswith(".") or f.name.lower() == "readme.md":
                 continue
             if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
@@ -179,30 +179,30 @@ class StateManager:
         return result
 
     def read_vision(self, name: str) -> str:
-        """Return the content of a vision file.
+        """Return the content of a vision file from ``vision/ready/``.
 
         Raises :class:`FileNotFoundError` if *name* is not found.
         """
-        vision_path = self._mgr.vision_dir / name
+        vision_path = self._mgr.vision_dir / "ready" / name
         if not vision_path.exists():
             raise FileNotFoundError(f"Vision not found: {name}")
         return vision_path.read_text()
 
     def close_vision(self, name: str, summary: str, task_files: list[str]) -> None:
-        """Archive a vision by moving it to the ``vision/old/`` subdirectory.
+        """Move a vision from ``vision/ready/`` to ``vision/done/``.
 
-        Raises :class:`FileNotFoundError` if *name* is not found.
+        Raises :class:`FileNotFoundError` if *name* is not found in ``ready/``.
 
         Note: ``summary`` and ``task_files`` are accepted for API compatibility but
         are no longer used here.  Changelog entries are written when task branches
         are merged into dev (see :func:`orc.git.core._merge_feature_into_dev`).
         """
         with self._lock:
-            vision_path = self._mgr.vision_dir / name
+            vision_path = self._mgr.vision_dir / "ready" / name
             if not vision_path.exists():
                 raise FileNotFoundError(f"Vision not found: {name}")
 
-        done_dir = self._mgr.vision_dir / "old"
+        done_dir = self._mgr.vision_dir / "done"
         done_dir.mkdir(exist_ok=True)
         vision_path.rename(done_dir / name)
 
