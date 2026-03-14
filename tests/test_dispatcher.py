@@ -8,7 +8,15 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from conftest import FakePopen, make_msg
+from conftest import (
+    FakeAgent,
+    FakeBoard,
+    FakeMessaging,
+    FakePopen,
+    FakeWorkflow,
+    FakeWorktree,
+    make_msg,
+)
 from typer.testing import CliRunner
 
 import orc.ai.invoke as inv
@@ -66,64 +74,6 @@ def _minimal_squad(**kw) -> SquadConfig:
 # ---------------------------------------------------------------------------
 
 
-class _FakeBoard:
-    """Mutable fake for BoardService — override attributes freely in tests."""
-
-    def __init__(
-        self,
-        *,
-        get_open_tasks=None,
-        get_pending_visions=None,
-        get_pending_reviews=None,
-        scan_todos=None,
-    ):
-        self.get_open_tasks = get_open_tasks or (lambda: [])
-        self.assign_task = lambda task, agent: None
-        self.unassign_task = lambda task: None
-        self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
-        self.get_pending_reviews = get_pending_reviews or (lambda: [])
-        self.scan_todos = scan_todos or (lambda: [])
-
-
-class _FakeWorktree:
-    """Mutable fake for WorktreeService."""
-
-    def __init__(self, tmp_path: Path):
-        self.ensure_dev_worktree = lambda: tmp_path
-        self.ensure_feature_worktree = lambda t: tmp_path
-
-
-class _FakeMessaging:
-    """Mutable fake for MessagingService — override attributes freely in tests."""
-
-    def __init__(self, *, get_messages=None, wait_for_human_reply=None):
-        self.get_messages = get_messages or (lambda: [])
-        self.has_unresolved_block = lambda msgs: (None, None)
-        self.wait_for_human_reply = wait_for_human_reply or (lambda msgs, **kw: "reply")
-        self.post_boot_message = lambda agent_id: None
-        self.post_resolved = lambda a, s, r: None
-
-
-class _FakeWorkflow:
-    """Mutable fake for WorkflowService."""
-
-    def __init__(self, *, derive_task_state=None):
-        self.derive_task_state = derive_task_state or (lambda t: ("coder", "ready"))
-        self.merge_feature = lambda task: None
-        self.do_close_board = lambda task: None
-
-
-class _FakeAgent:
-    """Mutable fake for AgentService."""
-
-    def __init__(self, tmp_path: Path, *, spawn_fn=None):
-        def _default_spawn(ctx, cwd, model, log):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
-
-        self.build_context = lambda role, agent_id, msgs, wt: ("model", "ctx")
-        self.spawn = spawn_fn or _default_spawn
-
-
 def _make_services(
     tmp_path: Path,
     *,
@@ -144,19 +94,19 @@ def _make_services(
     (board_dir / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
 
     return types.SimpleNamespace(
-        board=_FakeBoard(
+        board=FakeBoard(
             get_open_tasks=get_open_tasks,
             get_pending_visions=get_pending_visions,
             get_pending_reviews=get_pending_reviews,
             scan_todos=scan_todos,
         ),
-        worktree=_FakeWorktree(tmp_path),
-        messaging=_FakeMessaging(
+        worktree=FakeWorktree(tmp_path),
+        messaging=FakeMessaging(
             get_messages=get_messages,
             wait_for_human_reply=wait_for_human_reply,
         ),
-        workflow=_FakeWorkflow(derive_task_state=derive_task_state),
-        agent=_FakeAgent(tmp_path, spawn_fn=spawn_fn),
+        workflow=FakeWorkflow(derive_task_state=derive_task_state),
+        agent=FakeAgent(tmp_path, spawn_fn=spawn_fn),
     )
 
 

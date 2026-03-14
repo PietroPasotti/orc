@@ -84,3 +84,150 @@ class FakePopen:
 
     def wait(self, timeout: float | None = None) -> int:
         return self.returncode
+
+
+# ---------------------------------------------------------------------------
+# Shared service fakes (used by test_dispatcher, test_run, test_integration)
+# ---------------------------------------------------------------------------
+
+
+class FakeBoard:
+    """Mutable fake for BoardService — override attributes freely in tests."""
+
+    def __init__(
+        self,
+        *,
+        get_open_tasks=None,
+        get_pending_visions=None,
+        get_pending_reviews=None,
+        scan_todos=None,
+    ):
+        self.get_open_tasks = get_open_tasks or (lambda: [])
+        self.assign_task = lambda task, agent: None
+        self.unassign_task = lambda task: None
+        self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
+        self.get_pending_reviews = get_pending_reviews or (lambda: [])
+        self.scan_todos = scan_todos or (lambda: [])
+
+
+class FakeWorktree:
+    """Mutable fake for WorktreeService."""
+
+    def __init__(self, tmp_path):
+        self.ensure_dev_worktree = lambda: tmp_path
+        self.ensure_feature_worktree = lambda t: tmp_path
+
+
+class FakeMessaging:
+    """Mutable fake for MessagingService — override attributes freely in tests."""
+
+    def __init__(self, *, get_messages=None, wait_for_human_reply=None):
+        self.get_messages = get_messages or (lambda: [])
+        self.has_unresolved_block = lambda msgs: (None, None)
+        self.wait_for_human_reply = wait_for_human_reply or (lambda msgs, **kw: "reply")
+        self.post_boot_message = lambda agent_id: None
+        self.post_resolved = lambda a, s, r: None
+
+
+class FakeWorkflow:
+    """Mutable fake for WorkflowService."""
+
+    def __init__(self, *, derive_task_state=None):
+        self.derive_task_state = derive_task_state or (lambda t: ("coder", "ready"))
+        self.merge_feature = lambda task: None
+        self.do_close_board = lambda task: None
+
+
+class FakeAgent:
+    """Mutable fake for AgentService."""
+
+    def __init__(self, tmp_path, *, spawn_fn=None):
+        from orc.ai.backends import SpawnResult
+
+        def _default_spawn(ctx, cwd, model, log):
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        self.build_context = lambda role, agent_id, msgs, wt: ("model", "ctx")
+        self.spawn = spawn_fn or _default_spawn
+
+
+# ---------------------------------------------------------------------------
+# Fixture: silence common side-effect patches used in many tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_git(monkeypatch, tmp_path):
+    """Patch the five most-mocked git helpers to no-ops.
+
+    Parameterise individually if a test needs non-default behaviour, e.g.:
+        def test_something(mock_git, monkeypatch):
+            monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: True)
+    """
+    import orc.git.core as _git
+
+    monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
+    monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
+    monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
+    monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
+    monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+    return tmp_path
+
+
+@pytest.fixture()
+def mock_telegram(monkeypatch):
+    """Patch Telegram helpers so no network calls occur and messages are captured."""
+    import orc.messaging.telegram as tg
+
+    sent: list[str] = []
+    monkeypatch.setattr(tg, "get_messages", lambda: [])
+    monkeypatch.setattr(tg, "send_message", lambda text: sent.append(text))
+    monkeypatch.setattr(tg, "is_configured", lambda: False)
+    return sent
+
+
+@pytest.fixture()
+def mock_spawn(monkeypatch):
+    """Patch inv.spawn to return a FakePopen immediately."""
+    import orc.ai.invoke as inv
+    from orc.ai.backends import SpawnResult
+
+    monkeypatch.setattr(
+        inv,
+        "spawn",
+        lambda *a, **kw: SpawnResult(process=FakePopen(), log_fh=None, context_tmp=""),
+    )
+
+
+@pytest.fixture()
+def board_file(tmp_path):
+    """Create a minimal board.yaml and return a helper for writing content.
+
+    Usage::
+
+        def test_something(board_file):
+            board_file("counter: 1\\nopen:\\n  - name: 0001-foo.md\\n")
+    """
+    board = tmp_path / ".orc" / "work" / "board.yaml"
+    board.parent.mkdir(parents=True, exist_ok=True)
+
+    def _write(content: str) -> None:
+        board.write_text(content)
+
+    return _write
+
+
+@pytest.fixture()
+def mock_validate_env(monkeypatch):
+    """Suppress config.validate_env so tests don't need real env vars."""
+    import orc.config as _cfg
+
+    monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+
+
+@pytest.fixture()
+def mock_rebase(monkeypatch):
+    """Suppress _rebase_dev_on_main so tests don't hit subprocess."""
+    import orc.cli.merge as _merge_mod
+
+    monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
