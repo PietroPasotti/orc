@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
 
@@ -189,33 +188,19 @@ class StateManager:
             raise FileNotFoundError(f"Vision not found: {name}")
         return vision_path.read_text()
 
-    # FIXME: close_vision should not be editing the changelog.
-    #  Changelog should be an append-only log of feature branches merged into dev (and then main).
-    #  so probably it's more of a finalize_task side-effect? Whenever the task branch is
-    #  merged on dev, that's when we should add an entry to the changelog.
-    @_locked
     def close_vision(self, name: str, summary: str, task_files: list[str]) -> None:
-        """Close a vision: append an entry to ``orc-CHANGELOG.md`` and delete the file.
+        """Archive a vision by moving it to the ``vision/old/`` subdirectory.
 
         Raises :class:`FileNotFoundError` if *name* is not found.
+
+        Note: ``summary`` and ``task_files`` are accepted for API compatibility but
+        are no longer used here.  Changelog entries are written when task branches
+        are merged into dev (see :func:`orc.git.core._merge_feature_into_dev`).
         """
-        vision_path = self._mgr.vision_dir / name
-        if not vision_path.exists():
-            raise FileNotFoundError(f"Vision not found: {name}")
-        vision_name = vision_path.stem
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        implemented_by = ", ".join(task_files) if task_files else "—"
-        entry = (
-            f"\n## {vision_name} (closed {timestamp})\n\n"
-            f"**Summary:** {summary}\n\n"
-            f"**Implemented by:** {implemented_by}\n"
-        )
-        changelog = self._orc_dir / "orc-CHANGELOG.md"
-        if changelog.exists():
-            changelog.write_text(changelog.read_text() + entry)
-        else:
-            changelog.write_text(f"# Changelog\n{entry}")
-        # don't unlink vision path; instead move it to an 'old' subdir for record-keeping
+        with self._lock:
+            vision_path = self._mgr.vision_dir / name
+            if not vision_path.exists():
+                raise FileNotFoundError(f"Vision not found: {name}")
 
         done_dir = self._mgr.vision_dir / "old"
         done_dir.mkdir(exist_ok=True)

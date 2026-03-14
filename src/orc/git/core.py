@@ -189,6 +189,33 @@ def _ensure_feature_worktree(task_name: str) -> Path:
     return wt_path
 
 
+def _append_changelog_entry(
+    task_name: str,
+    branch: str,
+    merge_sha: str,
+    orc_dir: Path,
+) -> None:
+    """Append a merge entry to ``orc-CHANGELOG.md`` in *orc_dir*.
+
+    Called after a feature branch is successfully merged into dev so the
+    changelog reflects merged branches, not vision closures.
+    """
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    task_stem = Path(task_name).stem
+    entry = (
+        f"\n## {task_stem} (merged {timestamp})\n\n"
+        f"**Branch:** {branch}\n\n"
+        f"**Task:** {task_name}\n\n"
+        f"**Merge commit:** {merge_sha}\n"
+    )
+    changelog = orc_dir / "orc-CHANGELOG.md"
+    if changelog.exists():
+        changelog.write_text(changelog.read_text() + entry)
+    else:
+        changelog.write_text(f"# Changelog\n{entry}")
+    logger.info("changelog updated", task=task_name, merge_sha=merge_sha)
+
+
 def _close_task_on_board(task_name: str, commit_tag: str = "pending") -> None:
     """Move *task_name* from ``open`` to ``done`` in the board and delete its task file."""
     board = _board._read_board()
@@ -260,6 +287,7 @@ def _merge_feature_into_dev(task_name: str) -> None:
 
     _close_task_on_board(task_name, commit_tag=merge_sha)
     logger.info("board updated", task=task_name, commit_tag=merge_sha)
+    _append_changelog_entry(task_name, branch, merge_sha, cfg.orc_dir)
 
     if wt_path.exists():
         logger.info("removing feature worktree", path=str(wt_path))
