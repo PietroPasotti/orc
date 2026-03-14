@@ -16,7 +16,7 @@ git diff main..HEAD
 ```
 
 **Do NOT merge the feature branch yourself.** The orchestrator handles the merge
-automatically once you signal approval via `approve_task.py`.
+automatically once you signal approval via `review_task.py`.
 
 ### Signalling your verdict
 
@@ -27,7 +27,7 @@ the board to route the task.
 **If passed** — no Critical or Major issues:
 
 ```bash
-.orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<one-line summary>"
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved "<one-line summary>"
 ```
 
 **If failed** — one or more Critical or Major issues found:
@@ -36,7 +36,7 @@ the board to route the task.
 2. Then run:
 
 ```bash
-.orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<one-line summary>"
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> rejected "<one-line summary>"
 ```
 
 Do **not** craft the commit message by hand.

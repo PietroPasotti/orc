@@ -6,26 +6,17 @@
 | `reject` | One or more Critical or Major issues found; coder must fix before proceeding |
 | `blocked` | You cannot complete the review without human input |
 
-### Signalling `approve`
+### Signalling `approve` or `reject`
 
-When the task passes review, run:
-
-```bash
-.orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<message>"
-```
-
-This sets the board status to `approved` and commits on the feature branch.
-
-### Signalling `reject`
-
-Stage any feedback files first, then run:
+When the review is complete, run:
 
 ```bash
-.orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<message>"
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
 ```
 
-This sets the board status to `rejected`, adds a comment with the rejection
-reason, and commits. Do **not** craft the commit message by hand.
+- **approved**: sets the board status to `approved` and commits on the feature branch.
+- **rejected**: sets the board status to `rejected`, adds a comment with the rejection
+  reason, and commits.  Do **not** craft the commit message by hand.
 
 ### Signalling `blocked`
 

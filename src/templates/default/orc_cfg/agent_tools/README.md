@@ -26,8 +26,8 @@ no commit-message parsing — the board is the single source of truth.
 | `planned` | `create_task.py` | Planner created task, awaiting coder |
 | `coding` | orchestrator | Coder actively working |
 | `review` | `close_task.py` | Coder done, awaiting QA |
-| `approved` | `approve_task.py` | QA passed, ready to merge |
-| `rejected` | `reject_task.py` | QA failed, back to coder |
+| `approved` | `review_task.py approved` | QA passed, ready to merge |
+| `rejected` | `review_task.py rejected` | QA failed, back to coder |
 | `blocked` | — | Hard block, needs human help |
 
 ## Available tools
@@ -35,37 +35,36 @@ no commit-message parsing — the board is the single source of truth.
 ### Planner
 
 ```bash
-# Create a new task and commit it to dev in one step.
-# The structured body (JSON) is read from stdin; the server assembles the markdown.
-echo '{
-  "overview":     "<what and why>",
-  "in_scope":     ["item 1", "item 2"],
-  "out_of_scope": ["item 1"],
-  "steps":        ["step 1", "step 2"],
-  "notes":        "<optional>"
-}' | .orc/agent_tools/planner/create_task.py <agent-id> <task-title> <vision-file> [extra-file...]
-
+# 1. Fetch a vision file's content from the server
+.orc/agent_tools/planner/get_vision.py <vision-filename>
 # Example:
-echo '{
-  "overview": "Add JWT-based authentication to the API.",
-  "in_scope": ["login endpoint", "token refresh"],
-  "out_of_scope": ["OAuth integration", "UI changes"],
-  "steps": ["Write failing tests", "Implement auth middleware", "Wire into routes"],
-  "notes": "See ADR-0042 for the chosen algorithm."
-}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md
-# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned, commits to dev
-# → prints the filename of the created task file
+.orc/agent_tools/planner/get_vision.py 0007-orc-status-board-view.md
 
-# With an optional extra file (e.g. a new ADR):
-echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md docs/adr/0042-auth.md
+# 2. Create a new task (calls API → writes to .orc/work/, updates board)
+.orc/agent_tools/planner/create_task.py <task-title>
+# Example:
+.orc/agent_tools/planner/create_task.py add-user-auth
+# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned
+# → prints the absolute path of the created file
 
-# Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
+# 3. Commit the task to dev (board lives in .orc/work/; optionally stage ADRs)
+.orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
+# Example:
+.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth
+.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth docs/adr/0042-auth.md
+
+# 4. Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 ```
 
 ### Coder
 
 ```bash
+# Fetch a task file's content from the server
+.orc/agent_tools/coder/get_task.py <task-filename>
+# Example:
+.orc/agent_tools/coder/get_task.py 0003-add-user-auth.md
+
 # Signal implementation done — sets board status to "review"
 .orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
 # Example:
@@ -75,19 +74,16 @@ echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0
 ### QA
 
 ```bash
-# Approve — sets board status to "approved"
-.orc/agent_tools/qa/approve_task.py <agent-id> <task-code> "<message>"
-# Example:
-.orc/agent_tools/qa/approve_task.py qa-1 0002 "all tests green; no critical issues"
-
-# Reject — sets board status to "rejected", adds comment with feedback
-.orc/agent_tools/qa/reject_task.py <agent-id> <task-code> "<message>"
-# Example:
-.orc/agent_tools/qa/reject_task.py qa-2 0003 "missing tests for error paths; see task file"
+# Review a task — sets board status to "approved" or "rejected"
+# (rejected also posts the message as a comment for the coder)
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
+# Examples:
+.orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no critical issues"
+.orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths; see task file"
 ```
 
 ## Task comments
 
 Each board task has a `comments` list.  QA rejection feedback is written there
-automatically by `reject_task.py`.  You can also add comments manually to
-communicate context to the next agent in the pipeline.
+automatically by `review_task.py` when the outcome is `rejected`.  You can also
+add comments manually to communicate context to the next agent in the pipeline.
