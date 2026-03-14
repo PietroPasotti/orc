@@ -47,8 +47,8 @@ def _dev_ahead_of_main() -> int:
 
 def _pending_visions() -> list[str]:
     """Return vision .md filenames (excl. README.md) with no matching board task."""
-    vision_dir = _cfg.get().vision_dir
-    if not vision_dir.is_dir():
+    ready_dir = _cfg.get().vision_dir / "ready"
+    if not ready_dir.is_dir():
         return []
     board = _board._read_board()
     all_task_stems = {
@@ -57,7 +57,7 @@ def _pending_visions() -> list[str]:
         for t in tasks
     }
     result = []
-    for f in sorted(vision_dir.glob("*.md")):
+    for f in sorted(ready_dir.glob("*.md")):
         if f.name.lower().startswith("."):
             continue
         if f.name.lower() == "readme.md":
@@ -201,6 +201,7 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
+        # TODO: use has_ready_visions instead of has_open_work for the planner check
         if not _board.has_open_work():
             planner_note = "ready (visions pending)"
         elif blocked_agent and blocked_state == "soft-blocked":

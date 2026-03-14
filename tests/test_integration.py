@@ -98,8 +98,8 @@ def git_project(tmp_path, monkeypatch):
     result = runner.invoke(m.app, ["bootstrap"], input="\n\n", catch_exceptions=False)
     assert result.exit_code == 0, f"bootstrap failed:\n{result.output}"
 
-    # Add a single dummy vision document (goes in .orc/vision/)
-    (tmp_path / ".orc" / "vision" / "feature-x.md").write_text(_VISION_DOC)
+    # Add a single dummy vision document (goes in .orc/vision/ready/)
+    (tmp_path / ".orc" / "vision" / "ready" / "feature-x.md").write_text(_VISION_DOC)
 
     # Initial commit — required for git worktree operations
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
@@ -352,7 +352,7 @@ class TestBootstrap:
         assert (orc / "roles" / "qa" / "_main.md").exists()
         assert (orc / "squads" / "default.yaml").exists()
         assert (orc / "work" / "board.yaml").exists()
-        assert (orc / "vision" / "feature-x.md").exists()
+        assert (orc / "vision" / "ready" / "feature-x.md").exists()
         assert (root / ".env.example").exists()
 
     def test_board_starts_empty(self, git_project):
@@ -364,7 +364,7 @@ class TestBootstrap:
 
     def test_vision_doc_content(self, git_project):
         orc = git_project / ".orc"
-        content = (orc / "vision" / "feature-x.md").read_text()
+        content = (orc / "vision" / "ready" / "feature-x.md").read_text()
         assert content == _VISION_DOC
 
 
@@ -452,7 +452,7 @@ class TestNoWorkExitsCleanly:
         # Remove all vision docs so the project is genuinely idle: no unplanned
         # vision docs, empty board, no open branches.
         orc_dir = orc_env / ".orc"
-        for f in (orc_dir / "vision").glob("*.md"):
+        for f in (orc_dir / "vision" / "ready").glob("*.md"):
             if f.name.lower() != "readme.md":
                 f.unlink()
 

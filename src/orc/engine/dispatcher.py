@@ -215,6 +215,8 @@ class Dispatcher:
         """
         if final or self.hooks.on_orc_status is None:
             typer.echo(msg)
+        else:
+            logger.info(msg)
 
     @property
     def total_agent_calls(self) -> int:
@@ -287,6 +289,7 @@ class Dispatcher:
             if not at_limit:
                 if not self.dry_run or self._total_spawned == 0:
                     call_budget = maxcalls - self._total_spawned
+                    self._echo("dispatching agents...")
                     dispatched = self._dispatch(messages, call_budget=call_budget)
                     self._total_spawned += dispatched
                 else:

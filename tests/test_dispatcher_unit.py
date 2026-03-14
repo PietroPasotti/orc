@@ -576,6 +576,14 @@ class TestDispatchCallbacksOptional:
         assert d.hooks.on_orc_status is None
         d._set_orc_status("running", "checking pending work")  # must not raise
 
+    def test_echo_routes_to_logger_when_tui_active(self, tmp_path):
+        """_echo logs via structlog instead of typer when TUI hook is active."""
+        svcs = make_services(tmp_path)
+        hooks = _disp.DispatchHooks(on_orc_status=lambda *_: None)
+        d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
+        # final=False + on_orc_status set → must not raise (hits logger.info branch)
+        d._echo("syncing…", final=False)
+
 
 class TestDispatcherLoopProperty:
     def test_loop_starts_at_zero(self, tmp_path):

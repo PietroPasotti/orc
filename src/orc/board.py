@@ -49,6 +49,7 @@ def _write_board(board: dict) -> None:
     _get_manager().write_board(board)
 
 
+# TODO: we should use pydantic for validating these data structures
 def get_open_tasks() -> list[dict]:
     """Return the list of open task dicts from board.yaml."""
     board = _read_board()

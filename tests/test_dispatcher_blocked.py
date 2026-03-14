@@ -79,7 +79,7 @@ class TestBlockedResumption:
         # The planner-1 case has an empty board.  A vision doc is required so
         # the dispatcher has something for the planner to work on after the
         # hard-block reply; without it the loop would exit with "no pending work".
-        vision_dir = tmp_path / ".orc" / "vision"
+        vision_dir = tmp_path / ".orc" / "vision" / "ready"
         vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "feature-x.md").write_text("# Feature X\n")
 
@@ -184,7 +184,7 @@ class TestBlockedResumption:
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc"))
 
         # A vision doc gives the planner something to plan (otherwise no dispatch).
-        vision_dir = tmp_path / ".orc" / "vision"
+        vision_dir = tmp_path / ".orc" / "vision" / "ready"
         vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "feature-x.md").write_text("# Feature X\n")
 

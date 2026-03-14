@@ -241,13 +241,14 @@ class TestStatusCoverage:
         assert "Merge pending" in result.output or result.exit_code == 0
 
     def test_pending_visions_returns_unmatched_files(self, tmp_path, monkeypatch):
-        """Lines 42-54: vision dir exists with files; unmatched ones are returned."""
+        """Lines 42-54: vision/ready dir exists with files; unmatched ones are returned."""
         vision_dir = tmp_path / "vision"
-        vision_dir.mkdir(exist_ok=True)
-        (vision_dir / "README.md").write_text("")
-        (vision_dir / ".hidden.md").write_text("")
-        (vision_dir / "feature-a.md").write_text("")
-        (vision_dir / "feature-b.md").write_text("")
+        ready_dir = vision_dir / "ready"
+        ready_dir.mkdir(parents=True, exist_ok=True)
+        (ready_dir / "README.md").write_text("")
+        (ready_dir / ".hidden.md").write_text("")
+        (ready_dir / "feature-a.md").write_text("")
+        (ready_dir / "feature-b.md").write_text("")
         monkeypatch.setattr(
             _cfg,
             "_config",
@@ -264,7 +265,7 @@ class TestStatusCoverage:
         assert ".hidden.md" not in result
 
     def test_pending_visions_returns_empty_when_no_vision_dir(self, tmp_path, monkeypatch):
-        """Line 56: vision_dir doesn't exist → return []."""
+        """Line 56: vision/ready dir doesn't exist → return []."""
         monkeypatch.setattr(
             _cfg,
             "_config",
