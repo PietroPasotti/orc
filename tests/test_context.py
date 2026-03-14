@@ -472,6 +472,38 @@ class TestScanTodos:
         self._mock_grep(monkeypatch, "", returncode=1)
         assert _ctx._scan_todos(tmp_path) == []
 
+    def test_docstring_todo_not_included(self, tmp_path, monkeypatch):
+        """Lines where TODO/FIXME appears inside a string/docstring are not matched."""
+        grep_output = ""
+        self._mock_grep(monkeypatch, grep_output, returncode=1)
+        todos = _ctx._scan_todos(tmp_path)
+        assert todos == []
+
+    def test_real_comment_todo_is_included(self, tmp_path, monkeypatch):
+        """Lines where # TODO appears as an actual comment are matched."""
+        grep_output = "src/foo.py:10:    # TODO: real action item\n"
+        self._mock_grep(monkeypatch, grep_output)
+        todos = _ctx._scan_todos(tmp_path)
+        assert len(todos) == 1
+        assert todos[0]["tag"] == "TODO"
+        assert todos[0]["text"] == "# TODO: real action item"
+
+    def test_uses_anchored_regex_pattern(self, tmp_path, monkeypatch):
+        """git grep is invoked with ^\\s*#\\s*(TODO|FIXME) to avoid false positives."""
+        captured: list[list[str]] = []
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda cmd, **kw: (
+                captured.append(cmd) or type("R", (), {"stdout": "", "returncode": 1})()
+            ),
+        )
+        _ctx._scan_todos(tmp_path)
+        assert len(captured) == 1
+        cmd = captured[0]
+        pattern_index = cmd.index("-E") + 1
+        assert cmd[pattern_index].startswith(r"^\s*#")
+
     def test_exclude_paths_passed_as_pathspecs(self, tmp_path, monkeypatch):
         """orc-todo-scan-exclude entries become :!<path> pathspecs in the git grep command."""
         import orc.config as _cfg

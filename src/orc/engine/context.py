@@ -232,7 +232,7 @@ def _scan_todos(root: Path) -> list[dict]:
                 "-I",
                 "--no-color",
                 "-E",
-                r"#\s*(TODO|FIXME)",
+                r"^\s*#\s*(TODO|FIXME)",
                 "--",
                 *pathspecs,
             ],
