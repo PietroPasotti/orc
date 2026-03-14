@@ -8,6 +8,19 @@ import pytest
 import orc.config as _cfg
 
 
+def _setup_env_config(tmp_path, monkeypatch):
+    """Helper: create env_file and initialize config for validate_env tests."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("")
+    orc_dir = tmp_path / ".orc"
+    orc_dir.mkdir(exist_ok=True)
+    _cfg.init(orc_dir)
+    monkeypatch.setattr(
+        _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
+    )
+    return env_file
+
+
 class TestConfigCoverage:
     def test_get_before_init_raises(self, monkeypatch):
         monkeypatch.setattr(_cfg, "_config", None)
@@ -46,14 +59,7 @@ class TestConfigCoverage:
         assert any(".env not found" in e for e in errors)
 
     def test_validate_env_all_vars_set(self, tmp_path, monkeypatch):
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok123")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "456")
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")
@@ -62,14 +68,7 @@ class TestConfigCoverage:
         assert not errors
 
     def test_validate_env_missing_vars(self, tmp_path, monkeypatch):
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.delenv("COLONY_TELEGRAM_TOKEN", raising=False)
         monkeypatch.delenv("COLONY_TELEGRAM_CHAT_ID", raising=False)
         monkeypatch.delenv("COLONY_AI_CLI", raising=False)
@@ -79,14 +78,7 @@ class TestConfigCoverage:
         assert any("COLONY_AI_CLI" in e for e in errors)
 
     def test_validate_env_unsupported_ai_cli(self, tmp_path, monkeypatch):
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "gpt")
@@ -94,14 +86,7 @@ class TestConfigCoverage:
         assert any("not supported" in e for e in errors)
 
     def test_validate_env_claude_missing_key(self, tmp_path, monkeypatch):
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "claude")
@@ -111,14 +96,7 @@ class TestConfigCoverage:
 
     def test_validate_env_copilot_no_token_no_apps_json_no_gh_cli(self, tmp_path, monkeypatch):
         """No GH_TOKEN, no apps.json, gh auth token fails → error."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")
@@ -135,14 +113,7 @@ class TestConfigCoverage:
 
     def test_validate_env_apps_json_malformed_swallows_exception(self, tmp_path, monkeypatch):
         """Lines 140-141: apps.json empty dict → StopIteration caught silently."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")
@@ -162,14 +133,7 @@ class TestConfigCoverage:
 
     def test_validate_env_empty_gh_auth_token(self, tmp_path, monkeypatch):
         """Lines 147-148: gh auth token returns empty string → error added."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")
@@ -195,14 +159,7 @@ class TestConfigCoverage:
 
     def test_validate_env_apps_json_with_oauth_token(self, tmp_path, monkeypatch):
         """Line 134: apps.json has a valid oauth_token → no GitHub error."""
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")
         monkeypatch.delenv("GH_TOKEN", raising=False)
         fake_home = tmp_path / "home3"
@@ -218,14 +175,7 @@ class TestConfigCoverage:
         assert not any("GitHub" in e for e in errors)
 
     def test_validate_env_copilot_gh_token_ok(self, tmp_path, monkeypatch):
-        env_file = tmp_path / ".env"
-        env_file.write_text("")
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        _cfg.init(orc_dir)
-        monkeypatch.setattr(
-            _cfg, "_config", _cfg.Config(**{**_cfg.get().__dict__, "env_file": env_file})
-        )
+        _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
         monkeypatch.setenv("COLONY_AI_CLI", "copilot")

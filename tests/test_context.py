@@ -81,14 +81,20 @@ class TestWaitForHumanReply:
     def _patch_configured(self, monkeypatch) -> None:
         monkeypatch.setattr(tg, "is_configured", lambda: True)
 
+    def _mock_time(self, monkeypatch, values: list[float]) -> list[float]:
+        """Mock time.monotonic() and time.sleep(), returning sleeps list."""
+        times = iter(values)
+        monkeypatch.setattr(time, "monotonic", lambda: next(times))
+        sleeps: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        return sleeps
+
     def test_returns_first_new_human_message(self, monkeypatch):
         self._patch_configured(monkeypatch)
         snapshot = [make_msg("[coder-1](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
         human = self._human("Here is the clarification.", ts=2000)
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [human])
-        times = iter([0.0, 1.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
+        self._mock_time(monkeypatch, [0.0, 1.0])
 
         result = _ctx.wait_for_human_reply(snapshot, timeout=3600.0)
         assert result == "Here is the clarification."
@@ -99,9 +105,7 @@ class TestWaitForHumanReply:
         snapshot = [old_human]
         new_human = self._human("new message", ts=600)
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [new_human])
-        times = iter([0.0, 1.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
+        self._mock_time(monkeypatch, [0.0, 1.0])
 
         result = _ctx.wait_for_human_reply(snapshot, timeout=3600.0)
         assert result == "new message"
@@ -119,10 +123,7 @@ class TestWaitForHumanReply:
             return snapshot + [agent_msg] if call_count == 1 else snapshot + [agent_msg, human_msg]
 
         monkeypatch.setattr(tg, "get_messages", get_messages)
-        times = iter([0.0, 1.0, 2.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        sleeps: list[float] = []
-        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0])
 
         result = _ctx.wait_for_human_reply(snapshot, initial_delay=5.0, timeout=3600.0)
         assert result == "Please continue."
@@ -140,10 +141,7 @@ class TestWaitForHumanReply:
             return snapshot if call_count < 3 else [human]
 
         monkeypatch.setattr(tg, "get_messages", get_messages)
-        times = iter([0.0, 1.0, 2.0, 3.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        sleeps: list[float] = []
-        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0, 3.0])
 
         _ctx.wait_for_human_reply(
             snapshot, initial_delay=5.0, backoff_factor=2.0, max_delay=300.0, timeout=3600.0
@@ -162,10 +160,7 @@ class TestWaitForHumanReply:
             return snapshot if call_count < 4 else [human]
 
         monkeypatch.setattr(tg, "get_messages", get_messages)
-        times = iter([0.0, 1.0, 2.0, 3.0, 4.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        sleeps: list[float] = []
-        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0, 3.0, 4.0])
 
         _ctx.wait_for_human_reply(
             snapshot, initial_delay=5.0, backoff_factor=2.0, max_delay=10.0, timeout=3600.0
@@ -178,9 +173,7 @@ class TestWaitForHumanReply:
         self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
-        times = iter([0.0, 3601.0])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
+        self._mock_time(monkeypatch, [0.0, 3601.0])
 
         with pytest.raises(TimeoutError):
             _ctx.wait_for_human_reply(snapshot, timeout=3600.0)
@@ -192,10 +185,7 @@ class TestWaitForHumanReply:
         self._patch_configured(monkeypatch)
         snapshot: list[dict] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
-        times = iter([0.0, 9.0, 10.1])
-        monkeypatch.setattr(time, "monotonic", lambda: next(times))
-        sleeps: list[float] = []
-        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        sleeps = self._mock_time(monkeypatch, [0.0, 9.0, 10.1])
 
         with pytest.raises(TimeoutError):
             _ctx.wait_for_human_reply(snapshot, initial_delay=300.0, timeout=10.0)
@@ -217,6 +207,39 @@ class TestWaitForHumanReply:
 
 
 class TestContextCoverage:
+    def _setup_context(
+        self, monkeypatch, tmp_path, *, roles_dir=None, board_content="open: []\ndone: []\n"
+    ):
+        """Set up full context with config, directories, and mocks."""
+        if roles_dir is None:
+            roles_dir = tmp_path / "roles"
+            roles_dir.mkdir(exist_ok=True)
+        work_dir = tmp_path / ".orc" / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        (work_dir / "board.yaml").write_text(board_content)
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                roles_dir=roles_dir,
+                orc_dir=tmp_path / ".orc",
+                repo_root=tmp_path,
+                work_dir=work_dir,
+                board_file=work_dir / "board.yaml",
+            ),
+        )
+        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+    def _setup_roles(self, monkeypatch, tmp_path):
+        """Set up minimal roles configuration."""
+        roles_dir = tmp_path / "roles"
+        roles_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
+        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        return roles_dir
+
     def test_read_adrs_empty_dir(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
@@ -235,21 +258,18 @@ class TestContextCoverage:
         assert "README.md" not in result
 
     def test_parse_role_file_missing_returns_default(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=tmp_path / "roles"))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        self._setup_roles(monkeypatch, tmp_path)
         result = _ctx._parse_role_file("wizard")
         assert "wizard" in result
 
     def test_parse_role_file_directory_format(self, tmp_path, monkeypatch):
         """Directory format: _main.md loaded first, then remaining files alphabetically."""
-        roles_dir = tmp_path / "roles"
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         role_dir = roles_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nIdentity section.")
         (role_dir / "constraints.md").write_text("Constraints section.")
         (role_dir / "exit-states.md").write_text("Exit states section.")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "Identity section." in result
         assert "Constraints section." in result
@@ -260,37 +280,32 @@ class TestContextCoverage:
 
     def test_parse_role_file_directory_takes_precedence_over_flat_file(self, tmp_path, monkeypatch):
         """When both directory and .md file exist, directory wins."""
-        roles_dir = tmp_path / "roles"
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         role_dir = roles_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("Directory version.")
         (roles_dir / "coder.md").write_text("Flat file version.")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "Directory version." in result
         assert "Flat file version." not in result
 
     def test_parse_role_dir_empty_returns_fallback(self, tmp_path, monkeypatch):
         """Empty directory returns a fallback string."""
-        roles_dir = tmp_path / "roles"
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         role_dir = roles_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         result = _ctx._parse_role_file("coder")
         assert "coder" in result
 
     def test_parse_role_file_project_dir_overrides_pkg_flat(self, tmp_path, monkeypatch):
         """Project-level directory overrides package-level flat file."""
-        roles_dir = tmp_path / "roles"
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         role_dir = roles_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("Project directory version.")
         pkg_roles = tmp_path / "pkg_roles"
         pkg_roles.mkdir(exist_ok=True)
         (pkg_roles / "coder.md").write_text("Package flat version.")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", pkg_roles)
         result = _ctx._parse_role_file("coder")
         assert "Project directory version." in result
@@ -298,92 +313,48 @@ class TestContextCoverage:
 
     def test_role_symbol_directory_format(self, tmp_path, monkeypatch):
         """_role_symbol reads from _main.md when role is a directory."""
-        roles_dir = tmp_path / "roles"
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         role_dir = roles_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nYou are a coder.\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == "🛠️"
 
     def test_parse_role_file_with_frontmatter(self, tmp_path, monkeypatch):
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are the coder agent.")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
         result = _ctx._parse_role_file("coder")
         assert "coder agent" in result
         assert "symbol" not in result
 
     def test_role_symbol_returns_empty_when_no_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=tmp_path / "roles"))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
+        self._setup_roles(monkeypatch, tmp_path)
         assert _ctx._role_symbol("wizard") == ""
 
     def test_role_symbol_no_frontmatter(self, tmp_path, monkeypatch):
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         (roles_dir / "coder.md").write_text("You are the coder.")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == ""
 
     def test_role_symbol_frontmatter_no_end(self, tmp_path, monkeypatch):
         """Frontmatter with no closing --- → symbol not extracted."""
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\nno closing marker")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == ""
 
     def test_build_agent_context_planner(self, tmp_path, monkeypatch):
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                roles_dir=roles_dir,
-                orc_dir=tmp_path / ".orc",
-                repo_root=tmp_path,
-                work_dir=tmp_path / ".orc" / "work",
-                board_file=tmp_path / ".orc" / "work" / "board.yaml",
-            ),
-        )
-        (tmp_path / ".orc" / "work").mkdir(parents=True, exist_ok=True)
-        (tmp_path / ".orc" / "work" / "board.yaml").write_text("open: []\ndone: []\n")
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        self._setup_context(monkeypatch, tmp_path)
         model, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
         assert isinstance(ctx, str)
         assert len(ctx) > 0
 
     def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
         """QA agent with an active feature branch gets review-specific git info."""
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        self._setup_context(monkeypatch, tmp_path)
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(
             "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
         )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                roles_dir=roles_dir,
-                orc_dir=tmp_path / ".orc",
-                repo_root=tmp_path,
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=work_dir,
-                board_file=work_dir / "board.yaml",
-            ),
-        )
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
         _, ctx = _ctx.build_agent_context("qa", [], worktree=tmp_path)
@@ -392,37 +363,18 @@ class TestContextCoverage:
 
     def test_role_symbol_with_symbol_in_frontmatter(self, tmp_path, monkeypatch):
         """Lines 65-67: role file has valid frontmatter containing 'symbol' key."""
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        roles_dir = self._setup_roles(monkeypatch, tmp_path)
         (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are a coder.\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
         assert _ctx._role_symbol("coder") == "🧑‍💻"
 
     def test_build_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
         """Line 136: else-branch with feature_branch set (agent_name not coder/qa)."""
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        self._setup_context(monkeypatch, tmp_path)
         work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(
             "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
         )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                roles_dir=roles_dir,
-                orc_dir=tmp_path / ".orc",
-                repo_root=tmp_path,
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=work_dir,
-                board_file=work_dir / "board.yaml",
-            ),
-        )
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feature/0001-task")
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
         _, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
@@ -436,12 +388,14 @@ class TestContextCoverage:
         orc_dir.mkdir(exist_ok=True)
         (orc_dir / "work").mkdir(exist_ok=True)
         (orc_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        roles_dir = orc_dir / "roles"
+        roles_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(
             _cfg,
             "_config",
             _replace(
                 _cfg.get(),
-                roles_dir=orc_dir / "roles",
+                roles_dir=roles_dir,
                 orc_dir=orc_dir,
                 repo_root=repo,
                 dev_worktree=tmp_path / "dev-wt",
@@ -461,13 +415,17 @@ class TestContextCoverage:
 
 
 class TestScanTodos:
-    def test_returns_todos_from_git_grep(self, tmp_path, monkeypatch):
-        grep_output = "src/foo.py:42:    # TODO: fix this\nsrc/bar.py:7:    # FIXME: broken\n"
+    def _mock_grep(self, monkeypatch, stdout: str, returncode: int = 0) -> None:
+        """Mock subprocess.run for grep output."""
         monkeypatch.setattr(
             subprocess,
             "run",
-            lambda cmd, **kw: type("R", (), {"stdout": grep_output, "returncode": 0})(),
+            lambda cmd, **kw: type("R", (), {"stdout": stdout, "returncode": returncode})(),
         )
+
+    def test_returns_todos_from_git_grep(self, tmp_path, monkeypatch):
+        grep_output = "src/foo.py:42:    # TODO: fix this\nsrc/bar.py:7:    # FIXME: broken\n"
+        self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 2
         assert todos[0] == {
@@ -485,11 +443,7 @@ class TestScanTodos:
 
     def test_tags_fixme_correctly(self, tmp_path, monkeypatch):
         grep_output = "a.py:1:    # FIXME: something\n"
-        monkeypatch.setattr(
-            subprocess,
-            "run",
-            lambda cmd, **kw: type("R", (), {"stdout": grep_output, "returncode": 0})(),
-        )
+        self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert todos[0]["tag"] == "FIXME"
 
@@ -502,32 +456,20 @@ class TestScanTodos:
 
     def test_skips_lines_with_too_few_parts(self, tmp_path, monkeypatch):
         grep_output = "badline\nsrc/ok.py:5:    # TODO: valid\n"
-        monkeypatch.setattr(
-            subprocess,
-            "run",
-            lambda cmd, **kw: type("R", (), {"stdout": grep_output, "returncode": 0})(),
-        )
+        self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 1
         assert todos[0]["file"] == "src/ok.py"
 
     def test_skips_lines_with_non_int_line_number(self, tmp_path, monkeypatch):
         grep_output = "src/foo.py:notanumber:    # TODO: bad\nsrc/ok.py:3:    # TODO: good\n"
-        monkeypatch.setattr(
-            subprocess,
-            "run",
-            lambda cmd, **kw: type("R", (), {"stdout": grep_output, "returncode": 0})(),
-        )
+        self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 1
         assert todos[0]["line"] == 3
 
     def test_empty_output_returns_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            subprocess,
-            "run",
-            lambda cmd, **kw: type("R", (), {"stdout": "", "returncode": 1})(),
-        )
+        self._mock_grep(monkeypatch, "", returncode=1)
         assert _ctx._scan_todos(tmp_path) == []
 
     def test_exclude_paths_passed_as_pathspecs(self, tmp_path, monkeypatch):

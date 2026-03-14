@@ -231,3 +231,100 @@ def mock_rebase(monkeypatch):
     import orc.cli.merge as _merge_mod
 
     monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda *_: None)
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for dispatcher tests (used across test_dispatcher_*.py)
+# ---------------------------------------------------------------------------
+
+
+def make_agent(tmp_path, *, role: str = "coder", task: str = "0001-foo.md"):
+    """Construct a minimal AgentProcess for testing."""
+    from orc.engine.pool import AgentProcess
+
+    return AgentProcess(
+        agent_id=f"{role}-1",
+        role=role,
+        model="copilot",
+        task_name=task,
+        process=FakePopen(),
+        worktree=tmp_path,
+        log_path=tmp_path / f"{role}.log",
+        log_fh=None,
+        context_tmp=None,
+    )
+
+
+def minimal_squad(**kw):
+    """Construct a minimal SquadConfig for testing."""
+    from orc.squad import SquadConfig
+
+    defaults = dict(
+        planner=1,
+        coder=1,
+        qa=1,
+        timeout_minutes=60,
+        name="test",
+        description="",
+        _models={},
+    )
+    defaults.update(kw)
+    return SquadConfig(**defaults)
+
+
+def make_services(
+    tmp_path,
+    *,
+    get_messages=None,
+    get_open_tasks=None,
+    derive_task_state=None,
+    spawn_fn=None,
+    wait_for_human_reply=None,
+    get_pending_visions=None,
+    get_pending_reviews=None,
+    scan_todos=None,
+):
+    """Return a SimpleNamespace of fully-wired fake services for Dispatcher tests."""
+    import types
+
+    board_dir = tmp_path / ".orc" / "work"
+    board_dir.mkdir(parents=True, exist_ok=True)
+    (board_dir / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+
+    return types.SimpleNamespace(
+        board=FakeBoard(
+            get_open_tasks=get_open_tasks,
+            get_pending_visions=get_pending_visions,
+            get_pending_reviews=get_pending_reviews,
+            scan_todos=scan_todos,
+        ),
+        worktree=FakeWorktree(tmp_path),
+        messaging=FakeMessaging(
+            get_messages=get_messages,
+            wait_for_human_reply=wait_for_human_reply,
+        ),
+        workflow=FakeWorkflow(derive_task_state=derive_task_state),
+        agent=FakeAgent(tmp_path, spawn_fn=spawn_fn),
+    )
+
+
+def make_dispatcher(squad, svcs, *, dry_run: bool = False, only_role=None, hooks=None):
+    """Convenience wrapper: construct a Dispatcher from a services namespace."""
+    from orc.engine.dispatcher import Dispatcher
+
+    return Dispatcher(
+        squad,
+        board=svcs.board,
+        worktree=svcs.worktree,
+        messaging=svcs.messaging,
+        workflow=svcs.workflow,
+        agent=svcs.agent,
+        hooks=hooks,
+        dry_run=dry_run,
+        only_role=only_role,
+    )
+
+
+def setup_work(d):
+    """Populate d.work from its callbacks (simulates one loop cycle refresh)."""
+    d.work = d._refresh_work([])
