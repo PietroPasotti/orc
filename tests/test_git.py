@@ -4,6 +4,7 @@ import subprocess
 from dataclasses import replace as _replace
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 
 import orc.config as _cfg
@@ -46,80 +47,43 @@ class TestDeriveStateFromGit:
                 lambda name: {"name": name, "status": board_status},
             )
 
-    def test_no_feature_branch_returns_coder(self, monkeypatch):
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=False,
-            has_commits=False,
-        )
-        agent, reason = _derive_task_state("0003-foo.md")
-        assert agent == "coder"
-        assert "does not exist" in reason
-
-    def test_no_branch_returns_coder(self, monkeypatch):
-        """Branch does not exist (never created or previously deleted) → dispatch coder."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=False,
-            has_commits=False,
-        )
-        agent, reason = _derive_task_state("0003-foo.md")
-        assert agent == "coder"
-        assert "does not exist" in reason
-
-    def test_feature_branch_exists_no_commits_not_merged_returns_coder(self, monkeypatch):
-        """Branch exists with no new commits and not yet in dev → dispatch coder."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=False,
-            is_merged=False,
-        )
-        agent, reason = _derive_task_state("0003-foo.md")
-        assert agent == "coder"
-        assert "no commits" in reason
-
-    def test_feature_branch_exists_no_commits_but_merged_returns_close_board(self, monkeypatch):
-        """Branch exists at same tip as main (already merged) → close stale board entry."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=False,
-            is_merged=True,
-        )
-        agent, reason = _derive_task_state("0003-foo.md")
+    @pytest.mark.parametrize(
+        "branch_exists,has_commits,is_merged,board_status,expected_agent,expected_reason_substr",
+        [
+            (False, False, False, None, "coder", "does not exist"),
+            (True, False, False, None, "coder", "no commits"),
+            (True, False, True, None, "CLOSE_BOARD_SENTINEL", "merged"),
+            (True, True, False, "coding", "coder", "coding"),
+            (True, True, False, None, "coder", None),  # defaults to coding
+        ],
+    )
+    def test_derive_task_state(
+        self,
+        monkeypatch,
+        branch_exists,
+        has_commits,
+        is_merged,
+        board_status,
+        expected_agent,
+        expected_reason_substr,
+    ):
         from orc.engine.dispatcher import CLOSE_BOARD
 
-        assert agent == CLOSE_BOARD
-        assert "merged" in reason
-
-    def test_coder_commits_returns_coder(self, monkeypatch):
-        """Board status 'coding' → route back to coder."""
         self._patch(
             monkeypatch,
             active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=True,
-            board_status="coding",
+            branch_exists=branch_exists,
+            has_commits=has_commits,
+            is_merged=is_merged,
+            board_status=board_status,
         )
         agent, reason = _derive_task_state("0003-foo.md")
-        assert agent == "coder"
-        assert "coding" in reason
-
-    def test_no_board_status_defaults_to_coding_returns_coder(self, monkeypatch):
-        """No board status defaults to 'coding' → treat as coder still working."""
-        self._patch(
-            monkeypatch,
-            active_task="0003-foo.md",
-            branch_exists=True,
-            has_commits=True,
-        )
-        agent, _ = _derive_task_state("0003-foo.md")
-        assert agent == "coder"
+        if expected_agent == "CLOSE_BOARD_SENTINEL":
+            assert agent == CLOSE_BOARD
+        else:
+            assert agent == expected_agent
+        if expected_reason_substr:
+            assert expected_reason_substr in reason
 
     def test_reason_includes_branch_name(self, monkeypatch):
         self._patch(

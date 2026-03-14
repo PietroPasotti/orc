@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -168,30 +169,21 @@ class TestBootstrapUpgrade:
         assert role_file.read_text() != "# custom coder"
         assert squad_file.read_text() != "custom: true"
 
-    def test_upgrade_preserves_vision(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize(
+        "relative_path,content",
+        [
+            (".orc/vision/my-feature.md", "# vision"),
+            (".orc/work/board.yaml", "counter: 5\nopen: []\ndone: []\n"),
+            (".orc/orc-CHANGELOG.md", "## my project history\n"),
+        ],
+    )
+    def test_upgrade_preserves(self, tmp_path, monkeypatch, relative_path, content):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        vision_doc = _orc_dir(tmp_path) / "vision" / "my-feature.md"
-        vision_doc.write_text("# vision")
+        file_path = tmp_path / relative_path
+        file_path.write_text(content)
         runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
-        assert vision_doc.exists()
-        assert vision_doc.read_text() == "# vision"
-
-    def test_upgrade_preserves_work(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        runner.invoke(m.app, ["bootstrap"])
-        board = _orc_dir(tmp_path) / "work" / "board.yaml"
-        board.write_text("counter: 5\nopen: []\ndone: []\n")
-        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
-        assert board.read_text() == "counter: 5\nopen: []\ndone: []\n"
-
-    def test_upgrade_preserves_changelog(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        runner.invoke(m.app, ["bootstrap"])
-        changelog = tmp_path / ".orc" / "orc-CHANGELOG.md"
-        changelog.write_text("## my project history\n")
-        runner.invoke(m.app, ["bootstrap", "--upgrade", "--yes"])
-        assert changelog.read_text() == "## my project history\n"
+        assert file_path.read_text() == content
 
     def test_upgrade_prompts_for_confirmation(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

@@ -212,6 +212,7 @@ class TestStatusCoverage:
         assert "1 commits" not in result.output
 
     def test_status_planner_idle_with_open_work(self, tmp_path, monkeypatch):
+        self._setup(monkeypatch, ahead=0)
         _st._status()
 
     def test_status_merge_pending(self, tmp_path, monkeypatch):
@@ -254,8 +255,19 @@ class TestStatusCoverage:
         assert "README.md" not in result
         assert ".hidden.md" not in result
 
-    def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path):
+    def test_pending_visions_returns_empty_when_no_vision_dir(self, tmp_path, monkeypatch):
+        """Line 56: vision_dir doesn't exist → return []."""
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), vision_dir=tmp_path / "nonexistent"),
+        )
+        assert _st._pending_visions() == []
+
+    def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path, mock_git):
         """Lines 65-73: feat/* branches with nonzero merge-base exit → unmerged."""
+        from dataclasses import replace as _replace
+
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
         )
@@ -276,8 +288,10 @@ class TestStatusCoverage:
             result = _st._pending_reviews()
         assert result == ["feat/0001-foo"]
 
-    def test_pending_reviews_strips_worktree_plus_prefix(self, monkeypatch, tmp_path):
+    def test_pending_reviews_strips_worktree_plus_prefix(self, monkeypatch, tmp_path, mock_git):
         """Line 65: git branch prefixes worktree branches with '+'; must be stripped."""
+        from dataclasses import replace as _replace
+
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
         )
@@ -295,8 +309,10 @@ class TestStatusCoverage:
             result = _st._pending_reviews()
         assert result == ["feat/0004-worktree", "feat/0005-normal"]
 
-    def test_pending_reviews_with_branch_prefix(self, monkeypatch, tmp_path):
+    def test_pending_reviews_with_branch_prefix(self, monkeypatch, tmp_path, mock_git):
         """Line 67: when BRANCH_PREFIX is set, pattern uses prefix/feat/* glob."""
+        from dataclasses import replace as _replace
+
         monkeypatch.setattr(
             _cfg,
             "_config",

@@ -6,12 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
 import orc.git.core as _git
-import orc.messaging.telegram as tg
 import orc.squad as _sq
 from orc.squad import SquadConfig
 
@@ -46,14 +44,12 @@ def _mock_coord(monkeypatch, open_tasks=None) -> MagicMock:
 
 
 class TestRunBareRaise:
-    def test_run_loop_crash_reraises(self, tmp_path, monkeypatch):
+    def test_run_loop_crash_reraises(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
         """Lines 62-67: exception from dispatcher.run() is logged and re-raised."""
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
-        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         _mock_coord(monkeypatch)
 
         def boom(*a, **kw):
@@ -66,14 +62,12 @@ class TestRunBareRaise:
             with pytest.raises(RuntimeError, match="crashed"):
                 _run_mod._run(maxcalls=1)
 
-    def test_run_keyboard_interrupt_prints_warning(self, tmp_path, monkeypatch, capsys):
+    def test_run_keyboard_interrupt_prints_warning(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git, capsys
+    ):
         """KeyboardInterrupt during dispatcher.run() prints warning and exits non-zero."""
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
-        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
         _mock_coord(monkeypatch)
 
         def _interrupt(*a, **kw):
@@ -91,14 +85,22 @@ class TestRunBareRaise:
         assert "orc run" in captured.err
 
 
-def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
-    """Monkeypatch all external dependencies for _run() tests."""
+def _patch_run_deps(
+    monkeypatch,
+    tmp_path,
+    mock_validate_env,
+    mock_telegram,
+    mock_rebase,
+    mock_git,
+    *,
+    dispatcher_run=None,
+):
+    """Monkeypatch all external dependencies for _run() tests.
+
+    Now uses shared fixtures: mock_validate_env, mock_telegram, mock_rebase, mock_git.
+    """
     monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
-    monkeypatch.setattr(_cfg, "validate_env", lambda: [])
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
-    monkeypatch.setattr(tg, "get_messages", lambda: [])
-    monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-    monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
     _mock_coord(monkeypatch)
     if dispatcher_run is not None:
         monkeypatch.setattr(_disp.Dispatcher, "run", dispatcher_run)
@@ -107,18 +109,24 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
 
 
 class TestNoTuiFlag:
-    def test_no_tui_disables_tui(self, tmp_path, monkeypatch):
+    def test_no_tui_disables_tui(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
         """--no-tui causes no run_tui call."""
         import orc.cli.tui as _tui_mod
 
         tui_called = []
         monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
-        _patch_run_deps(monkeypatch, tmp_path)
+        _patch_run_deps(
+            monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
+        )
 
         _run_mod._run(maxcalls=1, no_tui=True)
         assert tui_called == []
 
-    def test_non_tty_auto_disables_tui(self, tmp_path, monkeypatch):
+    def test_non_tty_auto_disables_tui(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
         """Non-TTY stdout skips TUI even without --no-tui."""
         import sys
 
@@ -139,14 +147,18 @@ class TestNoTuiFlag:
                 },
             )(),
         )
-        _patch_run_deps(monkeypatch, tmp_path)
+        _patch_run_deps(
+            monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
+        )
 
         _run_mod._run(maxcalls=1, no_tui=False)
         assert tui_called == []
 
 
 class TestTuiPath:
-    def test_tui_path_calls_run_tui_and_render(self, tmp_path, monkeypatch):
+    def test_tui_path_calls_run_tui_and_render(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
         """TTY + no --no-tui → run_tui() is called and render() is exercised."""
         import sys
         from pathlib import Path
@@ -188,7 +200,9 @@ class TestTuiPath:
         )
         monkeypatch.setattr(_run_mod, "_safe_features_done", lambda: 0)
         monkeypatch.setattr(_disp.Dispatcher, "__init__", capturing_init)
-        _patch_run_deps(monkeypatch, tmp_path)
+        _patch_run_deps(
+            monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
+        )
 
         with patch.object(_tui_mod, "render", wraps=_tui_mod.render):
             _run_mod._run(maxcalls=1, no_tui=False)
@@ -240,9 +254,13 @@ class TestTuiPath:
 
 
 class TestEarlyExit:
-    def test_no_pending_work_skips_dispatcher(self, tmp_path, monkeypatch):
+    def test_no_pending_work_skips_dispatcher(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
         """_run() exits early without creating a Dispatcher when no work."""
-        _patch_run_deps(monkeypatch, tmp_path)
+        _patch_run_deps(
+            monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
+        )
         # Override StateManager to return no open tasks so all work sources are empty.
         _mock_coord(monkeypatch, open_tasks=[])
         dispatcher_run_called = []

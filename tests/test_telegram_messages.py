@@ -26,30 +26,32 @@ class TestKnownRoles:
 
 
 class TestParseAgentId:
-    def test_valid_coder(self):
-        assert parse_agent_id("coder-1") == ("coder", 1)
-
-    def test_valid_qa(self):
-        assert parse_agent_id("qa-2") == ("qa", 2)
-
-    def test_valid_planner(self):
-        assert parse_agent_id("planner-10") == ("planner", 10)
-
-    def test_unknown_role(self):
-        assert parse_agent_id("reviewer-1") == (None, None)
-
-    def test_bare_role(self):
-        assert parse_agent_id("coder") == (None, None)
-
-    def test_empty_string(self):
-        assert parse_agent_id("") == (None, None)
+    @pytest.mark.parametrize(
+        "agent_id,expected_role,expected_num",
+        [
+            ("coder-1", "coder", 1),
+            ("qa-2", "qa", 2),
+            ("planner-10", "planner", 10),
+            ("reviewer-1", None, None),  # unknown role
+            ("coder", None, None),  # bare role
+            ("", None, None),  # empty string
+        ],
+    )
+    def test_parse_agent_id(self, agent_id, expected_role, expected_num):
+        assert parse_agent_id(agent_id) == (expected_role, expected_num)
 
 
 class TestMakeAgentId:
-    def test_basic(self):
-        assert make_agent_id("coder", 1) == "coder-1"
-        assert make_agent_id("qa", 3) == "qa-3"
-        assert make_agent_id("planner", 99) == "planner-99"
+    @pytest.mark.parametrize(
+        "role,num,expected",
+        [
+            ("coder", 1, "coder-1"),
+            ("qa", 3, "qa-3"),
+            ("planner", 99, "planner-99"),
+        ],
+    )
+    def test_make_agent_id(self, role, num, expected):
+        assert make_agent_id(role, num) == expected
 
     def test_invalid_role_raises(self):
         with pytest.raises(ValueError, match="Unknown role"):
@@ -57,17 +59,17 @@ class TestMakeAgentId:
 
 
 class TestIsAgentMessage:
-    def test_recognises_valid_message(self):
-        assert is_agent_message("[coder-1](ready) 2026-01-01T00:00:00Z: Done.")
-
-    def test_rejects_unknown_role(self):
-        assert not is_agent_message("[reviewer-1](ready) 2026-01-01T00:00:00Z: Done.")
-
-    def test_rejects_bare_text(self):
-        assert not is_agent_message("hello world")
-
-    def test_rejects_empty(self):
-        assert not is_agent_message("")
+    @pytest.mark.parametrize(
+        "message,is_valid",
+        [
+            ("[coder-1](ready) 2026-01-01T00:00:00Z: Done.", True),
+            ("[reviewer-1](ready) 2026-01-01T00:00:00Z: Done.", False),  # unknown role
+            ("hello world", False),  # bare text
+            ("", False),  # empty
+        ],
+    )
+    def test_is_agent_message(self, message, is_valid):
+        assert is_agent_message(message) == is_valid
 
 
 class TestFormatAgentMessage:
@@ -97,12 +99,13 @@ class TestMessagesToText:
     def test_empty_returns_placeholder(self):
         assert messages_to_text([]) == "_No messages yet._"
 
-    def test_uses_first_name_when_username_missing(self):
-        msgs = [{"text": "hi", "date": 0, "from": {"first_name": "Eve"}}]
-        text = messages_to_text(msgs)
-        assert "Eve" in text
-
-    def test_falls_back_to_unknown_when_no_name(self):
-        msgs = [{"text": "hi", "date": 0, "from": {}}]
-        text = messages_to_text(msgs)
-        assert "unknown" in text
+    @pytest.mark.parametrize(
+        "msg,expected_name",
+        [
+            ({"text": "hi", "date": 0, "from": {"first_name": "Eve"}}, "Eve"),
+            ({"text": "hi", "date": 0, "from": {}}, "unknown"),
+        ],
+    )
+    def test_name_fallbacks(self, msg, expected_name):
+        text = messages_to_text([msg])
+        assert expected_name in text

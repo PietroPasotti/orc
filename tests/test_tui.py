@@ -6,6 +6,7 @@ import io
 import threading
 from unittest.mock import patch
 
+import pytest
 import rich.console
 import rich.panel
 
@@ -59,20 +60,18 @@ def _panel_to_str(panel: rich.panel.Panel) -> str:
 
 
 class TestElapsed:
-    def test_zero_seconds(self):
+    @pytest.mark.parametrize(
+        "now,expected",
+        [
+            (0.0, "0m 0s"),
+            (90.0, "1m 30s"),
+            (3661.0, "61m 1s"),
+        ],
+    )
+    def test_elapsed(self, now, expected):
         with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 0.0
-            assert _elapsed(0.0) == "0m 0s"
-
-    def test_ninety_seconds(self):
-        with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 90.0
-            assert _elapsed(0.0) == "1m 30s"
-
-    def test_3661_seconds(self):
-        with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 3661.0
-            assert _elapsed(0.0) == "61m 1s"
+            mock_time.monotonic.return_value = now
+            assert _elapsed(0.0) == expected
 
 
 class TestAgentCard:
@@ -81,19 +80,25 @@ class TestAgentCard:
         card = _agent_card(row)
         assert card.title == "planner-1"
 
-    def test_body_contains_status(self):
+    @pytest.mark.parametrize(
+        "kwargs,expected_in_body",
+        [
+            ({"status": "done"}, "done"),
+            ({"task_name": "0002-bar.md"}, "0002-bar.md"),
+            ({"worktree": "/some/path/myworktree"}, "myworktree"),
+            ({"started_at": 0.0}, "1m 30s"),  # when mock_time.monotonic.return_value = 90.0
+        ],
+    )
+    def test_body_contains(self, kwargs, expected_in_body):
         with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 0.0
-            card = _agent_card(_row(status="done"))
+            # For elapsed test, set mock time to 90.0
+            if "started_at" in kwargs:
+                mock_time.monotonic.return_value = 90.0
+            else:
+                mock_time.monotonic.return_value = 0.0
+            card = _agent_card(_row(**kwargs))
         out = _panel_to_str(card)
-        assert "done" in out
-
-    def test_body_contains_task_name(self):
-        with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 0.0
-            card = _agent_card(_row(task_name="0002-bar.md"))
-        out = _panel_to_str(card)
-        assert "0002-bar.md" in out
+        assert expected_in_body in out
 
     def test_none_task_name_shows_dash(self):
         with patch("orc.cli.tui.run_tui.time") as mock_time:
@@ -101,20 +106,6 @@ class TestAgentCard:
             card = _agent_card(_row(task_name=None))
         out = _panel_to_str(card)
         assert "—" in out
-
-    def test_body_contains_worktree_basename(self):
-        with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 0.0
-            card = _agent_card(_row(worktree="/some/path/myworktree"))
-        out = _panel_to_str(card)
-        assert "myworktree" in out
-
-    def test_body_contains_elapsed(self):
-        with patch("orc.cli.tui.run_tui.time") as mock_time:
-            mock_time.monotonic.return_value = 90.0
-            card = _agent_card(_row(started_at=0.0))
-        out = _panel_to_str(card)
-        assert "1m 30s" in out
 
 
 class TestOrcCard:
