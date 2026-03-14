@@ -569,6 +569,85 @@ class TestGitCoverage:
             "expected git reset --hard HEAD when dev worktree is dirty"
         )
 
+    def test_merge_feature_writes_changelog(self, tmp_path, monkeypatch):
+        """_merge_feature_into_dev appends an entry to orc-CHANGELOG.md after a successful merge."""
+        import orc.config as _cfg
+        import orc.git.core as _git
+
+        orc_dir = tmp_path / ".orc"
+        work_dir = orc_dir / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        board_yaml = work_dir / "board.yaml"
+        board_yaml.write_text("counter: 1\nopen:\n  - name: 0001-task.md\ndone: []\n")
+
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir(exist_ok=True)
+        dev_wt = tmp_path / "dev"
+        dev_wt.mkdir(exist_ok=True)
+
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
+        )
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "abc1234\n"
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            _git._merge_feature_into_dev("0001-task.md")
+
+        changelog = orc_dir / "orc-CHANGELOG.md"
+        assert changelog.exists(), "orc-CHANGELOG.md should be created after merge"
+        text = changelog.read_text()
+        assert "0001-task" in text
+        assert "feat/0001-task" in text
+        assert "abc1234" in text
+
+    def test_merge_feature_appends_to_existing_changelog(self, tmp_path, monkeypatch):
+        """_merge_feature_into_dev appends without overwriting an existing changelog."""
+        import orc.config as _cfg
+        import orc.git.core as _git
+
+        orc_dir = tmp_path / ".orc"
+        work_dir = orc_dir / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        board_yaml = work_dir / "board.yaml"
+        board_yaml.write_text("counter: 1\nopen:\n  - name: 0002-bar.md\ndone: []\n")
+        (orc_dir / "orc-CHANGELOG.md").write_text("# Changelog\n\n## prior entry\n")
+
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir(exist_ok=True)
+        dev_wt = tmp_path / "dev"
+        dev_wt.mkdir(exist_ok=True)
+
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
+        )
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
+        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+
+        def fake_run(cmd, **kw):
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "def5678\n"
+            return r
+
+        with patch("orc.git.core.subprocess.run", fake_run):
+            _git._merge_feature_into_dev("0002-bar.md")
+
+        text = (orc_dir / "orc-CHANGELOG.md").read_text()
+        assert "prior entry" in text, "existing content should be preserved"
+        assert "0002-bar" in text
+        assert "def5678" in text
+
     def test_is_worktree_dirty_true(self, tmp_path):
         def fake_run(cmd, **kw):
             r = MagicMock()

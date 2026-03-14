@@ -223,39 +223,18 @@ class TestStateManagerVisions:
         with pytest.raises(FileNotFoundError, match="Vision not found"):
             _state(orc).read_vision("9999-missing.md")
 
-    def test_close_vision_deletes_file_and_updates_changelog(self, tmp_path):
+    def test_close_vision_archives_file_to_old_subdir(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "0001-feature.md").write_text("# Feature")
         _state(orc).close_vision("0001-feature.md", "Built the feature.", ["0001-task.md"])
         assert not (orc / "vision" / "0001-feature.md").exists()
-        changelog = (orc / "orc-CHANGELOG.md").read_text()
-        assert "0001-feature" in changelog
-        assert "Built the feature." in changelog
-        assert "0001-task.md" in changelog
+        assert (orc / "vision" / "old" / "0001-feature.md").exists()
 
-    def test_close_vision_creates_changelog_if_absent(self, tmp_path):
+    def test_close_vision_does_not_write_changelog(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "0001-feature.md").write_text("# Feature")
-        _state(orc).close_vision("0001-feature.md", "Summary.", [])
-        changelog = orc / "orc-CHANGELOG.md"
-        assert changelog.exists()
-        assert "# Changelog" in changelog.read_text()
-
-    def test_close_vision_appends_to_existing_changelog(self, tmp_path):
-        orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Feature")
-        (orc / "orc-CHANGELOG.md").write_text("# Existing changelog\n")
-        _state(orc).close_vision("0001-feature.md", "Done.", [])
-        text = (orc / "orc-CHANGELOG.md").read_text()
-        assert "Existing changelog" in text
-        assert "0001-feature" in text
-
-    def test_close_vision_no_task_files_shows_dash(self, tmp_path):
-        orc = _orc_dir(tmp_path)
-        (orc / "vision" / "0001-feature.md").write_text("# Feature")
-        _state(orc).close_vision("0001-feature.md", "Summary.", [])
-        changelog = (orc / "orc-CHANGELOG.md").read_text()
-        assert "**Implemented by:** —" in changelog
+        _state(orc).close_vision("0001-feature.md", "Built the feature.", ["0001-task.md"])
+        assert not (orc / "orc-CHANGELOG.md").exists()
 
     def test_close_vision_not_found_raises(self, tmp_path):
         orc = _orc_dir(tmp_path)
