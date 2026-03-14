@@ -11,13 +11,18 @@
 When you have created a task (or ADR), publish it with:
 
 ```bash
-.orc/agent_tools/planner/publish_task.py --help
+.orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
 ```
 
-for usage, then execute with your agent ID, task file, and any extra files:
+Arguments:
+- `agent-id` — your agent identifier, e.g. `planner-1`
+- `task-name` — task filename or name, e.g. `0003-add-foo` or `0003-add-foo.md`
+- `extra-file` — optional extra files to stage (e.g. ADR docs you created)
 
+Example:
 ```bash
-.orc/agent_tools/planner/publish_task.py <agent-id> <task-file> [extra-files...]
+.orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo
+.orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo docs/adr/0042-foo.md
 ```
 
 This produces `chore(planner-1.ready.0003): add task 0003-add-foo` on the `dev`
