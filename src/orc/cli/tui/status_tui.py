@@ -30,6 +30,7 @@ from textual.widgets import ContentSwitcher, Static
 
 import orc.config as _cfg
 import orc.git.core as _git
+from orc.coordination.client import BoardSnapshot, get_board_snapshot
 
 # Maximum commits fetched per branch.
 _MAX_COMMITS = 100
@@ -222,6 +223,63 @@ def render_git_tree() -> RenderableType:
     return table
 
 
+def _render_board() -> RenderableType:
+    """Build a Rich kanban table from the coordination API.
+
+    Returns a plain :class:`~rich.text.Text` message when the coordination
+    server is unreachable or ``ORC_API_SOCKET`` is not set.
+    """
+    snap: BoardSnapshot | None = get_board_snapshot()
+    if snap is None:
+        return Text("no work in progress (orc server down or unreachable)")
+
+    # -- build per-column entry lists ----------------------------------
+    to_refine = snap.visions
+
+    planned = [t["name"] for t in snap.tasks if t.get("status") == "planned"]
+
+    _IN_PROGRESS_STATUSES = {"coding", "blocked", "soft-blocked"}
+    in_progress_entries = []
+    for t in snap.tasks:
+        if t.get("status") in _IN_PROGRESS_STATUSES:
+            label = t["name"]
+            if t.get("assigned_to"):
+                label = f"{label} ({t['assigned_to']})"
+            in_progress_entries.append(label)
+
+    review_entries = []
+    for t in snap.tasks:
+        if t.get("status") == "review":
+            label = t["name"]
+            if t.get("branch"):
+                label = f"{label} ({t['branch']})"
+            review_entries.append(label)
+
+    done_entries = [t["name"] for t in snap.done]
+
+    def _cell(entries: list[str]) -> str:
+        return "\n".join(entries) if entries else "(empty)"
+
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold",
+        show_lines=True,
+        padding=(0, 1),
+    )
+    for col_name in ("To refine", "To do", "In progress", "Awaiting review", "Done"):
+        table.add_column(col_name, no_wrap=False)
+
+    table.add_row(
+        _cell(to_refine),
+        _cell(planned),
+        _cell(in_progress_entries),
+        _cell(review_entries),
+        _cell(done_entries),
+    )
+
+    return table
+
+
 # ---------------------------------------------------------------------------
 # Agent view — capture _status() text output
 # ---------------------------------------------------------------------------
@@ -248,8 +306,8 @@ def _capture_status(squad: str = "default") -> str:
 # Textual app
 # ---------------------------------------------------------------------------
 
-_TAB_NAMES = ["Agents", "Git Tree"]
-_TAB_IDS = ["tab-agents", "tab-git-tree"]
+_TAB_NAMES = ["Agents", "Git Tree", "Board"]
+_TAB_IDS = ["tab-agents", "tab-git-tree", "tab-board"]
 
 _CSS = """\
 #tab-bar {
@@ -278,6 +336,8 @@ class StatusApp(App[None]):
         Binding("right", "tab_next", "Next →", priority=True),
         Binding("j", "scroll_down_content", "Scroll ↓", show=False),
         Binding("k", "scroll_up_content", "Scroll ↑", show=False),
+        Binding("[", "scroll_left_board", "← Board", show=False),
+        Binding("]", "scroll_right_board", "→ Board", show=False),
     ]
 
     def __init__(self, squad: str = "default") -> None:
@@ -285,6 +345,7 @@ class StatusApp(App[None]):
         self._squad = squad
         self._tab_index = 0
         self._git_tree_loaded = False
+        self._board_loaded = False
 
     def compose(self) -> ComposeResult:
         yield Static(self._tab_bar_markup(), id="tab-bar")
@@ -293,6 +354,8 @@ class StatusApp(App[None]):
                 yield Static("Loading…", id="agents-content")
             with VerticalScroll(id=_TAB_IDS[1]):
                 yield Static("Press → to load git tree…", id="git-tree-content")
+            with VerticalScroll(id=_TAB_IDS[2]):
+                yield Static("Press → to load board…", id="board-content")
 
     def on_mount(self) -> None:
         self._refresh_agents()
@@ -315,6 +378,9 @@ class StatusApp(App[None]):
         if self._tab_index == 1 and not self._git_tree_loaded:
             self._git_tree_loaded = True
             self._refresh_git_tree()
+        if self._tab_index == 2 and not self._board_loaded:
+            self._board_loaded = True
+            self._refresh_board()
 
     def _tab_bar_markup(self) -> str:
         parts: list[str] = []
@@ -323,7 +389,7 @@ class StatusApp(App[None]):
                 parts.append(f"[reverse bold] {name} [/reverse bold]")
             else:
                 parts.append(f"[dim] {name} [/dim]")
-        hint = "  [dim]← / → switch tabs · j/k or ↑/↓ scroll · q quit[/dim]"
+        hint = "  [dim]← / → switch tabs · j/k or ↑/↓ scroll · [ ] scroll board · q quit[/dim]"
         return "  ".join(parts) + hint
 
     # ------------------------------------------------------------------
@@ -346,6 +412,20 @@ class StatusApp(App[None]):
         if scroll is not None:
             scroll.scroll_up()
 
+    def action_scroll_left_board(self) -> None:
+        """Scroll the Board tab horizontally to the left."""
+        if self._tab_index == 2:
+            scroll = self._active_scroll()
+            if scroll is not None:
+                scroll.scroll_left()
+
+    def action_scroll_right_board(self) -> None:
+        """Scroll the Board tab horizontally to the right."""
+        if self._tab_index == 2:
+            scroll = self._active_scroll()
+            if scroll is not None:
+                scroll.scroll_right()
+
     # ------------------------------------------------------------------
     # Content loaders
     # ------------------------------------------------------------------
@@ -357,6 +437,10 @@ class StatusApp(App[None]):
     def _refresh_git_tree(self) -> None:
         renderable = render_git_tree()
         self.query_one("#git-tree-content", Static).update(renderable)
+
+    def _refresh_board(self) -> None:
+        renderable = _render_board()
+        self.query_one("#board-content", Static).update(renderable)
 
 
 def run_status_tui(squad: str = "default") -> None:

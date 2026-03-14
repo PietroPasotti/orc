@@ -65,6 +65,37 @@ class TestStateManagerBoardQueries:
         assert result[0]["name"] == "0001-foo.md"
         assert result[0]["status"] == "coding"
 
+    def test_get_done_tasks_empty(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        assert _state(orc).get_done_tasks() == []
+
+    def test_get_done_tasks_wraps_strings(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text("open: []\ndone:\n  - 0001-done.md\n")
+        result = _state(orc).get_done_tasks()
+        assert result == [{"name": "0001-done.md"}]
+
+    def test_get_done_tasks_normalises_commit_tag(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open: []\ndone:\n"
+            "  - name: 0001-done.md\n"
+            "    commit-tag: abc123\n"
+            "    timestamp: '2026-01-01T00:00:00Z'\n"
+        )
+        result = _state(orc).get_done_tasks()
+        assert result[0]["commit_tag"] == "abc123"
+        assert "commit-tag" not in result[0]
+
+    def test_get_done_tasks_returns_dict_without_hyphen_key(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open: []\ndone:\n  - name: 0002-done.md\n    commit_tag: def456\n"
+        )
+        result = _state(orc).get_done_tasks()
+        assert result[0]["name"] == "0002-done.md"
+        assert result[0]["commit_tag"] == "def456"
+
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
@@ -289,6 +320,32 @@ class TestBoardRoutes:
         req = self._req(tmp_path)
         result = get_tasks(state=_get_state(req))
         assert result == []
+
+    def test_get_done_tasks_empty(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_done_tasks
+
+        req = self._req(tmp_path)
+        result = get_done_tasks(state=_get_state(req))
+        assert result == []
+
+    def test_get_done_tasks_returns_entries(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_done_tasks
+
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "counter: 1\nopen: []\ndone:\n"
+            "  - name: 0001-done.md\n"
+            "    commit-tag: abc123\n"
+            "    timestamp: '2026-01-01T00:00:00Z'\n"
+        )
+        req = MagicMock()
+        from orc.coordination.state import StateManager
+
+        req.app.state.coord_state = StateManager(orc)
+        result = get_done_tasks(state=_get_state(req))
+        assert len(result) == 1
+        assert result[0]["name"] == "0001-done.md"
+        assert result[0]["commit_tag"] == "abc123"
 
     def test_create_task_returns_filename_and_path(self, tmp_path):
         from orc.coordination.models import CreateTaskRequest
@@ -608,6 +665,15 @@ class TestModels:
         assert m.status is None
         assert m.assigned_to is None
         assert m.comments == []
+        assert m.commit_tag is None
+        assert m.timestamp is None
+
+    def test_task_entry_with_commit_tag_and_timestamp(self):
+        from orc.coordination.models import TaskEntry
+
+        m = TaskEntry(name="0001-foo.md", commit_tag="abc123", timestamp="2026-01-01T00:00:00Z")
+        assert m.commit_tag == "abc123"
+        assert m.timestamp == "2026-01-01T00:00:00Z"
 
     def test_health_response(self):
         from orc.coordination.models import HealthResponse
@@ -663,3 +729,112 @@ class TestConfigApiSocketPath:
 
         cfg = _cfg.get()
         assert cfg.api_socket_path == cfg.orc_dir / "run" / "orc.sock"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BoardSnapshot client tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestGetBoardSnapshot:
+    """Tests for orc.coordination.client.get_board_snapshot().
+
+    We mock at the ``orc.coordination.client`` module level (not the ``httpx``
+    top-level module) because conftest.py stubs out ``httpx`` globally.
+    """
+
+    def test_returns_none_when_socket_env_not_set(self, monkeypatch):
+        from orc.coordination.client import get_board_snapshot
+
+        monkeypatch.delenv("ORC_API_SOCKET", raising=False)
+        assert get_board_snapshot() is None
+
+    def test_returns_none_when_socket_empty_string(self, monkeypatch):
+        from orc.coordination.client import get_board_snapshot
+
+        monkeypatch.setenv("ORC_API_SOCKET", "")
+        assert get_board_snapshot() is None
+
+    def test_returns_none_when_connection_fails(self, monkeypatch):
+        import orc.coordination.client as _client_mod
+        from orc.coordination.client import get_board_snapshot
+
+        monkeypatch.setenv("ORC_API_SOCKET", "/tmp/nonexistent-orc-test.sock")
+
+        class _RaisingClient:
+            def __enter__(self):
+                raise Exception("connection refused")
+
+            def __exit__(self, *a):
+                pass
+
+        _mk = _client_mod.httpx
+        monkeypatch.setattr(_mk, "Client", lambda transport, base_url: _RaisingClient())
+        monkeypatch.setattr(_mk, "HTTPTransport", lambda uds: None, raising=False)
+
+        result = get_board_snapshot()
+        assert result is None
+
+    def test_returns_board_snapshot_on_success(self, monkeypatch):
+        import orc.coordination.client as _client_mod
+        from orc.coordination.client import BoardSnapshot, get_board_snapshot
+
+        monkeypatch.setenv("ORC_API_SOCKET", "/tmp/fake.sock")
+
+        class _FakeResponse:
+            def __init__(self, data):
+                self._data = data
+
+            def json(self):
+                return self._data
+
+        class _FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, path):
+                if path == "/visions":
+                    return _FakeResponse(["0007-vision.md"])
+                if path == "/board/tasks":
+                    return _FakeResponse([{"name": "0001-task.md", "status": "planned"}])
+                if path == "/board/done":
+                    return _FakeResponse([{"name": "0002-done.md"}])
+                raise ValueError(f"Unknown path: {path}")
+
+        monkeypatch.setattr(_client_mod.httpx, "Client", lambda transport, base_url: _FakeClient())
+        monkeypatch.setattr(_client_mod.httpx, "HTTPTransport", lambda uds: None, raising=False)
+
+        result = get_board_snapshot()
+        assert isinstance(result, BoardSnapshot)
+        assert result.visions == ["0007-vision.md"]
+        assert result.tasks[0]["name"] == "0001-task.md"
+        assert result.done[0]["name"] == "0002-done.md"
+
+    def test_returns_none_when_json_parse_fails(self, monkeypatch):
+        import orc.coordination.client as _client_mod
+        from orc.coordination.client import get_board_snapshot
+
+        monkeypatch.setenv("ORC_API_SOCKET", "/tmp/fake.sock")
+
+        class _BadResponse:
+            def json(self):
+                raise ValueError("bad json")
+
+        class _FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+            def get(self, path):
+                return _BadResponse()
+
+        monkeypatch.setattr(_client_mod.httpx, "Client", lambda transport, base_url: _FakeClient())
+        monkeypatch.setattr(_client_mod.httpx, "HTTPTransport", lambda uds: None, raising=False)
+
+        result = get_board_snapshot()
+        assert result is None

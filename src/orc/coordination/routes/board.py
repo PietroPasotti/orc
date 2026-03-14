@@ -31,6 +31,12 @@ def get_tasks(state: StateManager = Depends(_get_state)) -> list[dict]:
     return state.get_open_tasks()
 
 
+@router.get("/done", response_model=list[TaskEntry])
+def get_done_tasks(state: StateManager = Depends(_get_state)) -> list[dict]:
+    """Return the done-tasks list from board.yaml."""
+    return state.get_done_tasks()
+
+
 @router.get("/tasks/{task_name:path}", response_model=TaskEntry)
 def get_task(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
     """Return a single task entry by exact filename."""
