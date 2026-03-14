@@ -5,13 +5,13 @@ Usage:
   .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 
 Arguments:
-  vision-file   Full path to the vision markdown in the project cache
+  vision-file   Full path to the vision markdown in .orc/vision/
   summary       2-4 sentence summary of what the vision described (quoted string)
   task-name     Optional task names that implemented this vision
 
 Example:
   .orc/agent_tools/planner/close_vision.py \
-    ~/.cache/orc/projects/<uuid>/vision/0001-shark-fleet.md \
+    .orc/vision/0001-shark-fleet.md \
     "Implement distributed task processing using gRPC. Added worker pool management." \
     0001-grpc-transport 0002-worker-pool
 
@@ -19,7 +19,7 @@ This script:
 1. Derives the vision name from the filename
 2. Gets the current timestamp in ISO 8601 format
 3. Appends an entry to .orc/orc-CHANGELOG.md
-4. Deletes the vision file from the project cache
+4. Deletes the vision file from .orc/vision/
 5. Prints a confirmation message
 """
 

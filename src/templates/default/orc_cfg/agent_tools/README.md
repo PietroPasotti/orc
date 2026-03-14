@@ -6,8 +6,8 @@ and wastes tokens.
 
 ## How signalling works
 
-Agents communicate their status by writing to the **board** (stored in the
-project cache, not in git).  The orchestrator polls the board and dispatches
+Agents communicate their status by writing to the **board** (stored in
+`.orc/work/`, gitignored).  The orchestrator polls the board and dispatches
 the next agent based on each task's `status` field.  There is no commit-message
 parsing — the board is the single source of truth.
 
@@ -25,19 +25,19 @@ parsing — the board is the single source of truth.
 ### Planner
 
 ```bash
-# 1. Create a new task (writes to project cache, updates board)
+# 1. Create a new task (writes to .orc/work/, updates board)
 .orc/agent_tools/planner/create_task.py <task-title>
 # Example:
 .orc/agent_tools/planner/create_task.py add-user-auth
-# → creates 0003-add-user-auth.md in cache, sets status: planned
+# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned
 
-# 2. Commit the task to dev (board lives in cache; optionally stage ADRs)
+# 2. Commit the task to dev (board lives in .orc/work/; optionally stage ADRs)
 .orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
 # Example:
 .orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth
 .orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth docs/adr/0042-auth.md
 
-# 3. Close a completed vision (deletes from cache, appends to changelog)
+# 3. Close a completed vision (deletes from .orc/vision/, appends to changelog)
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 ```
 

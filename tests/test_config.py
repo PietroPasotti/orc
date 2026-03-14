@@ -334,50 +334,6 @@ class TestLoadOrcConfig:
         _init_config(orc_dir)
         assert _cfg.get().todo_scan_exclude == (".orc", "vendor", "docs")
 
-    def test_cache_dir_from_orc_cache_dir_key(self, tmp_path, monkeypatch, _init_config):
-        """orc-cache-dir key explicitly sets the cache directory."""
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        custom_cache = tmp_path / "my-cache"
-        (orc_dir / "config.yaml").write_text(f"orc-cache-dir: {custom_cache}\n")
-        _init_config(orc_dir)
-        assert _cfg.get().work_dir == custom_cache / "work"
-
-    def test_cache_dir_from_project_id(self, tmp_path, monkeypatch, _init_config):
-        """project-id sets cache to _orc_cache_root()/{project-id}."""
-        import orc.config as _cfg_mod
-
-        orc_dir = tmp_path / ".orc"
-        orc_dir.mkdir(exist_ok=True)
-        (orc_dir / "config.yaml").write_text("project-id: test-uuid-1234\n")
-        monkeypatch.setattr(_cfg_mod, "_orc_cache_root", lambda: tmp_path / "cache")
-        _init_config(orc_dir)
-        assert _cfg.get().work_dir == tmp_path / "cache" / "test-uuid-1234" / "work"
-
-    def test_xdg_cache_home_respects_env_var(self, monkeypatch):
-        """_xdg_cache_home() uses XDG_CACHE_HOME if set."""
-        import orc.config as _cfg_mod
-
-        monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/test-xdg-cache")
-        result = _cfg_mod._xdg_cache_home()
-        assert result == _cfg_mod.Path("/tmp/test-xdg-cache").expanduser().resolve()
-
-    def test_xdg_cache_home_defaults_to_home_cache(self, monkeypatch):
-        """_xdg_cache_home() defaults to ~/.cache when XDG_CACHE_HOME is unset."""
-        import orc.config as _cfg_mod
-
-        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-        result = _cfg_mod._xdg_cache_home()
-        assert result == _cfg_mod.Path.home() / ".cache"
-
-    def test_orc_cache_root(self, monkeypatch):
-        """_orc_cache_root() returns xdg_cache_home/orc/projects."""
-        import orc.config as _cfg_mod
-
-        monkeypatch.setattr(_cfg_mod, "_xdg_cache_home", lambda: _cfg_mod.Path("/tmp/my-cache"))
-        result = _cfg_mod._orc_cache_root()
-        assert result == _cfg_mod.Path("/tmp/my-cache/orc/projects")
-
     def test_init_chat_log_in_log_dir(self, tmp_path, monkeypatch, _init_config):
         """chat_log is placed inside log_dir, not orc_dir."""
         orc_dir = tmp_path / ".orc"

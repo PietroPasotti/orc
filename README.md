@@ -11,7 +11,7 @@
 ![orc diagram](assets/orc.drawio.svg)
 
 Inter-agent synchronisation happens over the **board** (a YAML file in the
-project cache); interaction with you is mediated by a Telegram bot.
+project); interaction with you is mediated by a Telegram bot.
 The orchestrator reads board task-status fields to determine which agent(s)
 to run next.  Git is used only for branch management and code merging.
 
@@ -50,32 +50,25 @@ just orc run  # or: uv run orc run, if you don't have just
 
 ## bootstrap
 
-`orc bootstrap` scaffolds the `.orc/` configuration directory in your project and
-initialises the project cache (vision docs and board state):
+`orc bootstrap` scaffolds the `.orc/` configuration directory in your project:
 
 ```
 your-project/
-  .orc/
+  .orc/                     ← work/ and vision/ are gitignored automatically
     roles/              ← bundled generic role templates (edit to suit your needs)
       planner/
       coder/
       qa/
     squads/
       default.yaml      ← 1 planner, 1 coder, 1 QA
-    config.yaml         ← project settings (project-id generated on first bootstrap)
+    config.yaml         ← project settings
     justfile            ← run / status / merge recipes
+    vision/
+      README.md         ← explanation of what vision docs are and how to write them
+    work/
+      board.yaml        ← kanban board (managed by orc; you shouldn't need to touch this)
   .env.example          ← credential template; copy to .env and fill in
-
-~/.cache/orc/projects/<project-id>/   ← project cache (not in git)
-  vision/
-    README.md           ← explanation of what vision docs are and how to write them
-  work/
-    board.yaml          ← kanban board (managed by orc; you shouldn't need to touch this)
 ```
-
-The project cache lives outside the git tree by default at
-`~/.cache/orc/projects/<project-id>/` (respects `$XDG_CACHE_HOME`).  You can
-override the location per-project with `orc-cache-dir` in `.orc/config.yaml`.
 
 See `orc bootstrap --help` for more options.
 
@@ -84,7 +77,7 @@ Existing files are **never overwritten** unless `--force` is passed.
 After bootstrapping, the only things left to do are:
 
 1. Customise `.orc/roles/*/` for your project's purposes.
-2. Drop vision documents into the project cache `vision/` directory, describing features you want implemented.
+2. Drop vision documents into `.orc/vision/`, describing features you want implemented.
 3. Fill in `.env`.
 
 ### .env
@@ -176,8 +169,6 @@ These are the supported variables, their defaults, and what they do:
 
 | Key | Default | Description |
 |---|---|---|
-| `project-id` | _(generated)_ | UUID that identifies this project's cache. Generated automatically on first `orc bootstrap`. |
-| `orc-cache-dir` | `~/.cache/orc/projects/<project-id>` | Override the project cache directory (vision docs, board). Useful for shared / CI environments. |
 | `orc-dev-branch` | `dev` | Integration branch name. Feature branches are merged here after QA passes; `orc merge` fast-forwards it into `main`. |
 | `orc-branch-prefix` | _(empty)_ | Optional prefix for all orc-owned branches. E.g. `orc` produces `.orc/feat/0001-foo` instead of `feat/0001-foo`. |
 | `orc-worktree-base` | `.orc/worktrees` | Base directory for git worktrees. Worktrees are placed at `<base>/<task>`, e.g. `.orc/worktrees/0001-foo`. |

@@ -23,18 +23,6 @@ _PACKAGE_DIR = Path(__file__).parent
 _PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _ORC_CFG_TEMPLATE = _TEMPLATES_DIR / "default" / "orc_cfg"
-_WORK_STATE_TEMPLATE = _TEMPLATES_DIR / "work_state"
-
-
-def _xdg_cache_home() -> Path:
-    """Return XDG_CACHE_HOME, defaulting to ``~/.cache``."""
-    env = os.environ.get("XDG_CACHE_HOME", "").strip()
-    return Path(env).expanduser().resolve() if env else Path.home() / ".cache"
-
-
-def _orc_cache_root() -> Path:
-    """Return the root directory for all orc project caches."""
-    return _xdg_cache_home() / "orc" / "projects"
 
 
 # ── Immutable config object ───────────────────────────────────────────────
@@ -47,8 +35,7 @@ class Config:
     work_dir: Path
     board_file: Path
     vision_dir: Path
-    """Directory containing vision documents.  Points into the project cache
-    when *project_id* is set; falls back to ``orc_dir/vision`` otherwise."""
+    """Directory containing vision documents — ``orc_dir/vision``."""
     roles_dir: Path
     env_file: Path
     dev_worktree: Path
@@ -60,17 +47,6 @@ class Config:
     """Path to the local chat log file (JSONL)."""
     todo_scan_exclude: tuple[str, ...]
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
-    project_id: str = ""
-    """Stable UUID stored in ``.orc/config.yaml`` under ``project-id``.
-    Empty string when not yet set (board falls back to ``orc_dir/work/``)."""
-    cache_dir: Path = Path()
-    """Per-project cache root.  Resolution order:
-
-    1. ``orc-cache-dir`` in ``config.yaml`` (explicit override, any path).
-    2. ``~/.cache/orc/projects/{project-id}`` when *project_id* is set
-       (respects ``$XDG_CACHE_HOME``).
-    3. ``orc_dir`` when neither is configured (legacy in-tree layout).
-    """
 
 
 _config: Config | None = None
@@ -88,11 +64,9 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     the credentials of the project you are running it *from*, regardless of
     where the config dir lives.
 
-    When ``project-id`` is present in ``config.yaml`` the mutable state
-    (board, visions, task files) is stored under
-    ``~/.cache/orc/projects/{project_id}/`` rather than inside ``.orc/``.
-    Projects without a ``project-id`` continue to use the old in-tree layout
-    for backward compatibility.
+    Mutable state (board, visions, task files) lives inside ``orc_dir``
+    under ``work/`` and ``vision/`` respectively.  These directories are
+    excluded from git via ``.orc/.gitignore``.
     """
     global _config
 
@@ -106,16 +80,8 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     raw_exclude = orc_yaml.get("orc-todo-scan-exclude", [".orc"])
     todo_scan_exclude = tuple(raw_exclude) if isinstance(raw_exclude, list) else (raw_exclude,)
 
-    project_id = str(orc_yaml.get("project-id", ""))
-    raw_cache_dir = orc_yaml.get("orc-cache-dir", "").strip()
-    if raw_cache_dir:
-        cache_dir = Path(raw_cache_dir).expanduser().resolve()
-    elif project_id:
-        cache_dir = _orc_cache_root() / project_id
-    else:
-        cache_dir = orc_dir
-    work_dir = cache_dir / "work"
-    vision_dir = cache_dir / "vision"
+    work_dir = orc_dir / "work"
+    vision_dir = orc_dir / "vision"
 
     _config = Config(
         orc_dir=orc_dir,
@@ -132,8 +98,6 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         log_dir=log_dir,
         chat_log=log_dir / "chat.log",
         todo_scan_exclude=todo_scan_exclude,
-        project_id=project_id,
-        cache_dir=cache_dir,
     )
     # Reinitialise the board manager to match the new config.
     import orc.board as _board  # noqa: PLC0415

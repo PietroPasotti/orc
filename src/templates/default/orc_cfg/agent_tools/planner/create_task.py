@@ -11,8 +11,7 @@ Example:
   .orc/agent_tools/planner/create_task.py add-user-auth
 
 This script:
-1. Resolves the board location from .orc/config.yaml (reads project-id and
-   orc-cache-dir; defaults to ~/.cache/orc/projects/<project-id>/)
+1. Resolves the board location from .orc/work/ (next to this config directory)
 2. Reads the current counter from board.yaml
 3. Formats the task ID as a 4-digit zero-padded string (e.g. 0005)
 4. Creates ${TASK_ID}-${TASK_TITLE}.md from template
@@ -27,7 +26,6 @@ steps, and notes before publishing with publish_task.py.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -69,22 +67,7 @@ def _find_orc_dir() -> Path:
 
 
 def _resolve_work_dir() -> Path:
-    orc_dir = _find_orc_dir()
-    config_file = orc_dir / "config.yaml"
-    cfg = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
-    cfg = cfg or {}
-
-    explicit = cfg.get("orc-cache-dir", "").strip()
-    if explicit:
-        return Path(explicit).expanduser().resolve() / "work"
-
-    project_id = str(cfg.get("project-id", "")).strip()
-    if project_id:
-        xdg_env = os.environ.get("XDG_CACHE_HOME", "").strip()
-        xdg = Path(xdg_env).expanduser().resolve() if xdg_env else Path.home() / ".cache"
-        return xdg / "orc" / "projects" / project_id / "work"
-
-    return orc_dir / "work"
+    return _find_orc_dir() / "work"
 
 
 def main() -> None:

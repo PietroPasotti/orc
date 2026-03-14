@@ -39,19 +39,7 @@ def _find_orc_dir() -> Path:
 
 
 def _resolve_work_dir() -> Path:
-    orc_dir = _find_orc_dir()
-    config_file = orc_dir / "config.yaml"
-    cfg = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
-    cfg = cfg or {}
-    explicit = cfg.get("orc-cache-dir", "").strip()
-    if explicit:
-        return Path(explicit).expanduser().resolve() / "work"
-    project_id = str(cfg.get("project-id", "")).strip()
-    if project_id:
-        xdg_env = os.environ.get("XDG_CACHE_HOME", "").strip()
-        xdg = Path(xdg_env).expanduser().resolve() if xdg_env else Path.home() / ".cache"
-        return xdg / "orc" / "projects" / project_id / "work"
-    return orc_dir / "work"
+    return _find_orc_dir() / "work"
 
 
 def _find_task_by_code(task_code: str, work_dir: Path) -> str | None:

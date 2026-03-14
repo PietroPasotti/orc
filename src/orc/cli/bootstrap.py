@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
 import typer
-import yaml
 
 from orc import logger as _obs
 from orc.cli import app
-from orc.config import _ORC_CFG_TEMPLATE, _WORK_STATE_TEMPLATE, _orc_cache_root
+from orc.config import _ORC_CFG_TEMPLATE
 
 _SPACE = "    "
 _BRANCH = "│   "
@@ -21,106 +18,14 @@ _TEE = "├── "
 _LAST = "└── "
 
 # Paths (relative to .orc/) that --upgrade must never touch.
-_UPGRADE_PRESERVE: frozenset[str] = frozenset(["orc-CHANGELOG.md", "worktrees", "logs"])
+_UPGRADE_PRESERVE: frozenset[str] = frozenset(
+    ["orc-CHANGELOG.md", "worktrees", "logs", "work", "vision"]
+)
 
 
 def _is_preserved(rel: Path) -> bool:
     """Return True if *rel* (relative to the .orc target) should survive --upgrade."""
     return rel.parts[0] in _UPGRADE_PRESERVE
-
-
-# ---------------------------------------------------------------------------
-# Interactive bootstrap config fields
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class _BootstrapField:
-    """A single config field prompted interactively during bootstrap.
-
-    To add a new prompt, append an instance to BOOTSTRAP_FIELDS below.
-    """
-
-    key: str
-    """Config key written to config.yaml (e.g. ``project-id``)."""
-    prompt: str
-    """Human-readable prompt shown to the user."""
-    default: Callable[[dict, Path], str]
-    """Callable(existing_config, project_root) → default string."""
-    applies_format: bool = False
-    """When True, ``str.format_map`` is applied to the entered value using
-    previously collected fields (hyphens replaced with underscores, e.g.
-    ``{project_id}`` expands to the ``project-id`` value)."""
-    save_to_config: bool = True
-    """When False the value is used at bootstrap time only and not written to
-    config.yaml (e.g. ``orc-dir`` is the directory path itself)."""
-
-
-# Ordered list of fields prompted on a fresh bootstrap.
-# Add / remove entries here to change what gets prompted.
-BOOTSTRAP_FIELDS: tuple[_BootstrapField, ...] = (
-    _BootstrapField(
-        key="project-id",
-        prompt="Project ID",
-        default=lambda cfg, root: cfg.get("project-id") or root.name,
-    ),
-    _BootstrapField(
-        key="orc-dir",
-        prompt="Orc config directory",
-        default=lambda cfg, root: cfg.get("orc-dir") or ".orc",
-        applies_format=True,
-        save_to_config=False,
-    ),
-)
-
-
-def _prompt_bootstrap_fields(project_root: Path, existing_cfg: dict) -> dict[str, str]:
-    """Interactively prompt for each entry in BOOTSTRAP_FIELDS.
-
-    Each field's default is computed from *existing_cfg* and *project_root*.
-    Fields with ``applies_format=True`` have their value (and default) expanded
-    via ``str.format_map`` using the values collected so far, so that e.g.
-    an ``orc-dir`` value of ``".{project_id}"`` resolves to ``".myproject"``
-    once ``project-id`` has been entered.
-
-    Returns a dict mapping field key → final (formatted) value.
-    """
-    collected: dict[str, str] = {}
-    fmt: dict[str, str] = {}
-
-    for field in BOOTSTRAP_FIELDS:
-        default = field.default(existing_cfg, project_root)
-        if field.applies_format:
-            try:
-                default = default.format_map(fmt)
-            except (KeyError, ValueError):
-                pass
-
-        value = typer.prompt(field.prompt, default=default)
-
-        if field.applies_format:
-            try:
-                value = value.format_map(fmt)
-            except (KeyError, ValueError):
-                pass
-
-        collected[field.key] = value
-        fmt[field.key.replace("-", "_")] = value
-
-    return collected
-
-
-def _write_bootstrap_config(config_path: Path, values: dict[str, str]) -> None:
-    """Merge prompted *values* into config.yaml, preserving unrelated existing keys."""
-    cfg: dict = {}
-    if config_path.exists():
-        cfg = yaml.safe_load(config_path.read_text()) or {}
-    for field in BOOTSTRAP_FIELDS:
-        if field.save_to_config:
-            cfg[field.key] = values[field.key]
-    tmp = config_path.with_suffix(".yaml.tmp")
-    tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
-    tmp.replace(config_path)
 
 
 def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> None:
@@ -172,17 +77,7 @@ def _copy_tree(
 def _bootstrap(force: bool = False) -> None:
     _obs.setup()
     project_root = Path.cwd()
-
-    # Read any existing config at the default location to use as prompt defaults.
-    _default_cfg_path = project_root / ".orc" / "config.yaml"
-    existing_cfg: dict = {}
-    if _default_cfg_path.exists():
-        existing_cfg = yaml.safe_load(_default_cfg_path.read_text()) or {}
-
-    # ── Interactive prompts ───────────────────────────────────────────────────
-    prompted = _prompt_bootstrap_fields(project_root, existing_cfg)
-    project_id = prompted["project-id"]
-    to = prompted["orc-dir"]
+    to = ".orc"
     target = (project_root / to).resolve()
 
     created: list[str] = []
@@ -190,7 +85,7 @@ def _bootstrap(force: bool = False) -> None:
 
     _copy = (lambda s, d, c, sk: (shutil.copy2(s, d), c.append(str(d)))) if force else _copy_file  # type: ignore[assignment]
 
-    # ── .orc/ content (git-tracked config + tooling) ─────────────────────────
+    # ── .orc/ content (config, roles, agent_tools, work/, vision/, …) ────────
     _copy_tree(
         _ORC_CFG_TEMPLATE,
         target,
@@ -200,15 +95,6 @@ def _bootstrap(force: bool = False) -> None:
         special={".env.example": project_root / ".env.example"},
     )
 
-    # ── Write prompted values to config.yaml ─────────────────────────────────
-    config_path = target / "config.yaml"
-    _write_bootstrap_config(config_path, prompted)
-
-    # ── Project cache (board + vision docs) ──────────────────────────────────
-    cache_dir = _orc_cache_root() / project_id
-    cache_created: list[str] = []
-    _copy_tree(_WORK_STATE_TEMPLATE, cache_dir, cache_created, skipped, _copy)
-
     # ── summary ───────────────────────────────────────────────────────────────
     if created:
         typer.echo("\nBootstrapped:")
@@ -216,19 +102,10 @@ def _bootstrap(force: bool = False) -> None:
         for line in _tree(target):
             typer.echo(f"    {line}")
 
-    if cache_created:
-        typer.echo(f"\nProject cache ({project_id[:8]}…):")
-        typer.echo(str(cache_dir))
-        for line in _tree(cache_dir):
-            typer.echo(f"    {line}")
-
     if skipped:
         typer.echo("\n⚠ Skipped (already exists):")
         for f in skipped:
-            try:
-                typer.echo(f"    {Path(f).relative_to(project_root)}")
-            except ValueError:
-                typer.echo(f"    {f}")
+            typer.echo(f"    {Path(f).relative_to(project_root)}")
         typer.echo("  Use --force to overwrite.")
 
     typer.echo(
@@ -236,8 +113,7 @@ def _bootstrap(force: bool = False) -> None:
 Next steps
 ──────────
 1. Edit {to}/roles/*/  — customise agent instructions for your project.
-2. Add vision docs to the project cache at:
-      {cache_dir / "vision"}
+2. Add vision docs to {to}/vision/
 3. Copy .env.example → .env and fill in your credentials.
 4. Add to your root justfile:
 
@@ -253,8 +129,7 @@ Next steps
 def _upgrade(*, yes: bool = False) -> None:
     """Overwrite bundled template files in an existing .orc/ installation.
 
-    Preserves: orc-CHANGELOG.md, worktrees/, logs/.
-    vision/ and work/ are in the project cache and are never touched here.
+    Preserves: orc-CHANGELOG.md, worktrees/, logs/, work/, vision/.
     Everything else (roles/, squads/, agent_tools/, justfile, config.yaml, …)
     is replaced with the version shipped in the currently installed package.
     """
@@ -292,15 +167,6 @@ def _upgrade(*, yes: bool = False) -> None:
         shutil.copy2(src, dst)
         updated.append(str(dst))
 
-    # Ensure project-id is preserved after upgrade (no prompting during upgrade)
-    config_path = target / "config.yaml"
-    cfg: dict = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
-    if not cfg.get("project-id"):
-        cfg["project-id"] = target.parent.name
-        tmp = config_path.with_suffix(".yaml.tmp")
-        tmp.write_text(yaml.dump(cfg, default_flow_style=False, allow_unicode=True))
-        tmp.replace(config_path)
-
     rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
 
     if updated:
@@ -328,7 +194,7 @@ def bootstrap(
             "--upgrade",
             help=(
                 "Upgrade an existing .orc/ installation to the bundled template version. "
-                "Preserves orc-CHANGELOG.md, worktrees/, and logs/. "
+                "Preserves orc-CHANGELOG.md, worktrees/, logs/, work/, and vision/. "
                 "All other files (roles/, squads/, agent_tools/, …) are overwritten."
             ),
         ),
@@ -347,7 +213,7 @@ def bootstrap(
 
     \\b
     1. Edit .orc/roles/*/ to customise the agent instructions for your project.
-    2. Add vision documents to the project cache vision/ directory (path shown after bootstrap).
+    2. Add vision documents to .orc/vision/
     3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
     4. Copy .env.example to .env and fill in your credentials.
     5. Run: just orc run   (or: orc run)

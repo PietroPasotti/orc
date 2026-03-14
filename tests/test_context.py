@@ -832,6 +832,7 @@ class TestReadWorkScoped:
             "_config",
             _replace(
                 _cfg.get(),
+                orc_dir=tmp_path,
                 board_file=work_dir / "board.yaml",
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=work_dir,
@@ -856,6 +857,7 @@ class TestReadWorkScoped:
             "_config",
             _replace(
                 _cfg.get(),
+                orc_dir=tmp_path,
                 board_file=work_dir / "board.yaml",
                 dev_worktree=tmp_path / "dev-wt",
                 work_dir=work_dir,

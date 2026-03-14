@@ -21,16 +21,16 @@ def init_manager() -> None:
     global _manager
     from orc.board_manager import FileBoardManager  # noqa: PLC0415
 
-    _manager = FileBoardManager(_cfg.get().cache_dir)
+    _manager = FileBoardManager(_cfg.get().orc_dir)
 
 
 def _get_manager():
     global _manager
     from orc.board_manager import FileBoardManager  # noqa: PLC0415
 
-    work_dir = _cfg.get().work_dir
-    if _manager is None or _manager._work_dir != work_dir:
-        _manager = FileBoardManager(work_dir.parent)
+    orc_dir = _cfg.get().orc_dir
+    if _manager is None or _manager._work_dir != orc_dir / "work":
+        _manager = FileBoardManager(orc_dir)
     return _manager
 
 

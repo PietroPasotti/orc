@@ -116,14 +116,15 @@ class BoardManager(abc.ABC):
 class FileBoardManager(BoardManager):
     """BoardManager backed by the local filesystem.
 
-    *cache_dir* is the per-project root (e.g.
-    ``~/.cache/orc/projects/{uuid}``).  Work files live under
-    ``cache_dir/work/`` and vision files under ``cache_dir/vision/``.
+    *orc_dir* is the orc configuration directory (e.g. ``{project}/.orc``).
+    Work files live under ``orc_dir/work/`` and vision files under
+    ``orc_dir/vision/``.  Both directories are excluded from git via
+    ``.orc/.gitignore``.
     """
 
-    def __init__(self, cache_dir: Path) -> None:
-        self._work_dir = cache_dir / "work"
-        self._vision_dir = cache_dir / "vision"
+    def __init__(self, orc_dir: Path) -> None:
+        self._work_dir = orc_dir / "work"
+        self._vision_dir = orc_dir / "vision"
 
     # ── Path accessors ───────────────────────────────────────────────────
 
