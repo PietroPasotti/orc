@@ -10,6 +10,7 @@ import rich.table
 
 import orc.config as _cfg
 from orc.cli.tui.status_tui import (
+    _TAB_NAMES,
     CommitInfo,
     StatusApp,
     _capture_status,
@@ -17,6 +18,7 @@ from orc.cli.tui.status_tui import (
     _feat_branches,
     _git_log,
     _main_branch,
+    _render_board,
     gather_git_tree,
     render_git_tree,
     run_status_tui,
@@ -418,7 +420,7 @@ class TestStatusApp:
 
     def test_action_tab_next_wraps_around(self):
         app = StatusApp()
-        app._tab_index = 1
+        app._tab_index = 2  # last tab
         app._apply_tab = lambda: None
         app.action_tab_next()
         assert app._tab_index == 0
@@ -435,7 +437,7 @@ class TestStatusApp:
         app._tab_index = 0
         app._apply_tab = lambda: None
         app.action_tab_prev()
-        assert app._tab_index == 1
+        assert app._tab_index == 2  # wraps to last tab
 
     def test_apply_tab_calls_query_one(self):
         app = StatusApp()
@@ -605,3 +607,275 @@ class TestRunStatusTui:
             run_status_tui(squad="myteam")
 
         assert launched == ["myteam"]
+
+
+# ---------------------------------------------------------------------------
+# Board tab tests
+# ---------------------------------------------------------------------------
+
+
+class TestBoardTabPresent:
+    def test_board_tab_in_tab_names(self):
+        assert "Board" in _TAB_NAMES
+
+    def test_board_tab_is_third(self):
+        assert _TAB_NAMES[2] == "Board"
+
+
+class TestRenderBoardServerDown:
+    def test_server_down_returns_text_message(self, monkeypatch):
+        """When get_board_snapshot() returns None, render a 'server down' message."""
+        monkeypatch.setattr(
+            "orc.cli.tui.status_tui.get_board_snapshot",
+            lambda: None,
+        )
+        result = _render_board()
+        from rich.text import Text
+
+        assert isinstance(result, Text)
+        assert "server down" in str(result)
+
+
+class TestRenderBoardWithData:
+    def _make_snap(self):
+        from orc.coordination.client import BoardSnapshot
+
+        return BoardSnapshot(
+            visions=["0007-vision.md"],
+            tasks=[
+                {"name": "0001-task.md", "status": "planned"},
+                {"name": "0002-task.md", "status": "coding", "assigned_to": "coder-1"},
+                {"name": "0003-task.md", "status": "review"},
+            ],
+            done=[{"name": "0004-task.md", "commit_tag": "abc123", "timestamp": "2026-01-01"}],
+        )
+
+    def _render_to_str(self, table: rich.table.Table) -> str:
+        """Render a Rich table to a plain string for assertions."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        buf = StringIO()
+        console = Console(file=buf, force_terminal=False, width=300)
+        console.print(table)
+        return buf.getvalue()
+
+    def test_returns_rich_table(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+
+    def test_column_headers_present(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        col_names = [col.header for col in result.columns]
+        assert "To refine" in col_names
+        assert "To do" in col_names
+        assert "In progress" in col_names
+        assert "Awaiting review" in col_names
+        assert "Done" in col_names
+
+    def test_vision_in_to_refine_column(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "0007-vision.md" in rendered
+
+    def test_planned_task_in_todo_column(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "0001-task.md" in rendered
+
+    def test_coding_task_in_in_progress_column(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "0002-task.md" in rendered
+        assert "coder-1" in rendered
+
+    def test_review_task_in_awaiting_review_column(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "0003-task.md" in rendered
+
+    def test_done_task_in_done_column(self, monkeypatch):
+        snap = self._make_snap()
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "0004-task.md" in rendered
+
+    def test_empty_columns_show_empty_marker(self, monkeypatch):
+        from orc.coordination.client import BoardSnapshot
+
+        snap = BoardSnapshot(visions=[], tasks=[], done=[])
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert rendered.count("(empty)") == 5
+
+    def test_in_progress_statuses_covered(self, monkeypatch):
+        """blocked and soft-blocked tasks also go into In progress."""
+        from orc.coordination.client import BoardSnapshot
+
+        snap = BoardSnapshot(
+            visions=[],
+            tasks=[
+                {"name": "blocked-task.md", "status": "blocked"},
+                {"name": "soft-task.md", "status": "soft-blocked"},
+            ],
+            done=[],
+        )
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "blocked-task.md" in rendered
+        assert "soft-task.md" in rendered
+
+    def test_review_task_with_branch_shows_branch(self, monkeypatch):
+        from orc.coordination.client import BoardSnapshot
+
+        snap = BoardSnapshot(
+            visions=[],
+            tasks=[{"name": "review-task.md", "status": "review", "branch": "feat/0009-x"}],
+            done=[],
+        )
+        monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
+        result = _render_board()
+        assert isinstance(result, rich.table.Table)
+        rendered = self._render_to_str(result)
+        assert "feat/0009-x" in rendered
+
+
+class TestStatusAppBoardTab:
+    def test_board_loaded_flag_starts_false(self):
+        app = StatusApp()
+        assert app._board_loaded is False
+
+    def test_refresh_board_calls_render_and_updates_widget(self, monkeypatch):
+        from rich.text import Text
+
+        app = StatusApp()
+        fake_renderable = Text("board content")
+
+        monkeypatch.setattr("orc.cli.tui.status_tui._render_board", lambda: fake_renderable)
+
+        updates: list = []
+        mock_static = MagicMock()
+        mock_static.update = lambda r: updates.append(r)
+        app.query_one = lambda sel, wt=None: mock_static
+
+        app._refresh_board()
+        assert updates == [fake_renderable]
+
+    def test_apply_tab_loads_board_on_index_2(self, monkeypatch):
+        app = StatusApp()
+        refreshed: list[str] = []
+        app._refresh_board = lambda: refreshed.append("board")
+        app._refresh_git_tree = lambda: None
+
+        # Stub out query_one to avoid live widget requirement
+        mock_static = MagicMock()
+        mock_switcher = MagicMock()
+        mock_switcher.current = None
+
+        def _query(sel, wt=None):
+            if sel == "#tab-bar":
+                return mock_static
+            return mock_switcher
+
+        app.query_one = _query
+        app._tab_index = 2
+        app._apply_tab()
+        assert refreshed == ["board"]
+        assert app._board_loaded is True
+
+    def test_apply_tab_does_not_reload_board(self, monkeypatch):
+        app = StatusApp()
+        app._board_loaded = True
+        refreshed: list[str] = []
+        app._refresh_board = lambda: refreshed.append("board")
+        app._refresh_git_tree = lambda: None
+
+        mock_static = MagicMock()
+        mock_switcher = MagicMock()
+
+        def _query(sel, wt=None):
+            if sel == "#tab-bar":
+                return mock_static
+            return mock_switcher
+
+        app.query_one = _query
+        app._tab_index = 2
+        app._apply_tab()
+        assert refreshed == []
+
+    def test_scroll_left_board_calls_scroll_left_when_on_board_tab(self):
+        app = StatusApp()
+        app._tab_index = 2
+        scrolled: list[str] = []
+
+        class FakeScroll:
+            def scroll_left(self) -> None:
+                scrolled.append("left")
+
+        app._active_scroll = lambda: FakeScroll()
+        app.action_scroll_left_board()
+        assert scrolled == ["left"]
+
+    def test_scroll_left_board_noop_when_not_on_board_tab(self):
+        app = StatusApp()
+        app._tab_index = 0
+        app._active_scroll = lambda: MagicMock()
+        # Should not call scroll_left at all (no assertion, just no error)
+        app.action_scroll_left_board()
+
+    def test_scroll_right_board_calls_scroll_right_when_on_board_tab(self):
+        app = StatusApp()
+        app._tab_index = 2
+        scrolled: list[str] = []
+
+        class FakeScroll:
+            def scroll_right(self) -> None:
+                scrolled.append("right")
+
+        app._active_scroll = lambda: FakeScroll()
+        app.action_scroll_right_board()
+        assert scrolled == ["right"]
+
+    def test_scroll_right_board_noop_when_not_on_board_tab(self):
+        app = StatusApp()
+        app._tab_index = 1
+        app._active_scroll = lambda: MagicMock()
+        app.action_scroll_right_board()
+
+    def test_scroll_left_board_noop_when_no_active_scroll(self):
+        app = StatusApp()
+        app._tab_index = 2
+        app._active_scroll = lambda: None
+        # Should not raise.
+        app.action_scroll_left_board()
+
+    def test_scroll_right_board_noop_when_no_active_scroll(self):
+        app = StatusApp()
+        app._tab_index = 2
+        app._active_scroll = lambda: None
+        # Should not raise.
+        app.action_scroll_right_board()

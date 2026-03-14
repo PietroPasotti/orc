@@ -45,6 +45,19 @@ class StateManager:
             result.append(t if isinstance(t, dict) else {"name": str(t)})
         return result
 
+    def get_done_tasks(self) -> list[dict]:
+        """Return the done-tasks list from board.yaml."""
+        with self._lock:
+            board = self._mgr.read_board()
+        result = []
+        for t in board.get("done", []):
+            entry: dict = dict(t) if isinstance(t, dict) else {"name": str(t)}
+            # Normalise the hyphenated YAML key to the model's field name.
+            if "commit-tag" in entry:
+                entry["commit_tag"] = entry.pop("commit-tag")
+            result.append(entry)
+        return result
+
     def get_task(self, task_name: str) -> dict | None:
         """Return the board entry for *task_name*, or ``None`` if absent."""
         with self._lock:
