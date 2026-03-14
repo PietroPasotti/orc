@@ -12,7 +12,7 @@ implemented and merged.
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-file...]
 ```
 
-The tool moves the vision file from `.orc/vision/ready/` to `.orc/vision/done/`, and prints a confirmation.
+The tool closes the vision and prints a confirmation.
 
 ## When you are done
 

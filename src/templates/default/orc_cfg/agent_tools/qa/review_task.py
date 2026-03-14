@@ -13,18 +13,6 @@ Arguments:
 Examples:
   .orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no issues"
   .orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths"
-
-When outcome is ``approved``:
-  Commits all staged and unstaged tracked changes, then sets board status to
-  ``approved`` so the orchestrator triggers an automatic merge.
-
-When outcome is ``rejected``:
-  Commits all staged and unstaged tracked changes, sets board status to
-  ``rejected``, and posts the rejection message as a comment so the coder
-  knows what to fix.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations

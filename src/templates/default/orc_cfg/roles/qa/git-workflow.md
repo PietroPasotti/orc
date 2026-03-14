@@ -20,9 +20,7 @@ automatically once you signal approval via `review_task.py`.
 
 ### Signalling your verdict
 
-After completing your review, use the provided tools to signal your verdict.
-The tools update the board status and make a commit — the orchestrator reads
-the board to route the task.
+After completing your review, signal your verdict using the provided tool.
 
 **If passed** — no Critical or Major issues:
 

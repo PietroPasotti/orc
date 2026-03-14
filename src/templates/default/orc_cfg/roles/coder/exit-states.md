@@ -24,8 +24,7 @@ Example:
 .orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
 ```
 
-This commits all your changes and produces a structured commit the orchestrator
-uses to route the task to QA. Do **not** craft the commit message by hand.
+This commits your changes and signals that implementation is complete. Do **not** craft the commit message by hand.
 
 ### Signalling `soft-blocked` or `blocked`
 

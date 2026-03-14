@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""get_vision.py — fetch vision file content from the coordination server.
+"""get_vision.py — print the contents of a vision file.
 
 Usage:
   .orc/agent_tools/planner/get_vision.py <vision-filename>
@@ -11,9 +11,6 @@ Example:
   .orc/agent_tools/planner/get_vision.py 0007-orc-status-board-view.md
 
 Prints the full text of the vision file to stdout.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations
