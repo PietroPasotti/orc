@@ -5,32 +5,30 @@ Usage:
   .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 
 Arguments:
-  vision-file   Full path to the vision markdown in the project cache
+  vision-file   Full path (or just filename) of the vision markdown in .orc/vision/
   summary       2-4 sentence summary of what the vision described (quoted string)
   task-name     Optional task names that implemented this vision
 
 Example:
-  .orc/agent_tools/planner/close_vision.py \
-    ~/.cache/orc/projects/<uuid>/vision/0001-shark-fleet.md \
-    "Implement distributed task processing using gRPC. Added worker pool management." \
+  .orc/agent_tools/planner/close_vision.py \\
+    .orc/vision/0001-shark-fleet.md \\
+    "Implement distributed task processing using gRPC. Added worker pool management." \\
     0001-grpc-transport 0002-worker-pool
 
-This script:
-1. Derives the vision name from the filename
-2. Gets the current timestamp in ISO 8601 format
-3. Appends an entry to .orc/orc-CHANGELOG.md
-4. Deletes the vision file from the project cache
-5. Prints a confirmation message
+This script calls the orc coordination API to:
+1. Append an entry to orc-CHANGELOG.md
+2. Delete the vision file from .orc/vision/
+3. Print a confirmation message
+
+IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
+access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
-
-CHANGELOG_FILE = Path(".orc/orc-CHANGELOG.md")
 
 
 def main() -> None:
@@ -43,28 +41,19 @@ def main() -> None:
     parser.add_argument("task_files", nargs="*", help="Task filenames that implemented this vision")
     args = parser.parse_args()
 
-    vision_path = Path(args.vision_file)
-    if not vision_path.exists():
-        print(f"Error: vision file not found at {vision_path}", file=sys.stderr)  # noqa: T201
-        sys.exit(1)
+    vision_name = Path(args.vision_file).name
 
-    vision_name = vision_path.stem
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    implemented_by = ", ".join(args.task_files) if args.task_files else "—"
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from _orc_client import get_client  # noqa: PLC0415
 
-    entry = (
-        f"\n## {vision_name} (closed {timestamp})\n\n"
-        f"{args.summary}\n\n"
-        f"**Implemented by:** {implemented_by}\n"
-    )
+    with get_client() as client:
+        resp = client.post(
+            f"/visions/{vision_name}/close",
+            json={"summary": args.summary, "task_files": args.task_files},
+        )
+        resp.raise_for_status()
 
-    with CHANGELOG_FILE.open("a") as f:
-        f.write(entry)
-
-    vision_path.unlink()
-
-    print(f"Closed vision: {vision_name}")  # noqa: T201
-    print(f"Updated changelog: {CHANGELOG_FILE}")  # noqa: T201
+    print(f"Closed vision: {Path(vision_name).stem}")  # noqa: T201
 
 
 if __name__ == "__main__":

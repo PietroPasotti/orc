@@ -1,5 +1,5 @@
 # orc configuration
-#
+
 # orc-dev-branch: the name of the branch orc uses as its integration branch.
 #   All feature branches are merged here after QA passes, and `orc merge`
 #   fast-forwards this branch into main.  Change this if your project already
@@ -13,9 +13,25 @@ orc-dev-branch: dev
 # orc-branch-prefix: ""
 
 # orc-worktree-base: base directory for all git worktrees created by orc.
-#   Worktrees are placed at <base>/<repo-name>/<task-name>, e.g.
-#   ~/.cache/orc/colony/0001-foo.  The dev integration worktree lands at
-#   <base>/<repo-name>/<dev-branch>, e.g. ~/.cache/orc/colony/dev.
-#   Change this to /tmp if you prefer ephemeral worktrees, or to any
-#   other writable path.
-# orc-worktree-base: ~/.cache/orc
+#   Worktrees are placed at <base>/<task-name>, e.g. .orc/worktrees/0001-foo.
+#   The dev integration worktree lands at <base>/<dev-branch>, e.g.
+#   .orc/worktrees/dev.  By default this is .orc/worktrees/ inside your
+#   project, which avoids name collisions between projects and keeps all
+#   orc state self-contained.  Override to an absolute path (e.g.
+#   /tmp/my-project) if you prefer worktrees outside the project tree.
+# orc-worktree-base: .orc/worktrees
+
+# orc-log-dir: directory for orc log files.
+#   By default this is .orc/logs/ inside your project.  Override to an
+#   absolute path (e.g. /tmp/orc-logs) if you prefer external logs.
+#   The ORC_LOG_DIR and ORC_LOG_FILE environment variables take precedence.
+# orc-log-dir: .orc/logs
+
+# orc-todo-scan-exclude: paths excluded when orc scans for #TODO / #FIXME
+#   comments.  Each entry is a git pathspec (relative to the repo root).
+#   The default excludes the .orc/ directory so that role prompts, board
+#   YAML, and other orc infrastructure files are not mistaken for action
+#   items in your source code.  Add any other directories you want to
+#   skip (e.g. vendor/, third-party/, docs/).
+# orc-todo-scan-exclude:
+#   - .orc

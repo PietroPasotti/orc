@@ -14,6 +14,9 @@ Example:
 
 Stages all changes and commits them, then updates the board task status to
 ``review`` so the orchestrator routes the task to QA.
+
+IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
+access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations
@@ -23,64 +26,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
-import yaml
-from filelock import FileLock
-
-_LOCK_TIMEOUT = 30
-
-
-def _find_orc_dir() -> Path:
-    for parent in [Path.cwd(), *Path.cwd().parents]:
-        candidate = parent / ".orc"
-        if candidate.is_dir():
-            return candidate
-    raise FileNotFoundError("Could not find .orc directory")
-
-
-def _resolve_work_dir() -> Path:
-    orc_dir = _find_orc_dir()
-    config_file = orc_dir / "config.yaml"
-    cfg = yaml.safe_load(config_file.read_text()) if config_file.exists() else {}
-    cfg = cfg or {}
-    explicit = cfg.get("orc-cache-dir", "").strip()
-    if explicit:
-        return Path(explicit).expanduser().resolve() / "work"
-    project_id = str(cfg.get("project-id", "")).strip()
-    if project_id:
-        xdg_env = os.environ.get("XDG_CACHE_HOME", "").strip()
-        xdg = Path(xdg_env).expanduser().resolve() if xdg_env else Path.home() / ".cache"
-        return xdg / "orc" / "projects" / project_id / "work"
-    return orc_dir / "work"
-
-
-def _find_task_by_code(task_code: str, work_dir: Path) -> str | None:
-    board_file = work_dir / "board.yaml"
-    if not board_file.exists():
-        return None
-    board = yaml.safe_load(board_file.read_text()) or {}
-    for entry in board.get("open", []):
-        t = entry if isinstance(entry, dict) else {"name": str(entry)}
-        if t.get("name", "").startswith(task_code):
-            return t["name"]
-    return None
-
-
-def _set_task_status(task_name: str, status: str, work_dir: Path) -> None:
-    board_file = work_dir / "board.yaml"
-    if not board_file.exists():
-        return
-    with FileLock(str(work_dir / ".board.lock"), timeout=_LOCK_TIMEOUT):
-        board = yaml.safe_load(board_file.read_text()) or {}
-        for i, entry in enumerate(board.get("open", [])):
-            t = entry if isinstance(entry, dict) else {"name": str(entry)}
-            if t.get("name") == task_name:
-                t["status"] = status
-                board["open"][i] = t
-                tmp = board_file.with_suffix(".yaml.tmp")
-                tmp.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
-                tmp.replace(board_file)
-                return
 
 
 def main() -> None:
@@ -110,15 +55,19 @@ def main() -> None:
     if result.returncode != 0:
         sys.exit(result.returncode)
 
-    work_dir = _resolve_work_dir()
-    task_name = _find_task_by_code(args.task_code, work_dir)
-    if task_name:
-        _set_task_status(task_name, "review", work_dir)
-    else:
-        print(  # noqa: T201
-            f"Warning: task {args.task_code!r} not found on board; status not updated",
-            file=sys.stderr,
-        )
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from _orc_client import find_task_by_code, get_client  # noqa: PLC0415
+
+    with get_client() as client:
+        task_name = find_task_by_code(client, args.task_code)
+        if task_name is None:
+            print(  # noqa: T201
+                f"Error: task {args.task_code!r} not found on board",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        resp = client.put(f"/board/tasks/{task_name}/status", json={"status": "review"})
+        resp.raise_for_status()
 
 
 if __name__ == "__main__":

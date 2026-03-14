@@ -7,4 +7,6 @@ done:
   name: 0002-logs-folder-and-just-logs-recipe.md
   timestamp: '2026-03-11T12:38:52Z'
 open:
-- name: 0003-nicer-tui-three-column-layout.md
+- assigned_to: coder-1
+  name: 0003-nicer-tui-three-column-layout.md
+  status: coding

@@ -3,6 +3,13 @@
 All public functions delegate to the module-level :data:`_manager` singleton
 (:class:`~orc.board_manager.FileBoardManager`).  Call :func:`init_manager`
 once (done automatically by :func:`orc.config.init`).
+
+.. note::
+
+    The ``orc run`` dispatch loop does **not** use this module directly.
+    It uses :class:`~orc.coordination.StateManager`, which is the single
+    thread-safe source of truth during a run.  This module is used by CLI
+    read commands (``orc status``) and internal engine helpers.
 """
 
 from __future__ import annotations

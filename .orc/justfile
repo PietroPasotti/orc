@@ -2,7 +2,7 @@
 #
 # Usage from root: add this to your root justfile:
 #
-#   mod orc 'orc/justfile'
+#   mod orc '.orc/justfile'
 #
 # Then: just orc run, just orc status, just orc merge
 
@@ -12,27 +12,19 @@ repo_root := source_directory() / ".."
 default:
     @just --list --justfile {{source_file()}}
 
-# Print, tail, or wipe orc log files.
-# Subcommands:
-#   wipe           Delete all log files
+# Print or tail orc log files.
 # Options:
 #   --path <dir>   Log directory (default: .orc/logs)
 #   --agent <name> all | orc | <agent-name>  (default: all)
 #   --tail         Follow the log(s) with tail -f
 logs *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ "${1:-}" == "wipe" ]]; then
-        uv run orc --project-dir {{repo_root}} logs --wipe "${@:2}"
-    else
-        uv run orc --project-dir {{repo_root}} logs {{args}}
-    fi
+    uv run orc --project-dir {{repo_root}} logs {{args}}
 
 # Run the next agent(s) in the workflow
 # Examples:
 #   just orc run                          # default squad, 1 invocation
 #   just orc run --maxloops 0             # run until complete
-#   just orc run --squad broad            # load orc/squads/broad.yaml
+#   just orc run --squad broad            # load .orc/squads/broad.yaml
 #   just orc run --dry-run                # print context without invoking
 run *args:
     uv run orc --project-dir {{repo_root}} run {{args}}
@@ -42,9 +34,9 @@ status *args:
     uv run orc --project-dir {{repo_root}} status {{args}}
 
 # Rebase dev on main and fast-forward merge into main
-merge:
-    uv run orc --project-dir {{repo_root}} merge
+merge *args:
+    uv run orc --project-dir {{repo_root}} merge {{args}}
 
 # List available squad profiles and their composition
-squads:
-    uv run orc --project-dir {{repo_root}} squads
+squads *args:
+    uv run orc --project-dir {{repo_root}} squads {{args}}

@@ -12,6 +12,6 @@ commit it using the provided tool:
 Do **not** craft the commit message by hand. All `git` commands must be run
 from inside the dev worktree.
 
-The board (board.yaml) and task files are stored in the project cache — the
-agent tools handle their location automatically. You do **not** need to stage
-board.yaml or task files for git.
+The board and task files are managed exclusively through the coordination API —
+the agent tools handle all state access automatically. You do **not** need to stage
+board or task files for git.
