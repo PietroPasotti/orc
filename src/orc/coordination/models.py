@@ -53,6 +53,8 @@ class TaskEntry(BaseModel):
     status: str | None = None
     assigned_to: str | None = None
     comments: list[dict] = []
+    commit_tag: str | None = None
+    timestamp: str | None = None
 
 
 class HealthResponse(BaseModel):

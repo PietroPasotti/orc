@@ -65,6 +65,44 @@ class TestStateManagerBoardQueries:
         assert result[0]["name"] == "0001-foo.md"
         assert result[0]["status"] == "coding"
 
+    def test_get_done_tasks_empty(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        assert _state(orc).get_done_tasks() == []
+
+    def test_get_done_tasks_returns_list(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open: []\ndone:\n"
+            "  - name: 0001-foo.md\n"
+            "    commit_tag: abc123\n"
+            "    timestamp: '2026-01-01T00:00:00Z'\n"
+        )
+        result = _state(orc).get_done_tasks()
+        assert len(result) == 1
+        assert result[0]["name"] == "0001-foo.md"
+
+    def test_get_done_tasks_wraps_strings(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text("open: []\ndone:\n  - 0001-foo.md\n")
+        result = _state(orc).get_done_tasks()
+        assert result == [{"name": "0001-foo.md"}]
+
+    def test_get_all_tasks_combines_open_and_done(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = _state(orc).get_all_tasks()
+        names = [t["name"] for t in result]
+        assert "0001-open.md" in names
+        assert "0002-done.md" in names
+        assert len(result) == 2
+
+    def test_get_all_tasks_empty(self, tmp_path):
+        orc = _orc_dir(tmp_path)
+        assert _state(orc).get_all_tasks() == []
+
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
@@ -289,6 +327,60 @@ class TestBoardRoutes:
         req = self._req(tmp_path)
         result = get_tasks(state=_get_state(req))
         assert result == []
+
+    def test_get_tasks_no_param_returns_open_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req))
+        names = [t["name"] for t in result]
+        assert names == ["0001-open.md"]
+
+    def test_get_tasks_status_open_returns_open_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="open")
+        names = [t["name"] for t in result]
+        assert names == ["0001-open.md"]
+
+    def test_get_tasks_status_done_returns_done_only(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="done")
+        names = [t["name"] for t in result]
+        assert names == ["0002-done.md"]
+
+    def test_get_tasks_status_all_returns_all(self, tmp_path):
+        from orc.coordination.routes.board import _get_state, get_tasks
+
+        req = self._req(tmp_path)
+        orc = tmp_path / ".orc"
+        (orc / "work" / "board.yaml").write_text(
+            "open:\n  - name: 0001-open.md\n    status: planned\n"
+            "done:\n  - name: 0002-done.md\n    commit_tag: abc\n"
+        )
+        result = get_tasks(state=_get_state(req), status_filter="all")
+        names = [t["name"] for t in result]
+        assert "0001-open.md" in names
+        assert "0002-done.md" in names
+        assert len(result) == 2
 
     def test_create_task_returns_filename_and_path(self, tmp_path):
         from orc.coordination.models import CreateTaskRequest
@@ -608,6 +700,15 @@ class TestModels:
         assert m.status is None
         assert m.assigned_to is None
         assert m.comments == []
+        assert m.commit_tag is None
+        assert m.timestamp is None
+
+    def test_task_entry_done_fields(self):
+        from orc.coordination.models import TaskEntry
+
+        m = TaskEntry(name="0001-foo.md", commit_tag="abc123", timestamp="2026-01-01T00:00:00Z")
+        assert m.commit_tag == "abc123"
+        assert m.timestamp == "2026-01-01T00:00:00Z"
 
     def test_health_response(self):
         from orc.coordination.models import HealthResponse
