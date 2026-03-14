@@ -54,6 +54,31 @@ class TestRunBareRaise:
             with pytest.raises(RuntimeError, match="crashed"):
                 _run_mod._run(maxcalls=1)
 
+    def test_run_keyboard_interrupt_prints_warning(self, tmp_path, monkeypatch, capsys):
+        """KeyboardInterrupt during dispatcher.run() prints warning and exits non-zero."""
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
+        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
+        monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
+        monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
+        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+
+        def _interrupt(*a, **kw):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(_disp.Dispatcher, "run", _interrupt)
+        import typer
+
+        with pytest.raises(typer.Exit) as exc_info:
+            _run_mod._run(maxcalls=1)
+
+        assert exc_info.value.exit_code == 1
+        captured = capsys.readouterr()
+        assert "Interrupted" in captured.err
+        assert "orc run" in captured.err
+
 
 def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     """Monkeypatch all external dependencies for _run() tests."""
@@ -152,7 +177,7 @@ class TestTuiPath:
                 },
             )(),
         )
-        monkeypatch.setattr(_run_mod, "_safe_dev_ahead", lambda: 0)
+        monkeypatch.setattr(_run_mod, "_safe_features_done", lambda: 0)
         monkeypatch.setattr(_disp.Dispatcher, "__init__", capturing_init)
         _patch_run_deps(monkeypatch, tmp_path)
 
@@ -223,24 +248,20 @@ class TestEarlyExit:
         )
 
 
-class TestSafeDevAhead:
+class TestSafeFeaturesDone:
     def test_returns_zero_on_exception(self, monkeypatch):
-        """_safe_dev_ahead returns 0 when _dev_ahead_of_main raises."""
-        import orc.cli.status as _status_mod
-
+        """_safe_features_done returns 0 when _count_features_done raises."""
         monkeypatch.setattr(
-            _status_mod,
-            "_dev_ahead_of_main",
+            _git,
+            "_count_features_done",
             lambda: (_ for _ in ()).throw(RuntimeError("git error")),
         )
-        assert _run_mod._safe_dev_ahead() == 0
+        assert _run_mod._safe_features_done() == 0
 
     def test_returns_value_on_success(self, monkeypatch):
-        """_safe_dev_ahead returns the git count on success."""
-        import orc.cli.status as _status_mod
-
-        monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
-        assert _run_mod._safe_dev_ahead() == 3
+        """_safe_features_done returns the count on success."""
+        monkeypatch.setattr(_git, "_count_features_done", lambda: 3)
+        assert _run_mod._safe_features_done() == 3
 
 
 class TestServiceAdapters:

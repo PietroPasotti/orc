@@ -377,3 +377,20 @@ class TestLoadOrcConfig:
         monkeypatch.setattr(_cfg_mod, "_xdg_cache_home", lambda: _cfg_mod.Path("/tmp/my-cache"))
         result = _cfg_mod._orc_cache_root()
         assert result == _cfg_mod.Path("/tmp/my-cache/orc/projects")
+
+    def test_init_chat_log_in_log_dir(self, tmp_path, monkeypatch, _init_config):
+        """chat_log is placed inside log_dir, not orc_dir."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        _init_config(orc_dir)
+        cfg = _cfg.get()
+        assert cfg.chat_log == cfg.log_dir / "chat.log"
+
+    def test_init_chat_log_uses_custom_log_dir(self, tmp_path, monkeypatch, _init_config):
+        """chat_log follows a custom orc-log-dir."""
+        orc_dir = tmp_path / ".orc"
+        orc_dir.mkdir(exist_ok=True)
+        custom_log_dir = tmp_path / "my-logs"
+        (orc_dir / "config.yaml").write_text(f"orc-log-dir: {custom_log_dir}\n")
+        _init_config(orc_dir)
+        assert _cfg.get().chat_log == custom_log_dir.resolve() / "chat.log"

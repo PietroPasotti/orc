@@ -49,14 +49,11 @@ class StubMessaging:
     def wait_for_human_reply(self, messages: list[dict]) -> str:
         return "ok"
 
-    def post_boot_message(self, agent_id: str, body: str) -> None:
+    def post_boot_message(self, agent_id: str) -> None:
         pass
 
     def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
         pass
-
-    def boot_message_body(self) -> str:
-        return "boot"
 
 
 # ---------------------------------------------------------------------------

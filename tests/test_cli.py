@@ -82,7 +82,8 @@ class TestLogsCommand:
         assert any("orc.log" in c for c in called_cmd)
 
     def test_logs_agent_named(self, tmp_path):
-        (tmp_path / "coder-1.log").write_text("coder log\n")
+        (tmp_path / "agents").mkdir()
+        (tmp_path / "agents" / "coder-1.log").write_text("coder log\n")
         with patch("subprocess.run") as mock_run:
             result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--agent", "coder-1"])
         assert result.exit_code == 0
@@ -101,8 +102,9 @@ class TestLogsCommand:
         assert "-f" in called_cmd
 
     def test_logs_agent_role_globs_matching_files(self, tmp_path):
-        (tmp_path / "coder-1.log").write_text("coder-1 log\n")
-        (tmp_path / "coder-2.log").write_text("coder-2 log\n")
+        (tmp_path / "agents").mkdir()
+        (tmp_path / "agents" / "coder-1.log").write_text("coder-1 log\n")
+        (tmp_path / "agents" / "coder-2.log").write_text("coder-2 log\n")
         with patch("subprocess.run") as mock_run:
             result = runner.invoke(m.app, ["logs", "--path", str(tmp_path), "--agent", "coder"])
         assert result.exit_code == 0

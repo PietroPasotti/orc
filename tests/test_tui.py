@@ -211,10 +211,10 @@ class TestRenderZeroAgents:
         out = _render_to_str(state)
         assert "✗" in out
 
-    def test_header_dev_ahead(self):
-        state = RunState(dev_ahead=5)
+    def test_header_features_done(self):
+        state = RunState(features_done=5)
         out = _render_to_str(state)
-        assert "dev+5" in out
+        assert "5 features" in out
 
     def test_orc_card_shown_when_present(self):
         state = RunState(orc=OrcData(agent_id="orc-0", status="running", task="orchestrating"))

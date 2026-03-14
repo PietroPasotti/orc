@@ -31,6 +31,14 @@ _STATUS_TO_LAST_COMMIT: dict[str, LastCommit] = {
 }
 
 
+class UntrackedMergeBlockError(Exception):
+    """Raised when ``git merge --ff-only`` is blocked by untracked files in the main worktree."""
+
+    def __init__(self, files: list[str]) -> None:
+        self.files = files
+        super().__init__(f"untracked files would be overwritten by merge: {files}")
+
+
 class MergeConflictError(Exception):
     """Raised when ``git merge --no-ff`` stops with conflicts.
 
@@ -362,6 +370,22 @@ def _rebase_in_progress(worktree: Path) -> bool:
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
+def _parse_untracked_files(stderr: str) -> list[str]:
+    """Extract filenames from a git 'untracked files would be overwritten' error message."""
+    files: list[str] = []
+    in_list = False
+    for line in stderr.splitlines():
+        if "untracked working tree files would be overwritten" in line:
+            in_list = True
+            continue
+        if in_list:
+            if line.startswith("\t") and not line.strip().startswith("Please"):
+                files.append(line.strip())
+            else:
+                in_list = False
+    return files
+
+
 def _complete_merge() -> bool:
     """Fast-forward merge dev into main from the repo root worktree.
 
@@ -369,15 +393,24 @@ def _complete_merge() -> bool:
     checkout is needed before or after the merge.
 
     Returns True if a merge was performed, False if already up to date.
+
+    Raises :class:`UntrackedMergeBlockError` if untracked files would be
+    overwritten, so the caller can surface a clear message to the user.
     """
     cfg = _cfg.get()
     result = subprocess.run(
         ["git", "merge", "--ff-only", cfg.work_dev_branch],
         cwd=cfg.repo_root,
-        check=True,
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        if "untracked working tree files would be overwritten" in result.stderr:
+            files = _parse_untracked_files(result.stderr)
+            raise UntrackedMergeBlockError(files)
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, result.stdout, result.stderr
+        )
     return "Already up to date" not in result.stdout
 
 
@@ -390,3 +423,50 @@ def _conflict_status(worktree: Path) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _rebase_on_main(worktree: Path) -> tuple[bool, str]:
+    """Attempt to rebase *worktree*'s current branch on top of ``main``.
+
+    Returns ``(True, "")`` on success, or ``(False, conflict_status)`` when
+    the rebase stops with conflicts, where *conflict_status* is the output of
+    ``git status --short`` in *worktree*.
+    """
+    result = subprocess.run(
+        ["git", "rebase", "--autostash", "main"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return True, ""
+    return False, _conflict_status(worktree)
+
+
+def _count_features_done() -> int:
+    """Count feature-merge commits on ``dev`` that are not yet on ``main``.
+
+    A "feature done" commit is a merge commit whose message matches
+    ``Merge feat/NNNN-*``.
+    """
+    cfg = _cfg.get()
+    result = subprocess.run(
+        [
+            "git",
+            "log",
+            cfg.work_dev_branch,
+            "--not",
+            "main",
+            "--merges",
+            "--oneline",
+            "--grep",
+            "^Merge feat/",
+        ],
+        cwd=cfg.repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return 0
+    lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
+    return len(lines)

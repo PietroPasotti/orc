@@ -12,3 +12,24 @@
 
 **Implemented by:**
 - `.orc/work/0001-live-tui-status-view.md`
+
+## 0005-orc-merge-auto-worktree-fix (closed 2026-03-13T17:34:37Z)
+
+**Vision summary:** Fixed `orc merge --auto` to work correctly when the `dev` branch is checked out as a worktree. The fast-forward merge now runs via `git -C <repo_root> merge --ff-only dev` against the main worktree instead of attempting a checkout inside the dev worktree. An `UntrackedFilesWouldBeOverwrittenError` exception is raised and surfaced to the user with a clear message if untracked files would block the merge.
+
+**Implemented by:**
+- `.orc/work/0005-orc-merge-auto-worktree-fix.md`
+
+## 0006-board-yaml-in-main-worktree (closed 2026-03-13T17:34:37Z)
+
+**Vision summary:** Prevented the stale `board.yaml` conflict that caused `orc merge --ff-only` to abort with an "untracked file would be overwritten" error. The `orc bootstrap` command now commits an initial empty `board.yaml` to the `main` branch so git tracks it and can overwrite it cleanly on merge.
+
+**Implemented by:**
+- `.orc/work/0006-board-yaml-main-worktree.md`
+
+## 0004-orc-status-plain-output (closed 2026-03-13T17:21:56Z)
+
+**Vision summary:** Added a `--plain` flag to `orc status` that forces plain-text output even when running in an interactive terminal. Without `--plain`, the existing TTY → TUI / non-TTY → plain behaviour is unchanged. The flag makes `orc status` usable in CI, scripts, pipes, and AI-agent subprocesses where a full Textual TUI is unavailable or unwanted.
+
+**Implemented by:**
+- `.orc/work/0004-orc-status-plain-flag.md`

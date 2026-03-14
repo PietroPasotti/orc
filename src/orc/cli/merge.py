@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-
 import structlog
 import typer
 
@@ -22,14 +20,10 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     """Rebase dev on top of main so every session starts with the latest instructions."""
     dev_worktree = _git._ensure_dev_worktree()
 
-    result = subprocess.run(
-        ["git", "rebase", "--autostash", "main"], cwd=dev_worktree, capture_output=True, text=True
-    )
-    if result.returncode == 0:
+    ok, status_output = _git._rebase_on_main(dev_worktree)
+    if ok:
         typer.echo("✓ dev rebased on main.")
         return
-
-    status_output = _git._conflict_status(dev_worktree)
     typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")
 
     conflict_extra = (
@@ -68,15 +62,19 @@ def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) ->
     typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
-# TODO move this in git.py (and see if there's a similar function we can reuse or generalize)
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
     _rebase_dev_on_main(messages)
-    dev_worktree = _git._ensure_dev_worktree()
+    _git._ensure_dev_worktree()
 
     if auto:
-        merged = _git._complete_merge()
+        try:
+            merged = _git._complete_merge()
+        except _git.UntrackedMergeBlockError as exc:
+            for f in exc.files:
+                typer.echo(f"✗ {f} exists as untracked in main worktree; remove it and re-run")
+            raise typer.Exit(code=1)
         if merged:
             typer.echo("✓ dev merged into main.")
         else:
@@ -85,11 +83,11 @@ def _merge(auto: bool = False) -> None:
         if _status._dev_ahead_of_main() == 0:
             typer.echo("Nothing to merge — dev has no commits ahead of main.")
             return
+        cfg = _cfg.get()
         typer.echo(
             f"✓ dev is up-to-date with main and ready to merge.\n"
             f"  Run the following to merge manually:\n\n"
-            f"    git -C {dev_worktree} checkout main\n"
-            f"    git -C {dev_worktree} merge --ff-only {_cfg.get().work_dev_branch}\n\n"
+            f"    git -C {cfg.repo_root} merge --ff-only {cfg.work_dev_branch}\n\n"
             f"  Or re-run with --auto to let orc do it."
         )
 

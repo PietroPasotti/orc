@@ -481,11 +481,36 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
-# TODO: each agent role should have their own boot message body.
-def _boot_message_body() -> str:
-    """Build the body text for a (boot) message listing open work items."""
+def _boot_message_body(agent_id: str) -> str:
+    """Build the role-specific body text for a boot message."""
+    role, _ = tg.parse_agent_id(agent_id)
     board = _board._read_board()
     open_tasks = board.get("open", [])
+    first_task = (
+        (open_tasks[0]["name"] if isinstance(open_tasks[0], dict) else str(open_tasks[0]))
+        if open_tasks
+        else None
+    )
+
+    if role == AgentRole.PLANNER:
+        if first_task:
+            return f"planning {first_task}."
+        if board.get("visions"):
+            return "translating vision docs."
+        return "no open tasks on board."
+
+    if role == AgentRole.CODER:
+        if first_task:
+            return f"picking up work/{first_task}."
+        return "no open tasks on board."
+
+    if role == AgentRole.QA:
+        if first_task:
+            task_stem = re.sub(r"\.md$", "", first_task)
+            return f"reviewing feat/{task_stem}."
+        return "no open tasks on board."
+
+    # Default fallback: list all open tasks
     if not open_tasks:
         return "no open tasks on board."
     names = [(t["name"] if isinstance(t, dict) else str(t)) for t in open_tasks]

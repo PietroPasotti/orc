@@ -56,6 +56,8 @@ class Config:
     work_dev_branch: str
     branch_prefix: str
     log_dir: Path
+    chat_log: Path
+    """Path to the local chat log file (JSONL)."""
     todo_scan_exclude: tuple[str, ...]
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
     project_id: str = ""
@@ -99,7 +101,6 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     branch_prefix = orc_yaml.get("orc-branch-prefix", "")
     raw_base = orc_yaml.get("orc-worktree-base", str(orc_dir / "worktrees"))
     worktree_base = Path(raw_base).expanduser().resolve()
-    # TODO: move chat.log into logs too
     raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
     log_dir = Path(raw_log_dir).expanduser().resolve()
     raw_exclude = orc_yaml.get("orc-todo-scan-exclude", [".orc"])
@@ -129,6 +130,7 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         work_dev_branch=work_dev_branch,
         branch_prefix=branch_prefix,
         log_dir=log_dir,
+        chat_log=log_dir / "chat.log",
         todo_scan_exclude=todo_scan_exclude,
         project_id=project_id,
         cache_dir=cache_dir,

@@ -445,3 +445,38 @@ class TestStatusCoverage:
         self._setup(monkeypatch, ahead=0, open_todos=[])
         result = runner.invoke(m.app, ["status"])
         assert "TODOs" not in result.output
+
+    def test_plain_flag_bypasses_tui_when_tty(self, monkeypatch):
+        """--plain skips the TUI even when _is_tty() returns True."""
+        self._setup(monkeypatch, ahead=0)
+        launched: list[str] = []
+        monkeypatch.setattr(_st, "_is_tty", lambda: True)
+
+        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+            result = runner.invoke(m.app, ["status", "--plain"])
+
+        assert result.exit_code == 0
+        assert launched == []  # TUI was NOT launched
+        assert "main is up to date" in result.output
+
+    def test_plain_flag_produces_plain_output(self, monkeypatch):
+        """--plain produces the same plain-text output as the non-TTY path."""
+        self._setup(monkeypatch, ahead=0)
+        monkeypatch.setattr(_st, "_is_tty", lambda: True)
+
+        result = runner.invoke(m.app, ["status", "--plain"])
+
+        assert result.exit_code == 0
+        assert "main is up to date" in result.output
+
+    def test_without_plain_tui_launched_when_tty(self, monkeypatch):
+        """Without --plain, TUI is still launched when stdout is a TTY."""
+        self._setup(monkeypatch, ahead=0)
+        launched: list[str] = []
+        monkeypatch.setattr(_st, "_is_tty", lambda: True)
+
+        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+            result = runner.invoke(m.app, ["status", "--squad", "default"])
+
+        assert result.exit_code == 0
+        assert launched == ["default"]

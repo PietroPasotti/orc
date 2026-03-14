@@ -440,9 +440,10 @@ class Dispatcher:
                 continue
 
             if token == CLOSE_BOARD:
-                # FIXME: this could fail! Wrap in a try/except and log.
-                #  Do the same for all calls out of _dispatch, this is a critical path.
-                self.workflow.do_close_board(task_name)
+                try:
+                    self.workflow.do_close_board(task_name)
+                except Exception:
+                    logger.exception("do_close_board failed", task=task_name)
                 continue
 
             if token not in (AgentRole.CODER, AgentRole.QA):
@@ -494,8 +495,7 @@ class Dispatcher:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        body = self.messaging.boot_message_body()
-        self.messaging.post_boot_message(agent_id, body)
+        self.messaging.post_boot_message(agent_id)
 
         import structlog.contextvars as _cv
 
