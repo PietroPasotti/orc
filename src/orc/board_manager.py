@@ -19,6 +19,9 @@ from typing import Any
 import structlog
 import yaml
 from filelock import FileLock
+from pydantic import ValidationError
+
+from orc.board_models import Board
 
 logger = structlog.get_logger(__name__)
 
@@ -173,7 +176,13 @@ class FileBoardManager(BoardManager):
             data: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
             data.setdefault("open", [])
             data.setdefault("done", [])
+            Board.model_validate(data)
             return data
+        except ValidationError:
+            logger.warning(
+                "read_board: board data failed validation", path=str(path), exc_info=True
+            )
+            raise
         except Exception:
             logger.debug("read_board: failed to parse board file", path=str(path), exc_info=True)
             return {"counter": 0, "open": [], "done": []}
