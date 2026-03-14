@@ -1,71 +1,42 @@
 # Agent Tools
 
-Python scripts that agents use to update the board and signal their exit state.
-Using these scripts is **mandatory** — hand-crafting board updates is error-prone
-and wastes tokens.
+Python scripts that agents use to signal their exit state and manage tasks.
+Using these scripts is **mandatory** — they ensure state is recorded correctly.
 
 > ⚠️ **IMPORTANT — No direct `.orc/` filesystem access**
 >
-> All board and vision state is managed exclusively through the **orc coordination
-> API** (a Unix socket server started by `orc run`).  **Never** read or write files
-> under `.orc/work/`, `.orc/vision/`, or `board.yaml` directly.  The project may
-> use git worktrees where each worktree has its own `.orc/` copy; direct access will
-> silently write to the wrong directory.  Always use the agent tool scripts below —
-> they talk to the coordination API via the `ORC_API_SOCKET` environment variable
-> set by the orchestrator.
-
-## How signalling works
-
-Agents communicate their status by calling the **coordination API**, which updates
-the **board** (stored in `.orc/work/`, gitignored).  The orchestrator polls the
-board and dispatches the next agent based on each task's `status` field.  There is
-no commit-message parsing — the board is the single source of truth.
-
-| Status | Set by | Meaning |
-|---|---|---|
-| `planned` | `create_task.py` | Planner created task, awaiting coder |
-| `coding` | orchestrator | Coder actively working |
-| `review` | `close_task.py` | Coder done, awaiting QA |
-| `approved` | `review_task.py approved` | QA passed, ready to merge |
-| `rejected` | `review_task.py rejected` | QA failed, back to coder |
-| `blocked` | — | Hard block, needs human help |
+> **Never** read or write files under `.orc/work/`, `.orc/vision/`, or
+> `board.yaml` directly. Always use the agent tool scripts below.
 
 ## Available tools
 
 ### Planner
 
 ```bash
-# 1. Fetch a vision file's content from the server
+# Fetch a vision file's content
 .orc/agent_tools/planner/get_vision.py <vision-filename>
 # Example:
 .orc/agent_tools/planner/get_vision.py 0007-orc-status-board-view.md
 
-# 2. Create a new task (calls API → writes to .orc/work/, updates board)
-.orc/agent_tools/planner/create_task.py <task-title>
+# Create a new task (see Board Management section for full usage)
+echo '<body-json>' | .orc/agent_tools/planner/create_task.py <agent-id> <task-title> <vision-file> [extra-file...]
 # Example:
-.orc/agent_tools/planner/create_task.py add-user-auth
-# → creates 0003-add-user-auth.md in .orc/work/, sets status: planned
-# → prints the absolute path of the created file
+echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md
+# → prints the filename of the created task file
 
-# 3. Commit the task to dev (board lives in .orc/work/; optionally stage ADRs)
-.orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
-# Example:
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth docs/adr/0042-auth.md
-
-# 4. Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
+# Close a completed vision
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 ```
 
 ### Coder
 
 ```bash
-# Fetch a task file's content from the server
+# Fetch a task file's content
 .orc/agent_tools/coder/get_task.py <task-filename>
 # Example:
 .orc/agent_tools/coder/get_task.py 0003-add-user-auth.md
 
-# Signal implementation done — sets board status to "review"
+# Signal implementation done
 .orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
 # Example:
 .orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
@@ -74,16 +45,10 @@ no commit-message parsing — the board is the single source of truth.
 ### QA
 
 ```bash
-# Review a task — sets board status to "approved" or "rejected"
-# (rejected also posts the message as a comment for the coder)
+# Signal review outcome (approved or rejected)
 .orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
 # Examples:
 .orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no critical issues"
 .orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths; see task file"
 ```
 
-## Task comments
-
-Each board task has a `comments` list.  QA rejection feedback is written there
-automatically by `review_task.py` when the outcome is `rejected`.  You can also
-add comments manually to communicate context to the next agent in the pipeline.

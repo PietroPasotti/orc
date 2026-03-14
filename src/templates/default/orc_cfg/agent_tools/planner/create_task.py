@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""create_task.py — create a new task, write it to the board, and commit it to dev.
+"""create_task.py — create a new task on the board.
 
 Usage:
   echo '<json>' | .orc/agent_tools/planner/create_task.py \\
@@ -33,14 +33,7 @@ Example:
   echo '{...}' | .orc/agent_tools/planner/create_task.py \\
     planner-1 add-user-auth 0001-auth-vision.md docs/adr/0042-auth.md
 
-This script:
-1. Reads the structured task body from stdin (JSON).
-2. Calls POST /board/tasks — the server assembles the markdown and adds it to the board.
-3. Commits the result to dev with git (signals the orchestrator that planning is done).
-4. Prints the filename of the created task file to stdout.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
+Prints the filename of the created task file to stdout.
 """
 
 from __future__ import annotations

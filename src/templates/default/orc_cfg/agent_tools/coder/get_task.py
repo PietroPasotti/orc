@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""get_task.py — fetch task file content from the coordination server.
+"""get_task.py — print the contents of a task file.
 
 Usage:
   .orc/agent_tools/coder/get_task.py <task-filename>
@@ -11,9 +11,6 @@ Example:
   .orc/agent_tools/coder/get_task.py 0003-add-user-auth.md
 
 Prints the full text of the task file to stdout.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations
