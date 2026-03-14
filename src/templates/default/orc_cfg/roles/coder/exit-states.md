@@ -11,13 +11,17 @@
 When your implementation is complete, run:
 
 ```bash
-.orc/agent_tools/coder/close_task.py --help
+.orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
 ```
 
-for usage, then execute with your agent ID, task code, and message:
+Arguments:
+- `agent-id` — your agent identifier, e.g. `coder-1`
+- `task-code` — zero-padded 4-digit task number, e.g. `0002`
+- `message` — one-line summary of what was done
 
+Example:
 ```bash
-.orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
+.orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
 ```
 
 This commits all your changes and produces a structured commit the orchestrator

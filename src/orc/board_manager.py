@@ -85,6 +85,14 @@ class BoardManager(abc.ABC):
     # ── Task file CRUD ───────────────────────────────────────────────────
 
     @abc.abstractmethod
+    def create_task(self, title: str) -> tuple[str, Path]:
+        """Create a task .md file and add a *planned* entry to the board.
+
+        Returns ``(filename, absolute_path)`` of the created file.
+        The counter in board.yaml is atomically incremented.
+        """
+
+    @abc.abstractmethod
     def list_task_files(self) -> list[Path]:
         """Return sorted ``*.md`` paths in work_dir (excluding README.md)."""
 
@@ -244,6 +252,31 @@ class FileBoardManager(BoardManager):
                 logger.warning("add_task_comment: task not found", task=task_name)
 
     # ── Task file CRUD ───────────────────────────────────────────────────
+
+    _TASK_TEMPLATE = (
+        "# {task_id}-{task_title}\n\n"
+        "## Overview\n\n<!-- What and why -->\n\n"
+        "## Scope\n\n**In scope:**\n-\n\n**Out of scope:**\n-\n\n"
+        "## Steps\n\n- [ ]\n\n## Notes\n\n"
+    )
+
+    def create_task(self, title: str) -> tuple[str, Path]:
+        """Create a task .md file and add a *planned* entry to the board.
+
+        The counter increment, file creation, and board write are performed
+        atomically under the board lock.  Returns ``(filename, absolute_path)``.
+        """
+        with self._board_lock():
+            board = self._read_board_unlocked()
+            counter: int = board.get("counter", 0)
+            task_id = f"{counter:04d}"
+            task_filename = f"{task_id}-{title}.md"
+            task_file = self._work_dir / task_filename
+            task_file.write_text(self._TASK_TEMPLATE.format(task_id=task_id, task_title=title))
+            board["open"].append({"name": task_filename, "status": "planned"})
+            board["counter"] = counter + 1
+            self._write_board_unlocked(board)
+        return task_filename, task_file
 
     def list_task_files(self) -> list[Path]:
         if not self._work_dir.is_dir():

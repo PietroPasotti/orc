@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import sys
 import time
@@ -11,7 +12,6 @@ from typing import Annotated
 import structlog
 import typer
 
-import orc.board as _board
 import orc.cli.merge as _merge_mod
 import orc.cli.status as _status_mod
 import orc.config as _cfg
@@ -21,6 +21,7 @@ import orc.git.core as _git
 from orc import tui as _tui
 from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
+from orc.coordination import CoordinationServer, StateManager
 from orc.engine import dispatcher as _disp
 from orc.engine.pool import AgentProcess
 from orc.engine.work import Work
@@ -40,17 +41,20 @@ _FEATURES_DONE_REFRESH_INTERVAL = 30.0  # seconds between git queries
 
 
 class _BoardSvc:
+    def __init__(self, state: StateManager) -> None:
+        self._state = state
+
     def get_open_tasks(self) -> list[dict]:
-        return _board.get_open_tasks()
+        return self._state.get_open_tasks()
 
     def assign_task(self, task_name: str, agent_id: str) -> None:
-        _board.assign_task(task_name, agent_id)
+        self._state.assign_task(task_name, agent_id)
 
     def unassign_task(self, task_name: str) -> None:
-        _board.unassign_task(task_name)
+        self._state.unassign_task(task_name)
 
     def get_pending_visions(self) -> list[str]:
-        return _status_mod._pending_visions()
+        return self._state.get_pending_visions()
 
     def get_pending_reviews(self) -> list[str]:
         return _status_mod._pending_reviews()
@@ -156,11 +160,19 @@ def _run(
     messages = tg.get_messages()
     _merge_mod._rebase_dev_on_main(messages, squad_cfg)
 
-    _board.clear_all_assignments()
+    # Start the coordination API server so agent tools in worktrees always
+    # write to the correct (main) .orc/ directory.
+    cfg = _cfg.get()
+    _coord_state = StateManager(cfg.orc_dir)
+    _coord_state.clear_all_assignments()
+    _coord_server = CoordinationServer(_coord_state, cfg.api_socket_path)
+    _coord_server.start()
+    os.environ["ORC_API_SOCKET"] = str(cfg.api_socket_path)
+    atexit.register(_coord_server.stop)
 
     _last_dev_refresh: list[float] = [0.0]
 
-    board_svc = _BoardSvc()
+    board_svc = _BoardSvc(_coord_state)
     messaging_svc = _MessagingSvc()
     workflow_svc = _WorkflowSvc(squad_cfg)
     agent_svc = _AgentSvc(squad_cfg)
@@ -241,6 +253,7 @@ def _run(
         else:
             dispatcher.run(maxcalls=maxcalls)
     except KeyboardInterrupt:
+        _coord_server.stop()
         typer.echo(
             "\n⚠ Interrupted. The dev branch and board may be in a partial "
             "state. Run `orc run` again to resume.",
@@ -248,6 +261,7 @@ def _run(
         )
         raise typer.Exit(code=1)
     except Exception:
+        _coord_server.stop()
         logger.exception("orc run loop crashed")
         raise
 

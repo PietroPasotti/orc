@@ -1,11 +1,11 @@
 """Tests for orc/cli/run.py."""
 
 from dataclasses import replace as _replace
+from unittest.mock import MagicMock
 
 import pytest
 from typer.testing import CliRunner
 
-import orc.board as _board
 import orc.cli.merge as _merge_mod
 import orc.cli.run as _run_mod
 import orc.config as _cfg
@@ -32,6 +32,19 @@ def _minimal_squad(**kw) -> SquadConfig:
     return SquadConfig(**defaults)
 
 
+def _mock_coord(monkeypatch, open_tasks=None) -> MagicMock:
+    """Patch StateManager and CoordinationServer so no real I/O happens in tests."""
+    if open_tasks is None:
+        open_tasks = [{"name": "0001-test.md"}]
+    mock_state = MagicMock()
+    mock_state.get_open_tasks.return_value = open_tasks
+    mock_state.get_pending_visions.return_value = []
+    mock_server = MagicMock()
+    monkeypatch.setattr(_run_mod, "StateManager", lambda *a, **kw: mock_state)
+    monkeypatch.setattr(_run_mod, "CoordinationServer", lambda *a, **kw: mock_server)
+    return mock_state
+
+
 class TestRunBareRaise:
     def test_run_loop_crash_reraises(self, tmp_path, monkeypatch):
         """Lines 62-67: exception from dispatcher.run() is logged and re-raised."""
@@ -40,9 +53,8 @@ class TestRunBareRaise:
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-        monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
-        monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        _mock_coord(monkeypatch)
 
         def boom(*a, **kw):
             raise RuntimeError("crashed")
@@ -61,9 +73,8 @@ class TestRunBareRaise:
         monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-        monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
-        monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        _mock_coord(monkeypatch)
 
         def _interrupt(*a, **kw):
             raise KeyboardInterrupt()
@@ -87,10 +98,8 @@ def _patch_run_deps(monkeypatch, tmp_path, *, dispatcher_run=None):
     monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
     monkeypatch.setattr(tg, "get_messages", lambda: [])
     monkeypatch.setattr(_merge_mod, "_rebase_dev_on_main", lambda msgs, squad: None)
-    monkeypatch.setattr(_board, "clear_all_assignments", lambda: None)
     monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
-    # Return a non-empty task list so initial_work.any_work() is True.
-    monkeypatch.setattr(_board, "get_open_tasks", lambda: [{"name": "0001-test.md"}])
+    _mock_coord(monkeypatch)
     if dispatcher_run is not None:
         monkeypatch.setattr(_disp.Dispatcher, "run", dispatcher_run)
     else:
@@ -234,8 +243,8 @@ class TestEarlyExit:
     def test_no_pending_work_skips_dispatcher(self, tmp_path, monkeypatch):
         """_run() exits early without creating a Dispatcher when no work."""
         _patch_run_deps(monkeypatch, tmp_path)
-        # Override get_open_tasks to return nothing so all work sources are empty.
-        monkeypatch.setattr(_board, "get_open_tasks", lambda: [])
+        # Override StateManager to return no open tasks so all work sources are empty.
+        _mock_coord(monkeypatch, open_tasks=[])
         dispatcher_run_called = []
         monkeypatch.setattr(
             _disp.Dispatcher, "run", lambda self, **kw: dispatcher_run_called.append(True)

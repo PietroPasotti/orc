@@ -1,15 +1,25 @@
 # Agent Tools
 
 Python scripts that agents use to update the board and signal their exit state.
-Using these scripts is mandatory — hand-crafting board updates is error-prone
+Using these scripts is **mandatory** — hand-crafting board updates is error-prone
 and wastes tokens.
+
+> ⚠️ **IMPORTANT — No direct `.orc/` filesystem access**
+>
+> All board and vision state is managed exclusively through the **orc coordination
+> API** (a Unix socket server started by `orc run`).  **Never** read or write files
+> under `.orc/work/`, `.orc/vision/`, or `board.yaml` directly.  The project may
+> use git worktrees where each worktree has its own `.orc/` copy; direct access will
+> silently write to the wrong directory.  Always use the agent tool scripts below —
+> they talk to the coordination API via the `ORC_API_SOCKET` environment variable
+> set by the orchestrator.
 
 ## How signalling works
 
-Agents communicate their status by writing to the **board** (stored in
-`.orc/work/`, gitignored).  The orchestrator polls the board and dispatches
-the next agent based on each task's `status` field.  There is no commit-message
-parsing — the board is the single source of truth.
+Agents communicate their status by calling the **coordination API**, which updates
+the **board** (stored in `.orc/work/`, gitignored).  The orchestrator polls the
+board and dispatches the next agent based on each task's `status` field.  There is
+no commit-message parsing — the board is the single source of truth.
 
 | Status | Set by | Meaning |
 |---|---|---|
@@ -25,11 +35,12 @@ parsing — the board is the single source of truth.
 ### Planner
 
 ```bash
-# 1. Create a new task (writes to .orc/work/, updates board)
+# 1. Create a new task (calls API → writes to .orc/work/, updates board)
 .orc/agent_tools/planner/create_task.py <task-title>
 # Example:
 .orc/agent_tools/planner/create_task.py add-user-auth
 # → creates 0003-add-user-auth.md in .orc/work/, sets status: planned
+# → prints the absolute path of the created file
 
 # 2. Commit the task to dev (board lives in .orc/work/; optionally stage ADRs)
 .orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
@@ -37,7 +48,7 @@ parsing — the board is the single source of truth.
 .orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth
 .orc/agent_tools/planner/publish_task.py planner-1 0003-add-user-auth docs/adr/0042-auth.md
 
-# 3. Close a completed vision (deletes from .orc/vision/, appends to changelog)
+# 3. Close a completed vision (calls API → deletes from .orc/vision/, appends to changelog)
 .orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-name...]
 ```
 
