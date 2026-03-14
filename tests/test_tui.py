@@ -9,7 +9,7 @@ from unittest.mock import patch
 import rich.console
 import rich.panel
 
-from orc.tui.run_tui import (
+from orc.cli.tui.run_tui import (
     AgentData,
     OrcApp,
     OrcData,
@@ -60,17 +60,17 @@ def _panel_to_str(panel: rich.panel.Panel) -> str:
 
 class TestElapsed:
     def test_zero_seconds(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             assert _elapsed(0.0) == "0m 0s"
 
     def test_ninety_seconds(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 90.0
             assert _elapsed(0.0) == "1m 30s"
 
     def test_3661_seconds(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 3661.0
             assert _elapsed(0.0) == "61m 1s"
 
@@ -82,35 +82,35 @@ class TestAgentCard:
         assert card.title == "planner-1"
 
     def test_body_contains_status(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             card = _agent_card(_row(status="done"))
         out = _panel_to_str(card)
         assert "done" in out
 
     def test_body_contains_task_name(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             card = _agent_card(_row(task_name="0002-bar.md"))
         out = _panel_to_str(card)
         assert "0002-bar.md" in out
 
     def test_none_task_name_shows_dash(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             card = _agent_card(_row(task_name=None))
         out = _panel_to_str(card)
         assert "—" in out
 
     def test_body_contains_worktree_basename(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             card = _agent_card(_row(worktree="/some/path/myworktree"))
         out = _panel_to_str(card)
         assert "myworktree" in out
 
     def test_body_contains_elapsed(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 90.0
             card = _agent_card(_row(started_at=0.0))
         out = _panel_to_str(card)
@@ -228,7 +228,7 @@ class TestRenderZeroAgents:
         assert "orc-0" not in out
 
     def test_one_planner_two_coders_one_qa(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(
                 agents=[
@@ -248,42 +248,42 @@ class TestRenderZeroAgents:
         assert "QA" in out
 
     def test_renders_agent_id(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(agent_id="coder-1")])
             out = _render_to_str(state)
         assert "coder-1" in out
 
     def test_renders_model(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(model="gpt-4")])
             out = _render_to_str(state)
         assert "gpt-4" in out
 
     def test_renders_status(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(status="running")])
             out = _render_to_str(state)
         assert "running" in out
 
     def test_renders_task_name(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(task_name="0002-bar.md")])
             out = _render_to_str(state)
         assert "0002-bar.md" in out
 
     def test_none_task_name_renders_dash(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(task_name=None)])
             out = _render_to_str(state)
         assert "—" in out
 
     def test_renders_worktree_basename(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(worktree="/wt/mypath")])
             out = _render_to_str(state)
@@ -292,21 +292,21 @@ class TestRenderZeroAgents:
 
 class TestRenderRoles:
     def test_planner_role(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(role="planner", task_name=None)])
             out = _render_to_str(state)
         assert "Planner" in out
 
     def test_coder_role(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(role="coder")])
             out = _render_to_str(state)
         assert "Coder" in out
 
     def test_qa_role(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(agents=[_row(role="qa")])
             out = _render_to_str(state)
@@ -315,7 +315,7 @@ class TestRenderRoles:
 
 class TestRenderMultipleAgents:
     def test_two_agents(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(
                 agents=[
@@ -328,7 +328,7 @@ class TestRenderMultipleAgents:
         assert "qa-1" in out
 
     def test_three_agents_different_roles(self):
-        with patch("orc.tui.run_tui.time") as mock_time:
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
             mock_time.monotonic.return_value = 0.0
             state = RunState(
                 agents=[

@@ -18,9 +18,9 @@ import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
 import orc.git.core as _git
-from orc import tui as _tui
 from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
+from orc.cli import tui as _tui
 from orc.coordination import CoordinationServer, StateManager
 from orc.engine import dispatcher as _disp
 from orc.engine.pool import AgentProcess

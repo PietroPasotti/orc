@@ -385,7 +385,8 @@ class TestStatusCoverage:
         launched: list[str] = []
         monkeypatch.setattr(_st, "_is_tty", lambda: True)
 
-        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+        _patch = "orc.cli.tui.status_tui.StatusApp.run"
+        with patch(_patch, lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--squad", "default"])
 
         assert result.exit_code == 0
@@ -452,7 +453,8 @@ class TestStatusCoverage:
         launched: list[str] = []
         monkeypatch.setattr(_st, "_is_tty", lambda: True)
 
-        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+        _patch = "orc.cli.tui.status_tui.StatusApp.run"
+        with patch(_patch, lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--plain"])
 
         assert result.exit_code == 0
@@ -475,7 +477,8 @@ class TestStatusCoverage:
         launched: list[str] = []
         monkeypatch.setattr(_st, "_is_tty", lambda: True)
 
-        with patch("orc.tui.status_tui.StatusApp.run", lambda self: launched.append(self._squad)):
+        _patch = "orc.cli.tui.status_tui.StatusApp.run"
+        with patch(_patch, lambda self: launched.append(self._squad)):
             result = runner.invoke(m.app, ["status", "--squad", "default"])
 
         assert result.exit_code == 0
