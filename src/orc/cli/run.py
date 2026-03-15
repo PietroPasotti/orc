@@ -113,6 +113,7 @@ def _run(
     workflow_svc = _wf.WorkflowSvc(squad_cfg)
     agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
     worktree_svc = _wf.WorktreeManager()
+    messaging_svc = tg.TelegramMessagingService()
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:

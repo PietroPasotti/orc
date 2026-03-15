@@ -216,7 +216,7 @@ class TestWaitForHumanReply:
         self._patch_configured(monkeypatch)
         snapshot = [self._human("hi", ts=1)]
         human = self._human("reply", ts=2)
-        monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [human])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot + [human])
         self._mock_time(monkeypatch, [0.0, 1.0])
         # Call without explicit timeout — should use config default (3600.0)
         result = _ctx.wait_for_human_reply(snapshot)

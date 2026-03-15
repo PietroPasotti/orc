@@ -42,6 +42,7 @@ class TestMakeMergeFeatureFn:
         monkeypatch.setattr(_wf, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))
         monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: "ctx")
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda *a, **kw: 1)
         squad = self._make_squad(monkeypatch)
 
         fn = _wf._make_merge_feature_fn(squad)
@@ -50,8 +51,6 @@ class TestMakeMergeFeatureFn:
 
     def test_raises_exit_when_merge_still_in_progress_after_coder(self, monkeypatch, tmp_path):
         """If merge is still in progress after coder exits, typer.Exit is raised."""
-        import pytest
-        import typer
 
         exc = MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
         monkeypatch.setattr(_wf, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))

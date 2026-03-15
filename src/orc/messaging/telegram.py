@@ -228,7 +228,6 @@ def _get_messages(limit: int = 100) -> list[ChatMessage]:
     return merged
 
 
-
 class TelegramMessagingService:
     """Sole public API for Telegram messaging.
 

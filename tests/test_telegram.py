@@ -186,6 +186,32 @@ class TestTelegramCoverage:
         assert len(msgs) == 1
         assert msgs[0].text == "hello"
 
+    def test_parse_chat_message_non_dict_sender(self):
+        """Line 132: when 'from' is not a dict, sender_name falls back to 'unknown'."""
+        raw: dict[str, object] = {"text": "hello", "date": 1, "from": "not-a-dict"}
+        msg = tg._parse_chat_message(raw)
+        assert msg.text == "hello"
+        assert msg.sender_name == "unknown"
+
+    def test_get_telegram_updates_non_list_result(self, monkeypatch):
+        """Line 171: when 'result' is not a list, return empty list."""
+        monkeypatch.setattr(tg, "_TOKEN", "tok123")
+        monkeypatch.setattr(tg, "_CHAT_ID", "456")
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {"result": "unexpected-string"}
+        fake_client = MagicMock()
+        fake_client.__enter__ = lambda s: fake_client
+        fake_client.__exit__ = MagicMock(return_value=False)
+        fake_client.get.return_value = fake_resp
+        httpx_mod = sys.modules["httpx"]
+        orig = httpx_mod.Client
+        httpx_mod.Client = MagicMock(return_value=fake_client)
+        try:
+            msgs = tg._get_telegram_updates()
+        finally:
+            httpx_mod.Client = orig
+        assert msgs == []
+
     def test_get_telegram_updates_filters_no_message(self, tmp_path, monkeypatch):
         """Lines 132-139: updates without 'message' key are filtered."""
         monkeypatch.setattr(tg, "_TOKEN", "tok123")
