@@ -50,7 +50,7 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "is_configured", return_value=True),
+            patch.object(tg, "_is_configured", return_value=True),
             patch("httpx.Client") as mock_client_cls,
         ):
             mock_client = MagicMock()
@@ -59,20 +59,20 @@ class TestLocalChatLog:
             mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            tg.send_message("[planner-1](ready) 2026-03-09T10:00:00Z: Plan created.")
+            tg._send_message("[planner-1](ready) 2026-03-09T10:00:00Z: Plan created.")
 
         lines = [json.loads(ln) for ln in log_file.read_text().splitlines() if ln.strip()]
         assert len(lines) == 1
         assert lines[0]["text"] == "[planner-1](ready) 2026-03-09T10:00:00Z: Plan created."
 
     def test_send_message_no_telegram_writes_log_only(self, tmp_path):
-        """When Telegram is not configured, send_message writes to local log only."""
+        """When Telegram is not configured, _send_message writes to local log only."""
         log_file = tmp_path / "chat.log"
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "is_configured", return_value=False),
+            patch.object(tg, "_is_configured", return_value=False),
         ):
-            tg.send_message("[coder-1](ready) 2026-03-09T10:00:00Z: Done.")
+            tg._send_message("[coder-1](ready) 2026-03-09T10:00:00Z: Done.")
         lines = [json.loads(ln) for ln in log_file.read_text().splitlines() if ln.strip()]
         assert len(lines) == 1
         assert lines[0]["text"] == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
@@ -90,17 +90,17 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "is_configured", return_value=True),
+            patch.object(tg, "_is_configured", return_value=True),
             patch.object(tg, "_get_telegram_updates", return_value=[human_msg]),
         ):
-            msgs = tg.get_messages()
+            msgs = tg._get_messages()
 
         assert len(msgs) == 2
         assert msgs[0].date == 1000
         assert msgs[1].date == 2000
 
     def test_get_messages_no_telegram_returns_log_only(self, tmp_path):
-        """When Telegram is not configured, get_messages returns local log only."""
+        """When Telegram is not configured, _get_messages returns local log only."""
         log_file = tmp_path / "chat.log"
         entry = {
             "text": "[coder-1](ready) 2026-03-09T10:00:00Z: Done.",
@@ -111,9 +111,9 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "is_configured", return_value=False),
+            patch.object(tg, "_is_configured", return_value=False),
         ):
-            msgs = tg.get_messages()
+            msgs = tg._get_messages()
 
         assert len(msgs) == 1
         assert msgs[0].text == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
@@ -128,9 +128,10 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
+            patch.object(tg, "_is_configured", return_value=True),
             patch.object(tg, "_get_telegram_updates", return_value=[duplicate]),
         ):
-            msgs = tg.get_messages()
+            msgs = tg._get_messages()
 
         assert len(msgs) == 1
 
@@ -145,10 +146,10 @@ class TestLocalChatLog:
 
         with (
             patch.object(tg, "_LOG_FILE", log_file),
-            patch.object(tg, "is_configured", return_value=True),
+            patch.object(tg, "_is_configured", return_value=True),
             patch.object(tg, "_get_telegram_updates", side_effect=Exception("no network")),
         ):
-            msgs = tg.get_messages()
+            msgs = tg._get_messages()
 
         assert len(msgs) == 1
         assert msgs[0].text == "[coder-1](done) 2026-03-09T11:00:00Z: Done."
@@ -185,6 +186,32 @@ class TestTelegramCoverage:
         assert len(msgs) == 1
         assert msgs[0].text == "hello"
 
+    def test_parse_chat_message_non_dict_sender(self):
+        """Line 132: when 'from' is not a dict, sender_name falls back to 'unknown'."""
+        raw: dict[str, object] = {"text": "hello", "date": 1, "from": "not-a-dict"}
+        msg = tg._parse_chat_message(raw)
+        assert msg.text == "hello"
+        assert msg.sender_name == "unknown"
+
+    def test_get_telegram_updates_non_list_result(self, monkeypatch):
+        """Line 171: when 'result' is not a list, return empty list."""
+        monkeypatch.setattr(tg, "_TOKEN", "tok123")
+        monkeypatch.setattr(tg, "_CHAT_ID", "456")
+        fake_resp = MagicMock()
+        fake_resp.json.return_value = {"result": "unexpected-string"}
+        fake_client = MagicMock()
+        fake_client.__enter__ = lambda s: fake_client
+        fake_client.__exit__ = MagicMock(return_value=False)
+        fake_client.get.return_value = fake_resp
+        httpx_mod = sys.modules["httpx"]
+        orig = httpx_mod.Client
+        httpx_mod.Client = MagicMock(return_value=fake_client)
+        try:
+            msgs = tg._get_telegram_updates()
+        finally:
+            httpx_mod.Client = orig
+        assert msgs == []
+
     def test_get_telegram_updates_filters_no_message(self, tmp_path, monkeypatch):
         """Lines 132-139: updates without 'message' key are filtered."""
         monkeypatch.setattr(tg, "_TOKEN", "tok123")
@@ -217,12 +244,12 @@ class TestTelegramCoverage:
     def test_is_configured_true(self, monkeypatch):
         monkeypatch.setattr(tg, "_TOKEN", "tok")
         monkeypatch.setattr(tg, "_CHAT_ID", "123")
-        assert tg.is_configured() is True
+        assert tg._is_configured() is True
 
     def test_is_configured_false_no_token(self, monkeypatch):
         monkeypatch.setattr(tg, "_TOKEN", None)
         monkeypatch.setattr(tg, "_CHAT_ID", "123")
-        assert tg.is_configured() is False
+        assert tg._is_configured() is False
 
     def test_is_agent_message_true(self):
         assert tg.is_agent_message("[coder-1](done) 2026-01-01T00:00:00Z: Done.")
@@ -248,3 +275,37 @@ class TestTelegramCoverage:
         monkeypatch.setattr(tg, "_LOG_FILE", None)
         result = tg._get_log_file()
         assert result == log_dir / "chat.log"
+
+
+# ---------------------------------------------------------------------------
+# TelegramMessagingService — public API surface
+# ---------------------------------------------------------------------------
+
+
+class TestTelegramMessagingService:
+    def test_is_configured_delegates_to_private(self, monkeypatch):
+        monkeypatch.setattr(tg, "_TOKEN", "tok")
+        monkeypatch.setattr(tg, "_CHAT_ID", "chat")
+        assert tg.TelegramMessagingService().is_configured() is True
+        monkeypatch.setattr(tg, "_TOKEN", None)
+        assert tg.TelegramMessagingService().is_configured() is False
+
+    def test_send_message_delegates_to_private(self, tmp_path, monkeypatch):
+        sent: list[str] = []
+        monkeypatch.setattr(tg, "_send_message", lambda text: sent.append(text))
+        tg.TelegramMessagingService().send_message("hello")
+        assert sent == ["hello"]
+
+    def test_get_messages_delegates_to_private(self, monkeypatch):
+        msgs = [tg.ChatMessage(text="hi", date=1, sender_name="u")]
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: msgs)
+        result = tg.TelegramMessagingService().get_messages()
+        assert result == msgs
+
+    def test_post_boot_message_sends_formatted(self, monkeypatch):
+        sent: list[str] = []
+        monkeypatch.setattr(tg, "_send_message", lambda text: sent.append(text))
+        tg.TelegramMessagingService().post_boot_message("coder-1", "Starting up.")
+        assert len(sent) == 1
+        assert "coder-1" in sent[0]
+        assert "boot" in sent[0]

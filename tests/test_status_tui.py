@@ -2,291 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import replace as _replace
 from unittest.mock import MagicMock, patch
 
-import pytest
 import rich.table
 
-import orc.config as _cfg
 from orc.cli.tui.status_tui import (
     _TAB_NAMES,
-    CommitInfo,
     StatusApp,
     _capture_status,
-    _classify_commit,
-    _feat_branches,
-    _git_log,
-    _main_branch,
     _render_board,
-    gather_git_tree,
-    render_git_tree,
     run_status_tui,
 )
-from orc.config import OrcConfig
 from orc.coordination.models import TaskEntry
-
-
-class TestClassifyCommit:
-    @pytest.mark.parametrize(
-        "subject,expected_style,expected_icon",
-        [
-            ("qa(passed): all checks green", "bold green", "✅"),
-            ("qa(blocked): cannot run tests", "bold red", "❌"),
-            ("qa(failed): type errors", "bold red", "❌"),
-            ("Merge feat/0001-foo into dev", "bold blue", "🔀"),
-            ("merge feat/0002-bar into dev", "bold blue", "🔀"),
-            ("chore(orc): close task 0001-foo", "bold cyan", "📋"),
-            ("feat: add user authentication", "", ""),
-            ("", "", ""),
-        ],
-    )
-    def test_classify_commit(self, subject, expected_style, expected_icon):
-        style, icon = _classify_commit(subject)
-        assert style == expected_style
-        assert icon == expected_icon
-
-
-class TestGitLog:
-    def test_parses_valid_output(self, tmp_path):
-        def fake_run(args, **kw):
-            r = MagicMock()
-            r.stdout = (
-                "abc123def456|abc123|feat: add thing|1700000000\n"
-                "def456abc789|def456|fix: correct bug|1699990000\n"
-            )
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path)),
-        ):
-            rows = _git_log("main", [])
-
-        assert len(rows) == 2
-        sha, short, subject, ts = rows[0]
-        assert sha == "abc123def456"
-        assert short == "abc123"
-        assert subject == "feat: add thing"
-        assert ts == 1700000000
-
-    def test_empty_output(self, tmp_path):
-        def fake_run(args, **kw):
-            r = MagicMock()
-            r.stdout = ""
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path)),
-        ):
-            rows = _git_log("main", [])
-
-        assert rows == []
-
-    def test_subprocess_error_returns_empty(self, tmp_path):
-        def fake_run(args, **kw):
-            raise OSError("git not found")
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path)),
-        ):
-            rows = _git_log("main", [])
-
-        assert rows == []
-
-    def test_exclude_args_passed(self, tmp_path):
-        captured: list[list[str]] = []
-
-        def fake_run(args, **kw):
-            captured.append(args)
-            r = MagicMock()
-            r.stdout = ""
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path)),
-        ):
-            _git_log("dev", ["main"])
-
-        assert "^main" in captured[0]
-
-
-class TestFeatBranches:
-    def test_returns_sorted_branches(self, tmp_path):
-        def fake_run(args, **kw):
-            r = MagicMock()
-            r.stdout = "  feat/0002-bar\n  feat/0001-foo\n"
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path, branch_prefix="")),
-        ):
-            branches = _feat_branches()
-
-        assert branches == ["feat/0001-foo", "feat/0002-bar"]
-
-    def test_applies_branch_prefix(self, tmp_path):
-        captured: list[list[str]] = []
-
-        def fake_run(args, **kw):
-            captured.append(args)
-            r = MagicMock()
-            r.stdout = "  orc/feat/0001-foo\n"
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch(
-                "orc.config._config", _replace(_cfg.get(), repo_root=tmp_path, branch_prefix="orc")
-            ),
-        ):
-            branches = _feat_branches()
-
-        assert "orc/feat/*" in captured[0]
-        assert branches == ["orc/feat/0001-foo"]
-
-    def test_subprocess_error_returns_empty(self, tmp_path):
-        def fake_run(args, **kw):
-            raise OSError("git not found")
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path, branch_prefix="")),
-        ):
-            assert _feat_branches() == []
-
-
-class TestGatherGitTree:
-    def _make_fake_run(self, branch_output: dict[str, str]) -> object:
-        """Return a fake subprocess.run that returns different output per branch arg."""
-
-        def fake_run(args, **kw):
-            r = MagicMock()
-            # git branch --list → feat branches
-            if "--list" in args:
-                r.stdout = branch_output.get("__list__", "")
-                return r
-            # git log → find branch name in args
-            for branch, out in branch_output.items():
-                if branch != "__list__" and branch in args:
-                    r.stdout = out
-                    return r
-            r.stdout = ""
-            return r
-
-        return fake_run
-
-    def test_basic_structure(self, tmp_path, monkeypatch):
-        fake_run = self._make_fake_run(
-            {
-                "__list__": "",  # no feat branches
-                "main": "aaabbbccc|aaabbb|Initial commit|1700000100\n",
-                "dev": "dddeeeffe|dddeee|feat: add work|1700000200\n",
-            }
-        )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
-        )
-        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
-        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
-        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
-
-        with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
-            branches, commits = gather_git_tree()
-
-        assert branches[0] == "main"
-        assert branches[1] == "dev"
-        assert len(commits) == 2
-        # dev commit has higher timestamp → appears first
-        assert commits[0].branch == "dev"
-        assert commits[1].branch == "main"
-
-    def test_commits_sorted_newest_first(self, tmp_path, monkeypatch):
-        fake_run = self._make_fake_run(
-            {
-                "__list__": "  feat/0001-foo\n",
-                "main": "aaa|aaa|main commit|1000\n",
-                "dev": "bbb|bbb|dev commit|3000\n",
-                "feat/0001-foo": "ccc|ccc|feat commit|2000\n",
-            }
-        )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
-        )
-        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
-        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
-        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
-
-        with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
-            _, commits = gather_git_tree()
-
-        timestamps = [c.timestamp for c in commits]
-        assert timestamps == sorted(timestamps, reverse=True)
-
-    def test_deduplicates_shas(self, tmp_path, monkeypatch):
-        # Same SHA appearing in both main and dev outputs → only kept once.
-        fake_run = self._make_fake_run(
-            {
-                "__list__": "",
-                "main": "same1234|same12|shared commit|1000\n",
-                "dev": "same1234|same12|shared commit|1000\n",
-            }
-        )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
-        )
-        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
-        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
-        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
-
-        with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
-            _, commits = gather_git_tree()
-
-        shas = [c.sha for c in commits]
-        assert len(shas) == len(set(shas))
-
-
-class TestRenderGitTree:
-    def test_returns_rich_table(self, tmp_path, monkeypatch):
-        def fake_gather():
-            branches = ["main", "dev"]
-            commits = [
-                CommitInfo("abc", "abc", "feat: thing", 1000, "dev", 1),
-                CommitInfo("def", "def", "qa(passed): ok", 900, "dev", 1),
-            ]
-            return branches, commits
-
-        monkeypatch.setattr("orc.cli.tui.status_tui.gather_git_tree", fake_gather)
-        result = render_git_tree()
-        assert isinstance(result, rich.table.Table)
-
-    def test_error_returns_text(self, monkeypatch):
-        def fake_gather():
-            raise RuntimeError("no git")
-
-        monkeypatch.setattr("orc.cli.tui.status_tui.gather_git_tree", fake_gather)
-        from rich.text import Text
-
-        result = render_git_tree()
-        assert isinstance(result, Text)
-
-    def test_empty_commits_still_renders(self, monkeypatch):
-        def fake_gather():
-            return ["main", "dev"], []
-
-        monkeypatch.setattr("orc.cli.tui.status_tui.gather_git_tree", fake_gather)
-        result = render_git_tree()
-        assert isinstance(result, rich.table.Table)
 
 
 class TestCaptureStatus:
@@ -314,87 +41,6 @@ class TestCaptureStatus:
         assert "Error" in output
 
 
-class TestMainBranch:
-    def test_uses_config_value_when_set(self, monkeypatch):
-        monkeypatch.setattr(
-            "orc.cli.tui.status_tui._cfg.load_orc_config",
-            lambda *a, **kw: OrcConfig(orc_main_branch="trunk"),
-        )
-        assert _main_branch() == "trunk"
-
-    def test_falls_back_to_default_branch(self, monkeypatch):
-        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
-        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
-        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "master")
-        assert _main_branch() == "master"
-
-    def test_ignores_empty_string_config(self, monkeypatch):
-        monkeypatch.setattr(
-            "orc.cli.tui.status_tui._cfg.load_orc_config",
-            lambda *a, **kw: OrcConfig(orc_main_branch=""),
-        )
-        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
-        assert _main_branch() == "main"
-
-
-class TestGitLogEdgeCases:
-    def test_invalid_timestamp_becomes_zero(self, tmp_path):
-        def fake_run(args, **kw):
-            r = MagicMock()
-            r.stdout = "abc|abc|subject|not-a-number\n"
-            return r
-
-        with (
-            patch("orc.cli.tui.status_tui.subprocess.run", fake_run),
-            patch("orc.config._config", _replace(_cfg.get(), repo_root=tmp_path)),
-        ):
-            rows = _git_log("main", [])
-
-        assert len(rows) == 1
-        assert rows[0][3] == 0  # timestamp defaults to 0
-
-
-class TestGatherGitTreeEdgeCases:
-    def test_main_branch_exception_falls_back_to_main(self, tmp_path, monkeypatch):
-        def bad_main():
-            raise RuntimeError("no remote")
-
-        def fake_run(args, **kw):
-            r = MagicMock()
-            r.stdout = ""
-            return r
-
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
-        )
-        monkeypatch.setattr("orc.cli.tui.status_tui._main_branch", bad_main)
-
-        with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
-            branches, _ = gather_git_tree()
-
-        assert branches[0] == "main"
-
-
-class TestRenderGitTreeEdgeCases:
-    def test_no_branches_returns_text(self, monkeypatch):
-        monkeypatch.setattr("orc.cli.tui.status_tui.gather_git_tree", lambda: ([], []))
-        from rich.text import Text
-
-        result = render_git_tree()
-        assert isinstance(result, Text)
-
-    def test_long_subject_is_truncated(self, monkeypatch):
-        long_subject = "a" * 80
-        commits = [CommitInfo("abc", "abc", long_subject, 1000, "main", 0)]
-        monkeypatch.setattr("orc.cli.tui.status_tui.gather_git_tree", lambda: (["main"], commits))
-        result = render_git_tree()
-        assert isinstance(result, rich.table.Table)
-        # Verify the truncation happened by checking we can still build the table.
-        # (If truncation failed, it would have raised an error.)
-
-
 class TestStatusApp:
     """Unit-test StatusApp internals without a live Textual event loop."""
 
@@ -409,14 +55,14 @@ class TestStatusApp:
         # First tab "Agents" should be highlighted (reverse bold).
         assert "reverse bold" in markup
         assert "Agents" in markup
-        assert "Git Tree" in markup
+        assert "Board" in markup
 
     def test_tab_bar_markup_second_tab_active(self):
         app = StatusApp()
         app._tab_index = 1
         markup = app._tab_bar_markup()
         assert "Agents" in markup
-        assert "Git Tree" in markup
+        assert "Board" in markup
 
     def test_action_tab_next_increments_index(self):
         app = StatusApp()
@@ -427,7 +73,7 @@ class TestStatusApp:
 
     def test_action_tab_next_wraps_around(self):
         app = StatusApp()
-        app._tab_index = 2  # last tab
+        app._tab_index = 1  # last tab
         app._apply_tab = lambda: None
         app.action_tab_next()
         assert app._tab_index == 0
@@ -444,7 +90,7 @@ class TestStatusApp:
         app._tab_index = 0
         app._apply_tab = lambda: None
         app.action_tab_prev()
-        assert app._tab_index == 2  # wraps to last tab
+        assert app._tab_index == 1  # wraps to last tab
 
     def test_apply_tab_calls_query_one(self):
         app = StatusApp()
@@ -473,16 +119,13 @@ class TestStatusApp:
         app = StatusApp()
         refreshed: list[str] = []
         app._refresh_agents = lambda: refreshed.append("agents")
-        app._refresh_git_tree = lambda: refreshed.append("git_tree")
         app.on_mount()
-        # git tree is loaded lazily on first tab switch, not on mount
         assert "agents" in refreshed
-        assert "git_tree" not in refreshed
 
-    def test_git_tree_loaded_lazily_on_tab_switch(self):
+    def test_board_loaded_lazily_on_tab_switch(self):
         app = StatusApp()
         refreshed: list[str] = []
-        app._refresh_git_tree = lambda: refreshed.append("git_tree")
+        app._refresh_board = lambda: refreshed.append("board")
 
         class FakeStatic:
             def update(self, x: object) -> None:
@@ -497,16 +140,16 @@ class TestStatusApp:
             return FakeContentSwitcher()
 
         app.query_one = fake_query_one
-        assert not app._git_tree_loaded
-        # simulate switching to the git tree tab (index 1)
+        assert not app._board_loaded
+        # simulate switching to the board tab (index 1)
         app._tab_index = 1
         app._apply_tab()
-        assert "git_tree" in refreshed
-        assert app._git_tree_loaded
+        assert "board" in refreshed
+        assert app._board_loaded
         # switching again should NOT reload
         refreshed.clear()
         app._apply_tab()
-        assert "git_tree" not in refreshed
+        assert "board" not in refreshed
 
     def test_refresh_agents_updates_widget(self, monkeypatch):
         monkeypatch.setattr(
@@ -522,20 +165,6 @@ class TestStatusApp:
         app.query_one = lambda sel, wt=None: FakeStatic()
         app._refresh_agents()
         assert updates == ["agent output"]
-
-    def test_refresh_git_tree_updates_widget(self, monkeypatch):
-        fake_renderable = MagicMock()
-        monkeypatch.setattr("orc.cli.tui.status_tui.render_git_tree", lambda: fake_renderable)
-        app = StatusApp()
-        updates: list = []
-
-        class FakeStatic:
-            def update(self, x: object) -> None:
-                updates.append(x)
-
-        app.query_one = lambda sel, wt=None: FakeStatic()
-        app._refresh_git_tree()
-        assert updates == [fake_renderable]
 
     def test_active_scroll_returns_scroll_widget(self):
         app = StatusApp()
@@ -625,8 +254,8 @@ class TestBoardTabPresent:
     def test_board_tab_in_tab_names(self):
         assert "Board" in _TAB_NAMES
 
-    def test_board_tab_is_third(self):
-        assert _TAB_NAMES[2] == "Board"
+    def test_board_tab_is_second(self):
+        assert _TAB_NAMES[1] == "Board"
 
 
 class TestRenderBoardServerDown:
@@ -790,11 +419,10 @@ class TestStatusAppBoardTab:
         app._refresh_board()
         assert updates == [fake_renderable]
 
-    def test_apply_tab_loads_board_on_index_2(self, monkeypatch):
+    def test_apply_tab_loads_board_on_index_1(self, monkeypatch):
         app = StatusApp()
         refreshed: list[str] = []
         app._refresh_board = lambda: refreshed.append("board")
-        app._refresh_git_tree = lambda: None
 
         # Stub out query_one to avoid live widget requirement
         mock_static = MagicMock()
@@ -807,7 +435,7 @@ class TestStatusAppBoardTab:
             return mock_switcher
 
         app.query_one = _query
-        app._tab_index = 2
+        app._tab_index = 1
         app._apply_tab()
         assert refreshed == ["board"]
         assert app._board_loaded is True
@@ -817,7 +445,6 @@ class TestStatusAppBoardTab:
         app._board_loaded = True
         refreshed: list[str] = []
         app._refresh_board = lambda: refreshed.append("board")
-        app._refresh_git_tree = lambda: None
 
         mock_static = MagicMock()
         mock_switcher = MagicMock()
@@ -828,13 +455,13 @@ class TestStatusAppBoardTab:
             return mock_switcher
 
         app.query_one = _query
-        app._tab_index = 2
+        app._tab_index = 1
         app._apply_tab()
         assert refreshed == []
 
     def test_scroll_left_board_calls_scroll_left_when_on_board_tab(self):
         app = StatusApp()
-        app._tab_index = 2
+        app._tab_index = 1
         scrolled: list[str] = []
 
         class FakeScroll:
@@ -854,7 +481,7 @@ class TestStatusAppBoardTab:
 
     def test_scroll_right_board_calls_scroll_right_when_on_board_tab(self):
         app = StatusApp()
-        app._tab_index = 2
+        app._tab_index = 1
         scrolled: list[str] = []
 
         class FakeScroll:
@@ -867,20 +494,20 @@ class TestStatusAppBoardTab:
 
     def test_scroll_right_board_noop_when_not_on_board_tab(self):
         app = StatusApp()
-        app._tab_index = 1
+        app._tab_index = 0
         app._active_scroll = lambda: MagicMock()
         app.action_scroll_right_board()
 
     def test_scroll_left_board_noop_when_no_active_scroll(self):
         app = StatusApp()
-        app._tab_index = 2
+        app._tab_index = 1
         app._active_scroll = lambda: None
         # Should not raise.
         app.action_scroll_left_board()
 
     def test_scroll_right_board_noop_when_no_active_scroll(self):
         app = StatusApp()
-        app._tab_index = 2
+        app._tab_index = 1
         app._active_scroll = lambda: None
         # Should not raise.
         app.action_scroll_right_board()

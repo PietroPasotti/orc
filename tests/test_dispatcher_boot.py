@@ -55,7 +55,7 @@ class TestBootMessageSentBeforeInvoke:
         def fake_send(text):
             call_order.append("send")
 
-        def fake_get():
+        def fake_get(limit=100):
             return []
 
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: "ctx")
@@ -64,8 +64,8 @@ class TestBootMessageSentBeforeInvoke:
         # Override the telegram mocks with our custom tracking
         import orc.messaging.telegram as tg
 
-        monkeypatch.setattr(tg, "send_message", fake_send)
-        monkeypatch.setattr(tg, "get_messages", fake_get)
+        monkeypatch.setattr(tg, "_send_message", fake_send)
+        monkeypatch.setattr(tg, "_get_messages", fake_get)
 
         def fake_spawn(*a, **kw):
             call_order.append("invoke")

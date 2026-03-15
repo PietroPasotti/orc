@@ -40,10 +40,10 @@ class TestBlockedResumption:
         import orc.messaging.telegram as tg
 
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
-        monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: done_msgs)
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_git_mod, "rebase_dev_on_main", lambda *_: None)
-        monkeypatch.setattr(tg, "send_message", lambda t: None)
+        monkeypatch.setattr(tg, "_send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         invocations: list[str] = []

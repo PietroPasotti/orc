@@ -42,9 +42,7 @@ def _get_role() -> AgentRole:
     """
     role = os.environ.get("ORC_AGENT_ROLE", "").strip().lower()
     if role not in _VALID_ROLES:
-        raise ValueError(
-            f"Invalid ORC_AGENT_ROLE: {role!r}. Must be one of {', '.join(_VALID_ROLES)}."
-        )
+        return AgentRole("coder")
     return AgentRole(role)
 
 
