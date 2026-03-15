@@ -188,12 +188,12 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
-        if open_visions or open_todos_and_fixmes or blocked_task:
-            planner_note = (
-                "ready (visions pending)"
-                if open_visions
-                else f"ready to clarify block on {blocked_task}"
-            )
+        if open_visions:
+            planner_note = "ready (visions pending)"
+        elif open_todos_and_fixmes:
+            planner_note = "ready (TODOs/FIXMEs pending)"
+        elif blocked_task:
+            planner_note = f"ready to clarify block on {blocked_task}"
         elif stuck_tasks:
             planner_note = "idle  (stuck tasks need human intervention, not planner)"
         else:
