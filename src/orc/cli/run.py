@@ -69,6 +69,22 @@ class _BoardSvc(BoardService):
     def scan_todos(self) -> list[dict]:
         return _ctx._scan_todos(_cfg.get().repo_root)
 
+    def is_empty(self) -> bool:
+        return not (
+            self.get_tasks()
+            or self.get_pending_visions()
+            or self.scan_todos()
+            or self.get_pending_reviews()
+            or self.get_blocked_tasks()
+        )
+
+    def query_tasks(self, status: str) -> list[str]:
+        return [
+            t["name"]
+            for t in self._state.get_tasks()
+            if isinstance(t, dict) and t.get("status") == status
+        ]
+
 
 # TODO: replace this with a git.WorktreeManager class that exposes:
 #     - ensure_feature_worktree(task_name) -> Path
@@ -189,6 +205,7 @@ def _run(
 
         def _on_agent_start(agent: AgentProcess) -> None:
             assert state is not None
+            state.current_calls += 1
             state.agents.append(
                 _tui.AgentData(
                     agent_id=agent.agent_id,
@@ -215,13 +232,7 @@ def _run(
             on_orc_status=_on_orc_status,
         )
 
-    if not (
-        board_svc.get_tasks()
-        or board_svc.get_pending_visions()
-        or board_svc.scan_todos()
-        or board_svc.get_pending_reviews()
-        or board_svc.get_blocked_tasks()
-    ):
+    if board_svc.is_empty():
         typer.echo("No pending work. Go write some vision!")
         return
 
@@ -244,7 +255,6 @@ def _run(
 
             def _updating_get_messages() -> list[dict]:
                 assert state is not None
-                state.current_calls = dispatcher.total_agent_calls
                 now = time.monotonic()
                 if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:
                     state.features_done = _safe_features_done()

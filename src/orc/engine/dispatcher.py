@@ -177,13 +177,7 @@ class Dispatcher:
 
     def _any_work(self) -> bool:
         """Return True if there is any work that could be dispatched."""
-        return bool(
-            self.board.get_tasks()
-            or self.board.get_pending_visions()
-            or self.board.scan_todos()
-            or self.board.get_pending_reviews()
-            or self.board.get_blocked_tasks()
-        )
+        return not self.board.is_empty()
 
     def _set_orc_status(self, status: str, task: str | None = None) -> None:
         """Update the orchestrator card via the optional callback."""
@@ -204,11 +198,6 @@ class Dispatcher:
             typer.echo(msg)
         else:
             logger.info(msg)
-
-    @property
-    def total_agent_calls(self) -> int:
-        """Total number of agent sessions spawned so far."""
-        return self._total_spawned
 
     def run(self, maxcalls: int = sys.maxsize) -> None:
         """Run the dispatch loop.
@@ -249,20 +238,12 @@ class Dispatcher:
             self._handle_watchdog(agent)
 
     def _drain_merge_queue(self) -> None:
-        """Merge feature branches whose tasks have been QA-approved (status 'done')."""
-        for branch in self.board.get_pending_reviews():
-            feat_idx = branch.find("feat/")
-            task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
-            task_name = task_stem + ".md"
-            token, _ = self.workflow.derive_task_state(task_name)
-            if token == QA_PASSED:
-                self._set_orc_status("running", f"merging {task_name}")
-                self._do_merge(task_name)
+        """Merge tasks that have been QA-approved (board status ``done``)."""
+        for task_name in self.board.query_tasks(status="done"):
+            self._set_orc_status("running", f"merging {task_name}")
+            self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
-        if self.dry_run:
-            self._echo(f"would dispatch up to {call_budget} agents")
-            return 0
         if call_budget > 0:
             self._echo("dispatching agents...")
             return self._dispatch(call_budget=call_budget)
@@ -353,7 +334,11 @@ class Dispatcher:
         dispatched = 0
 
         open_tasks = self.board.get_tasks()
-        has_planner_work = bool(self.board.get_pending_visions() or self.board.scan_todos())
+        has_planner_work = bool(
+            self.board.get_pending_visions()
+            or self.board.scan_todos()
+            or self.board.get_blocked_tasks()
+        )
 
         if not open_tasks:
             if not has_planner_work:
@@ -438,6 +423,8 @@ class Dispatcher:
             raise ValueError(f"No worktree: role={role!r} requires task_name")
 
         model, context = self.agent.build_context(role, agent_id, [], worktree)
+
+        self._total_spawned += 1
 
         if self.dry_run:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")

@@ -29,7 +29,16 @@ class StubBoard:
     def get_pending_reviews(self) -> list[str]:
         return []
 
+    def get_blocked_tasks(self) -> list[str]:
+        return []
+
     def scan_todos(self) -> list[dict]:
+        return []
+
+    def is_empty(self) -> bool:
+        return True
+
+    def query_tasks(self, status: str) -> list[str]:
         return []
 
 
@@ -45,16 +54,7 @@ class StubMessaging:
     def get_messages(self) -> list[dict]:
         return []
 
-    def has_unresolved_block(self, messages: list[dict]) -> tuple[str | None, str | None]:
-        return None, None
-
-    def wait_for_human_reply(self, messages: list[dict]) -> str:
-        return "ok"
-
     def post_boot_message(self, agent_id: str) -> None:
-        pass
-
-    def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
         pass
 
 

@@ -59,6 +59,14 @@ class BoardService(Protocol):
         """Return TO-DO/FIX-ME comment dicts from the repository source."""
         ...
 
+    def is_empty(self) -> bool:
+        """Return True when there is no pending work on the board."""
+        ...
+
+    def query_tasks(self, status: str) -> list[str]:
+        """Return task names whose board status equals *status*."""
+        ...
+
 
 @runtime_checkable
 class WorktreeService(Protocol):

@@ -101,6 +101,7 @@ class FakeBoard:
         get_pending_visions=None,
         get_pending_reviews=None,
         scan_todos=None,
+        get_blocked_tasks=None,
     ):
         self.get_tasks = get_tasks or (lambda: [])
         self.assign_task = lambda task, agent: None
@@ -108,6 +109,21 @@ class FakeBoard:
         self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
         self.get_pending_reviews = get_pending_reviews or (lambda: [])
         self.scan_todos = scan_todos or (lambda: [])
+        self.get_blocked_tasks = get_blocked_tasks or (lambda: [])
+
+    def is_empty(self) -> bool:
+        return not (
+            self.get_tasks()
+            or self.get_pending_visions()
+            or self.scan_todos()
+            or self.get_pending_reviews()
+            or self.get_blocked_tasks()
+        )
+
+    def query_tasks(self, status: str) -> list[str]:
+        return [
+            t["name"] for t in self.get_tasks() if isinstance(t, dict) and t.get("status") == status
+        ]
 
 
 class FakeWorktree:
@@ -279,6 +295,7 @@ def make_services(
     get_pending_visions=None,
     get_pending_reviews=None,
     scan_todos=None,
+    get_blocked_tasks=None,
 ):
     """Return a SimpleNamespace of fully-wired fake services for Dispatcher tests."""
     import types
@@ -293,6 +310,7 @@ def make_services(
             get_pending_visions=get_pending_visions,
             get_pending_reviews=get_pending_reviews,
             scan_todos=scan_todos,
+            get_blocked_tasks=get_blocked_tasks,
         ),
         worktree=FakeWorktree(tmp_path),
         messaging=FakeMessaging(
@@ -321,5 +339,5 @@ def make_dispatcher(squad, svcs, *, dry_run: bool = False, only_role=None, hooks
 
 
 def setup_work(d):
-    """Populate d.work from its callbacks (simulates one loop cycle refresh)."""
-    d.work = d._refresh_work([])
+    """No-op: the dispatcher reads board state directly on each cycle."""
+    pass
