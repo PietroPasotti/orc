@@ -20,7 +20,7 @@ Reusable fixtures
     the isolated tree.
 
 ``mock_telegram``
-    Replaces ``tg.send_message`` with a local-log-only variant and stubs
+    Replaces ``tg._send_message`` with a local-log-only variant and stubs
     ``tg._get_telegram_updates`` to return an empty list.
 
 ``scripted_spawn``
@@ -155,7 +155,7 @@ def orc_env(git_project, monkeypatch):
 def mock_telegram(orc_env, monkeypatch):
     """Stub out all Telegram HTTP calls.
 
-    - ``tg.send_message`` writes only to the local chat.log (no HTTP request).
+    - ``tg._send_message`` writes only to the local chat.log (no HTTP request).
     - ``tg._get_telegram_updates`` always returns an empty list.
     - ``tg._LOG_FILE`` is redirected to the temp project's ``.orc/chat.log``
       so each test starts with a clean message history.
@@ -170,7 +170,7 @@ def mock_telegram(orc_env, monkeypatch):
         tg._append_to_log(text)
         return {}
 
-    monkeypatch.setattr(tg, "send_message", _send_local)
+    monkeypatch.setattr(tg, "_send_message", _send_local)
     return log_file
 
 
@@ -392,7 +392,7 @@ class TestFullWorkflowLoop:
         )
 
         # ── Telegram message sequence ────────────────────────────────────────
-        messages = tg.get_messages()
+        messages = tg._get_messages()
         parsed: list[tuple[str, str]] = []
         for msg in messages:
             mo = tg._MSG_RE.match(msg.text)
