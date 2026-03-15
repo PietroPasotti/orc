@@ -275,6 +275,9 @@ class DispatchHooks:
     the current phase (e.g. ``"dispatching"``), or ``"idle"`` when the
     orchestrator is between phases."""
 
+    on_feature_merged: Callable[[], None] | None = None
+    """Called immediately after a feature branch is successfully merged into dev."""
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher
@@ -696,6 +699,8 @@ class Dispatcher:
             self.board.delete_task(task_name)
             logger.info("merge succeeded", task=task_name)
             self._echo(f"✓ {task_name} merged.")
+            if self.hooks.on_feature_merged is not None:
+                self.hooks.on_feature_merged()
         except Exception as exc:
             logger.error("merge failed", task=task_name, error=str(exc))
             self._echo(f"\n✗ Merge failed for {task_name}: {exc}")
