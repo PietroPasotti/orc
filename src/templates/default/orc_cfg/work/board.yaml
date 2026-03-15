@@ -4,11 +4,11 @@
 #            string when naming files, e.g. counter=3 → "0003-title.md").
 #            The planner increments this every time it creates a new task.
 #
-# open     – tasks currently being worked on.
-# done     – completed tasks.
+# tasks    – active tasks on the board.  Each entry has at minimum a ``name``
+#            field (the task filename) and a ``status`` field (one of:
+#            planned, in-progress, in-review, done, blocked).
+#            Tasks are removed from this list when merged into dev.
 
 counter: 1
 
-open: []
-
-done: []
+tasks: []

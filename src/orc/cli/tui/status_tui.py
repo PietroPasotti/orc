@@ -30,6 +30,7 @@ from textual.widgets import ContentSwitcher, Static
 
 import orc.config as _cfg
 import orc.git.core as _git
+from orc.board_manager import TaskStatus
 from orc.coordination.client import BoardSnapshot, get_board_snapshot
 
 # Maximum commits fetched per branch.
@@ -236,9 +237,9 @@ def _render_board() -> RenderableType:
     # -- build per-column entry lists ----------------------------------
     to_refine = snap.visions
 
-    planned = [t["name"] for t in snap.tasks if t.get("status") == "planned"]
+    planned = [t["name"] for t in snap.tasks if t.get("status") == TaskStatus.PLANNED]
 
-    _IN_PROGRESS_STATUSES = {"coding", "blocked", "soft-blocked"}
+    _IN_PROGRESS_STATUSES = {TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
     in_progress_entries = []
     for t in snap.tasks:
         if t.get("status") in _IN_PROGRESS_STATUSES:
@@ -249,13 +250,13 @@ def _render_board() -> RenderableType:
 
     review_entries = []
     for t in snap.tasks:
-        if t.get("status") == "review":
+        if t.get("status") == TaskStatus.IN_REVIEW:
             label = t["name"]
             if t.get("branch"):
                 label = f"{label} ({t['branch']})"
             review_entries.append(label)
 
-    done_entries = [t["name"] for t in snap.done]
+    done_entries = [t["name"] for t in snap.tasks if t.get("status") == TaskStatus.DONE]
 
     def _cell(entries: list[str]) -> str:
         return "\n".join(entries) if entries else "(empty)"

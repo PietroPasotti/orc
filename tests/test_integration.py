@@ -199,8 +199,8 @@ def _planner_handler(task_name: str):
 
         board = yaml.safe_load(board_path.read_text()) if board_path.exists() else {}
         board = board or {}
-        board.setdefault("open", [])
-        board["open"].append({"name": task_name, "status": "planned"})
+        board.setdefault("tasks", [])
+        board["tasks"].append({"name": task_name, "status": "planned"})
         board["counter"] = 2
         board_path.write_text(yaml.dump(board, default_flow_style=False, allow_unicode=True))
 
@@ -231,7 +231,7 @@ def _coder_handler():
             capture_output=True,
         )
 
-        _board_mod.set_task_status(_TASK_NAME, "review")
+        _board_mod.set_task_status(_TASK_NAME, "in-review")
         tg._append_to_log(tg.format_agent_message("coder-1", "done", "Implemented feature X."))
 
     return handler
@@ -258,7 +258,7 @@ def _qa_handler():
             capture_output=True,
         )
 
-        _board_mod.set_task_status(_TASK_NAME, "approved")
+        _board_mod.set_task_status(_TASK_NAME, "done")
         tg._append_to_log(
             tg.format_agent_message("qa-1", "passed", "Review complete, all tests pass.")
         )
@@ -358,8 +358,7 @@ class TestBootstrap:
     def test_board_starts_empty(self, git_project):
         orc = git_project / ".orc"
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"] == []
-        assert board["done"] == []
+        assert board["tasks"] == []
         assert board["counter"] == 1
 
     def test_vision_doc_content(self, git_project):
@@ -426,10 +425,9 @@ class TestFullWorkflowLoop:
         board_path = orc_dir / "work" / "board.yaml"
         board = yaml.safe_load(board_path.read_text())
 
-        assert board["open"] == [], "Open task list should be empty after the merge"
-
-        done_names = [(t["name"] if isinstance(t, dict) else str(t)) for t in board.get("done", [])]
-        assert _TASK_NAME in done_names, f"{_TASK_NAME!r} not found in done list: {done_names}"
+        assert board["tasks"] == [], (
+            "Task list should be empty after the merge (task removed on merge)"
+        )
 
 
 class TestNoWorkExitsCleanly:
@@ -458,7 +456,7 @@ class TestNoWorkExitsCleanly:
 
         # Guard: confirm the board really is empty before the run.
         board = yaml.safe_load((orc_dir / "work" / "board.yaml").read_text())
-        assert board["open"] == []
+        assert board["tasks"] == []
 
         spawn_calls: list = []
         monkeypatch.setattr(inv, "spawn", lambda *a, **kw: spawn_calls.append(a) or (None, None))

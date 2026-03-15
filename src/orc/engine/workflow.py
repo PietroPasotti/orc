@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re as _re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,50 +15,6 @@ from orc.messaging import telegram as tg
 from orc.squad import SquadConfig
 
 logger = structlog.get_logger(__name__)
-
-_ORC_RESOLVED_RE = _re.compile(r"^\[orc\]\(resolved\)\s+\S+:\s+.*$")
-
-
-def _has_unresolved_block(
-    messages: list[dict],
-) -> tuple[str, str] | tuple[None, None]:
-    """Scan *messages* newest-to-oldest for an unresolved blocked/soft-blocked state."""
-    blocked_states = {"blocked", "soft-blocked"}
-
-    for msg in reversed(messages):
-        text = msg.get("text", "").strip()
-
-        if _ORC_RESOLVED_RE.match(text):
-            return None, None
-
-        m = tg._MSG_RE.match(text)
-        if not m:
-            continue
-        name, state = m.group(1), m.group(2)
-        role, _ = tg.parse_agent_id(name)
-        if role is None:
-            continue
-        if state in tg.INFORMATIONAL_STATES:
-            continue
-
-        if state in blocked_states:
-            return name, state
-
-        return None, None
-
-    return None, None
-
-
-def _post_resolved(blocked_agent: str, blocked_state: str, resolver_agent: str) -> None:
-    """Post an ``[orc](resolved)`` message to Telegram to close a blocked state."""
-    body = f"{blocked_agent}({blocked_state}) addressed by {resolver_agent} invocation."
-    tg.send_message(tg.format_agent_message("orc", "resolved", body))
-    logger.info(
-        "posted resolved message",
-        blocked_agent=blocked_agent,
-        blocked_state=blocked_state,
-        resolver=resolver_agent,
-    )
 
 
 def _post_boot_message(agent_id: str) -> None:

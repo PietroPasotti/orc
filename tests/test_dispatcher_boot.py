@@ -27,7 +27,7 @@ class TestBootMessageSentBeforeInvoke:
         mock_rebase,
     ):
         """Orchestrator sends (boot) message before invoking the agent."""
-        board_file("counter: 1\nopen:\n  - name: 0001-foo.md\n")
+        board_file("counter: 1\ntasks:\n  - name: 0001-foo.md\n")
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("model", "ctx"))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
@@ -49,7 +49,7 @@ class TestBootMessageSentBeforeInvoke:
         mock_rebase,
     ):
         """Boot message must be sent BEFORE spawn is called."""
-        board_file("counter: 1\nopen:\n  - name: 0001-foo.md\n")
+        board_file("counter: 1\ntasks:\n  - name: 0001-foo.md\n")
         call_order: list[str] = []
 
         def fake_send(text):

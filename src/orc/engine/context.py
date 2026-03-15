@@ -210,7 +210,7 @@ def _window_chat(chat_text: str, *, max_recent: int = _CHAT_WINDOW_SIZE) -> str:
 
 
 def _scan_todos(root: Path) -> list[dict]:
-    """Scan *root* for ``#TODO`` and ``#FIXME`` comments using ``git grep``.
+    """Scan *root* for ``#TO-DO`` and ``#FIX-ME`` comments using ``git grep``.
 
     Returns a list of ``{"file": str, "line": int, "tag": str, "text": str}``
     dicts, one per matching line.  Returns an empty list when *root* is not a
@@ -485,7 +485,7 @@ def _boot_message_body(agent_id: str) -> str:
     """Build the role-specific body text for a boot message."""
     role, _ = tg.parse_agent_id(agent_id)
     board = _board._read_board()
-    open_tasks = board.get("open", [])
+    open_tasks = board.get("tasks", [])
     first_task = (
         (open_tasks[0]["name"] if isinstance(open_tasks[0], dict) else str(open_tasks[0]))
         if open_tasks

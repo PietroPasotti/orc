@@ -1,6 +1,6 @@
 """Thread-safe state manager for the orc coordination API.
 
-:class:`StateManager` wraps :class:`~orc.board_manager.FileBoardManager`
+:class:`BoardStateManager` wraps :class:`~orc.board_manager.FileBoardManager`
 with a :class:`threading.RLock` so that concurrent HTTP request handlers
 (running in anyio's thread pool) and the orchestrator's main thread can
 safely share board and vision state.
@@ -13,9 +13,10 @@ from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
 
+import pydantic
 import structlog
 
-from orc.board_manager import FileBoardManager
+from orc.board_manager import FileBoardManager, TaskStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -32,7 +33,26 @@ def _locked[**P, R](method: Callable[P, R]) -> Callable[P, R]:
     return _wrapper  # type: ignore[return-value]
 
 
-class StateManager:
+class CommentAuthor(pydantic.BaseModel):
+    # could be agent-1 but also 'pietro' or 'jeff'
+    name: str
+
+
+class Comment(pydantic.BaseModel):
+    body: str
+    author: CommentAuthor
+
+
+class Task(pydantic.BaseModel):
+    name: str
+    status: str
+    branch: str | None = None
+    worktree: Path | None = None
+    assigned_to: str | None = None
+    comments: tuple[Comment] = ()
+
+
+class BoardStateManager:
     """Thread-safe coordinator for board and vision state.
 
     Parameters
@@ -50,35 +70,11 @@ class StateManager:
     # ── Board: queries ────────────────────────────────────────────────────
 
     @_locked
-    def get_open_tasks(self) -> list[dict]:
-        """Return the open-tasks list from board.yaml."""
+    def get_tasks(self) -> list[Task]:
+        """Return all tasks from board.yaml."""
         board = self._mgr.read_board()
         result = []
-        for t in board.get("open", []):
-            result.append(t if isinstance(t, dict) else {"name": str(t)})
-        return result
-
-    @_locked
-    def get_done_tasks(self) -> list[dict]:
-        """Return the done-tasks list from board.yaml."""
-        board = self._mgr.read_board()
-        result = []
-        for t in board.get("done", []):
-            entry: dict = dict(t) if isinstance(t, dict) else {"name": str(t)}
-            # Normalise the hyphenated YAML key to the model's field name.
-            if "commit-tag" in entry:
-                entry["commit_tag"] = entry.pop("commit-tag")
-            result.append(entry)
-        return result
-
-    @_locked
-    def get_all_tasks(self) -> list[dict]:
-        """Return all tasks (open + done) from board.yaml."""
-        board = self._mgr.read_board()
-        result = []
-        for t in board.get("open", []):
-            result.append(t if isinstance(t, dict) else {"name": str(t)})
-        for t in board.get("done", []):
+        for t in board.get("tasks", []):
             result.append(t if isinstance(t, dict) else {"name": str(t)})
         return result
 
@@ -117,11 +113,11 @@ class StateManager:
     def assign_task(self, task_name: str, agent_id: str) -> None:
         """Write ``assigned_to: {agent_id}`` for *task_name* in board.yaml."""
         board = self._mgr.read_board()
-        for t in board.get("open", []):
+        for t in board.get("tasks", []):
             if isinstance(t, dict) and t.get("name") == task_name:
                 t["assigned_to"] = agent_id
-                if t.get("status") in (None, "", "planned", "rejected"):
-                    t["status"] = "coding"
+                if t.get("status") in (None, "", TaskStatus.PLANNED):
+                    t["status"] = TaskStatus.IN_PROGRESS
                 self._mgr.write_board(board)
                 return
         logger.warning("assign_task: task not found", task=task_name)
@@ -131,7 +127,7 @@ class StateManager:
         """Clear the ``assigned_to`` field for *task_name* in board.yaml."""
         board = self._mgr.read_board()
         changed = False
-        for t in board.get("open", []):
+        for t in board.get("tasks", []):
             if isinstance(t, dict) and t.get("name") == task_name:
                 t.pop("assigned_to", None)
                 changed = True
@@ -144,7 +140,7 @@ class StateManager:
         """Clear all ``assigned_to`` fields — called on startup for crash recovery."""
         board = self._mgr.read_board()
         changed = False
-        for t in board.get("open", []):
+        for t in board.get("tasks", []):
             if isinstance(t, dict) and t.pop("assigned_to", None) is not None:
                 changed = True
         if changed:
@@ -166,9 +162,7 @@ class StateManager:
             return []
         board = self._mgr.read_board()
         all_task_stems = {
-            (t["name"] if isinstance(t, dict) else str(t))
-            for tasks in (board.get("open", []), board.get("done", []))
-            for t in tasks
+            (t["name"] if isinstance(t, dict) else str(t)) for t in board.get("tasks", [])
         }
         result = []
         for f in sorted(ready_dir.glob("*.md")):

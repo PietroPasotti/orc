@@ -60,7 +60,7 @@ class TestDispatcherCoverage:
         """_handle_watchdog kills the agent and unassigns its task."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         unassigned = []
-        svcs = make_services(tmp_path, get_open_tasks=lambda: [])
+        svcs = make_services(tmp_path, get_tasks=lambda: [])
         svcs.board.unassign_task = lambda t: unassigned.append(t)
         d = make_dispatcher(minimal_squad(), svcs)
         agent = make_agent(tmp_path, role="coder")
@@ -103,7 +103,7 @@ class TestDispatcherCoverage:
     def test_dispatch_soft_block_spawns_planner(self, tmp_path, monkeypatch):
         """Soft-blocked state → planner spawned to resolve."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        svcs = make_services(tmp_path, get_open_tasks=lambda: [{"name": "0001-foo.md"}])
+        svcs = make_services(tmp_path, get_tasks=lambda: [{"name": "0001-foo.md"}])
         svcs.messaging.has_unresolved_block = lambda msgs: ("coder-1", "soft-blocked")
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -114,7 +114,7 @@ class TestDispatcherCoverage:
         """Task already assigned → skipped."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md", "assigned_to": "coder-1"}],
+            get_tasks=lambda: [{"name": "0001-foo.md", "assigned_to": "coder-1"}],
             derive_task_state=lambda t: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -127,7 +127,7 @@ class TestDispatcherCoverage:
         closed = []
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: (CLOSE_BOARD, "close"),
         )
         svcs.workflow.do_close_board = lambda t: closed.append(t)
@@ -140,7 +140,7 @@ class TestDispatcherCoverage:
         """do_close_board() failure is logged and does not propagate."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: (CLOSE_BOARD, "close"),
         )
 
@@ -163,7 +163,7 @@ class TestDispatcherCoverage:
         """Unknown token → task skipped, dispatch returns 0."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("unknown_token", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -174,7 +174,7 @@ class TestDispatcherCoverage:
         """Coder at capacity → skip."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -264,7 +264,7 @@ class TestDispatcherCoverage:
         """QA_PASSED token → task added to merge queue."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: (QA_PASSED, "qa passed"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -326,58 +326,6 @@ class TestDispatcherCoverage:
 
 
 class TestDispatcherInternalCoverage:
-    def test_any_work_open_tasks_returns_true(self, tmp_path):
-        """Work.any_work() returns True when open tasks exist."""
-        from orc.engine.work import Work
-
-        w = Work(
-            open_tasks=[{"name": "0001-foo.md"}],
-            open_visions=[],
-            open_todos_and_fixmes=[],
-            open_PRs=[],
-            stalled_agents=[],
-        )
-        assert w.any_work() is True
-
-    def test_any_work_stalled_agents_returns_true(self, tmp_path):
-        """Work.any_work() returns True when a blocked agent exists."""
-        from orc.engine.work import Work
-
-        w = Work(
-            open_tasks=[],
-            open_visions=[],
-            open_todos_and_fixmes=[],
-            open_PRs=[],
-            stalled_agents=[("agent-42", "blocked")],
-        )
-        assert w.any_work() is True
-
-    def test_any_work_no_work_returns_false(self, tmp_path):
-        """Work.any_work() returns False when nothing pending."""
-        from orc.engine.work import Work
-
-        w = Work(
-            open_tasks=[],
-            open_visions=[],
-            open_todos_and_fixmes=[],
-            open_PRs=[],
-            stalled_agents=[],
-        )
-        assert w.any_work() is False
-
-    def test_any_work_pending_reviews_returns_true(self, tmp_path):
-        """Work.any_work() returns True when unmerged feat/* branches exist."""
-        from orc.engine.work import Work
-
-        w = Work(
-            open_tasks=[],
-            open_visions=[],
-            open_todos_and_fixmes=[],
-            open_PRs=["feat/0001-foo"],
-            stalled_agents=[],
-        )
-        assert w.any_work() is True
-
     def test_kill_all_and_unassign(self, tmp_path):
         """Lines 493-496: _kill_all_and_unassign unassigns tasks and kills agents."""
         unassigned = []
@@ -413,7 +361,7 @@ class TestDispatcherInternalCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
@@ -427,7 +375,7 @@ class TestDispatcherInternalCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
@@ -442,7 +390,7 @@ class TestDispatcherInternalCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: ["feat/0001-foo"],
         )
@@ -457,7 +405,7 @@ class TestDispatcherInternalCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             get_pending_reviews=lambda: ["feat/0001-foo"],
             derive_task_state=lambda t: ("coder", "no prior work"),
         )
@@ -471,7 +419,7 @@ class TestDispatcherInternalCoverage:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
@@ -494,7 +442,7 @@ class TestDispatchCallbacksOptional:
 
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             spawn_fn=_spawn,
         )
         hooks = _disp.DispatchHooks(on_agent_start=lambda agent: started.append(agent.agent_id))
@@ -599,7 +547,7 @@ class TestDispatcherLoopProperty:
 
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_messages=lambda: [],
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -621,7 +569,7 @@ class TestProactivePlanner:
         svcs = make_services(
             tmp_path,
             # 1 open task, squad has 2 coders → pipeline has room → spawn planner
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
             spawn_fn=_spawn,
@@ -642,7 +590,7 @@ class TestProactivePlanner:
         """No proactive planner when open_tasks >= coder count."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
@@ -659,7 +607,7 @@ class TestProactivePlanner:
         """No proactive planner when there are no pending vision docs to plan."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: [],  # nothing to plan
         )
@@ -675,7 +623,7 @@ class TestProactivePlanner:
         """No second planner spawned when one is already in the pool."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [{"name": "0001-foo.md"}],
             derive_task_state=lambda t: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
@@ -698,7 +646,7 @@ class TestMaxcallsUnlimited:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
@@ -716,7 +664,7 @@ class TestDispatchBudgetExhaustion:
         """With budget=1 and 2 tasks, only 1 agent is spawned."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [
+            get_tasks=lambda: [
                 {"name": "0001-foo.md"},
                 {"name": "0002-bar.md"},
             ],
@@ -743,7 +691,7 @@ class TestOnlyRoleFiltering:
         """With only_role='coder', planner is not dispatched even when visions exist."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )
@@ -757,7 +705,7 @@ class TestOnlyRoleFiltering:
         """With only_role='planner' and pending visions, a planner is spawned."""
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )
@@ -775,7 +723,7 @@ class TestOnlyRoleFiltering:
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: tasks,
+            get_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
@@ -793,7 +741,7 @@ class TestOnlyRoleFiltering:
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: tasks,
+            get_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
@@ -811,7 +759,7 @@ class TestOnlyRoleFiltering:
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: tasks,
+            get_tasks=lambda: tasks,
             derive_task_state=lambda t: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
@@ -828,7 +776,7 @@ class TestOnlyRoleFiltering:
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(
             tmp_path,
-            get_open_tasks=lambda: [],
+            get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
         )

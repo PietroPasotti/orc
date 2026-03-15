@@ -3,7 +3,7 @@
 :class:`CoordinationServer` starts a uvicorn ASGI server in a background
 daemon thread and exposes it over a Unix domain socket.  The server shares
 state with the orchestrator's main thread via the injected
-:class:`~orc.coordination.state.StateManager`.
+:class:`~orc.coordination.state.BoardStateManager`.
 
 Lifecycle
 ---------
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import structlog
 
-from orc.coordination.state import StateManager
+from orc.coordination.state import BoardStateManager
 
 logger = structlog.get_logger(__name__)
 
@@ -36,14 +36,14 @@ class CoordinationServer:
     Parameters
     ----------
     state:
-        The :class:`~orc.coordination.state.StateManager` instance to
+        The :class:`~orc.coordination.state.BoardStateManager` instance to
         inject into every request handler.
     socket_path:
         Absolute path where the Unix domain socket will be created.
         Any existing file at that path is removed before binding.
     """
 
-    def __init__(self, state: StateManager, socket_path: Path) -> None:
+    def __init__(self, state: BoardStateManager, socket_path: Path) -> None:
         self._state = state
         self._socket_path = socket_path
         self._server: object | None = None

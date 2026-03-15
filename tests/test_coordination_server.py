@@ -16,35 +16,35 @@ def _orc_dir(tmp_path: Path) -> Path:
     orc.mkdir(exist_ok=True)
     (orc / "work").mkdir(exist_ok=True)
     (orc / "vision").mkdir(exist_ok=True)
-    (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+    (orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
     return orc
 
 
 def _state(orc_dir: Path):
-    """Return a StateManager rooted at *orc_dir* (already set up by _orc_dir)."""
-    from orc.coordination.state import StateManager
+    """Return a BoardStateManager rooted at *orc_dir* (already set up by _orc_dir)."""
+    from orc.coordination.state import BoardStateManager
 
-    return StateManager(orc_dir)
+    return BoardStateManager(orc_dir)
 
 
 class TestCoordinationServer:
     def test_stop_without_start_is_safe(self, tmp_path):
         """stop() when never started must not raise."""
         from orc.coordination.server import CoordinationServer
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
-        server = CoordinationServer(StateManager(orc), tmp_path / "orc.sock")
+        server = CoordinationServer(BoardStateManager(orc), tmp_path / "orc.sock")
         server.stop()  # should not raise
 
     def test_start_creates_socket_and_stop_removes_it(self, tmp_path):
         """Real server: socket appears on start, disappears on stop."""
         from orc.coordination.server import CoordinationServer
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
         sock = tmp_path / "orc.sock"
-        server = CoordinationServer(StateManager(orc), sock)
+        server = CoordinationServer(BoardStateManager(orc), sock)
         try:
             server.start()
             assert sock.exists()
@@ -56,7 +56,7 @@ class TestCoordinationServer:
         """If uvicorn never sets started=True within the timeout, RuntimeError is raised."""
         import orc.coordination.server as _srv_mod
         from orc.coordination.server import CoordinationServer
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         # Reduce timeout and poll so the test is fast.
         monkeypatch.setattr(_srv_mod, "_STARTUP_TIMEOUT", 0.2)
@@ -72,7 +72,7 @@ class TestCoordinationServer:
 
         orc = _orc_dir(tmp_path)
         sock = tmp_path / "orc.sock"
-        server = CoordinationServer(StateManager(orc), sock)
+        server = CoordinationServer(BoardStateManager(orc), sock)
 
         # Patch uvicorn.Server so it never sets started=True.
         import uvicorn  # noqa: PLC0415
@@ -88,12 +88,12 @@ class TestCoordinationServer:
     def test_start_idempotent_socket_cleanup(self, tmp_path):
         """A stale socket file at startup is silently removed before binding."""
         from orc.coordination.server import CoordinationServer
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
         sock = tmp_path / "orc.sock"
         sock.write_text("stale")  # simulate a stale socket
-        server = CoordinationServer(StateManager(orc), sock)
+        server = CoordinationServer(BoardStateManager(orc), sock)
         try:
             server.start()
             assert sock.exists()
@@ -192,7 +192,7 @@ class TestFileBoardManagerCreateTask:
         orc = tmp_path / ".orc"
         orc.mkdir(exist_ok=True)
         (orc / "work").mkdir(exist_ok=True)
-        (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+        (orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
         return FileBoardManager(orc)
 
     def _body(self, **overrides):
@@ -225,7 +225,7 @@ class TestFileBoardManagerCreateTask:
         mgr = self._mgr(tmp_path)
         mgr.create_task("my-task", self._VISION, self._body())
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0]["status"] == "planned"
+        assert board["tasks"][0]["status"] == "planned"
 
     def test_create_task_renders_markdown_with_vision_header(self, tmp_path):
         mgr = self._mgr(tmp_path)

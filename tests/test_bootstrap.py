@@ -85,8 +85,7 @@ class TestBootstrap:
         assert board.exists()
         data = yaml.safe_load(board.read_text())
         assert data["counter"] == 1
-        assert data["open"] == []
-        assert data["done"] == []
+        assert data["tasks"] == []
 
     def test_creates_justfile(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -173,7 +172,7 @@ class TestBootstrapUpgrade:
         "relative_path,content",
         [
             (".orc/vision/my-feature.md", "# vision"),
-            (".orc/work/board.yaml", "counter: 5\nopen: []\ndone: []\n"),
+            (".orc/work/board.yaml", "counter: 5\ntasks: []\n"),
             (".orc/orc-CHANGELOG.md", "## my project history\n"),
         ],
     )

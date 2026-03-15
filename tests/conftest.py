@@ -97,12 +97,12 @@ class FakeBoard:
     def __init__(
         self,
         *,
-        get_open_tasks=None,
+        get_tasks=None,
         get_pending_visions=None,
         get_pending_reviews=None,
         scan_todos=None,
     ):
-        self.get_open_tasks = get_open_tasks or (lambda: [])
+        self.get_tasks = get_tasks or (lambda: [])
         self.assign_task = lambda task, agent: None
         self.unassign_task = lambda task: None
         self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
@@ -121,12 +121,9 @@ class FakeWorktree:
 class FakeMessaging:
     """Mutable fake for MessagingService — override attributes freely in tests."""
 
-    def __init__(self, *, get_messages=None, wait_for_human_reply=None):
+    def __init__(self, *, get_messages=None):
         self.get_messages = get_messages or (lambda: [])
-        self.has_unresolved_block = lambda msgs: (None, None)
-        self.wait_for_human_reply = wait_for_human_reply or (lambda msgs, **kw: "reply")
         self.post_boot_message = lambda agent_id: None
-        self.post_resolved = lambda a, s, r: None
 
 
 class FakeWorkflow:
@@ -276,10 +273,9 @@ def make_services(
     tmp_path,
     *,
     get_messages=None,
-    get_open_tasks=None,
+    get_tasks=None,
     derive_task_state=None,
     spawn_fn=None,
-    wait_for_human_reply=None,
     get_pending_visions=None,
     get_pending_reviews=None,
     scan_todos=None,
@@ -289,11 +285,11 @@ def make_services(
 
     board_dir = tmp_path / ".orc" / "work"
     board_dir.mkdir(parents=True, exist_ok=True)
-    (board_dir / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+    (board_dir / "board.yaml").write_text("counter: 0\ntasks: []\n")
 
     return types.SimpleNamespace(
         board=FakeBoard(
-            get_open_tasks=get_open_tasks,
+            get_tasks=get_tasks,
             get_pending_visions=get_pending_visions,
             get_pending_reviews=get_pending_reviews,
             scan_todos=scan_todos,
@@ -301,7 +297,6 @@ def make_services(
         worktree=FakeWorktree(tmp_path),
         messaging=FakeMessaging(
             get_messages=get_messages,
-            wait_for_human_reply=wait_for_human_reply,
         ),
         workflow=FakeWorkflow(derive_task_state=derive_task_state),
         agent=FakeAgent(tmp_path, spawn_fn=spawn_fn),

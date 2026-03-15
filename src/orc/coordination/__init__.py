@@ -7,7 +7,7 @@ instead of touching the filesystem directly.
 
 Public surface
 --------------
-:class:`~orc.coordination.state.StateManager`
+:class:`~orc.coordination.state.BoardStateManager`
     Thread-safe wrapper around :class:`~orc.board_manager.FileBoardManager`
     that handles all board and vision mutations.
 
@@ -15,11 +15,11 @@ Public surface
     Manages the uvicorn server lifecycle (start / stop on Unix socket).
 
 :func:`~orc.coordination.app.create_app`
-    FastAPI application factory; takes a :class:`~orc.coordination.state.StateManager`
+    FastAPI application factory; takes a :class:`~orc.coordination.state.BoardStateManager`
     and returns a configured :class:`fastapi.FastAPI` instance.
 """
 
 from orc.coordination.server import CoordinationServer
-from orc.coordination.state import StateManager
+from orc.coordination.state import BoardStateManager
 
-__all__ = ["CoordinationServer", "StateManager"]
+__all__ = ["CoordinationServer", "BoardStateManager"]

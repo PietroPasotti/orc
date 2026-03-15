@@ -7,7 +7,7 @@ once (done automatically by :func:`orc.config.init`).
 .. note::
 
     The ``orc run`` dispatch loop does **not** use this module directly.
-    It uses :class:`~orc.coordination.StateManager`, which is the single
+    It uses :class:`~orc.coordination.BoardStateManager`, which is the single
     thread-safe source of truth during a run.  This module is used by CLI
     read commands (``orc status``) and internal engine helpers.
 """
@@ -17,6 +17,7 @@ from __future__ import annotations
 import structlog
 
 import orc.config as _cfg
+from orc.board_manager import TaskStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -50,11 +51,11 @@ def _write_board(board: dict) -> None:
 
 
 # TODO: we should use pydantic for validating these data structures
-def get_open_tasks() -> list[dict]:
-    """Return the list of open task dicts from board.yaml."""
+def get_tasks() -> list[dict]:
+    """Return the list of task dicts from board.yaml."""
     board = _read_board()
     result = []
-    for t in board.get("open", []):
+    for t in board.get("tasks", []):
         if isinstance(t, dict):
             result.append(t)
         else:
@@ -79,17 +80,17 @@ def add_task_comment(task_name: str, author: str, text: str) -> None:
 
 def has_open_work() -> bool:
     """Return True if there is at least one open task on the board."""
-    return bool(get_open_tasks())
+    return bool(get_tasks())
 
 
 def assign_task(task_name: str, agent_id: str) -> None:
-    """Write ``assigned_to: {agent_id}`` for *task_name* and set status to ``coding``."""
+    """Write ``assigned_to: {agent_id}`` for *task_name* and set status to ``in-progress``."""
     board = _read_board()
-    for t in board.get("open", []):
+    for t in board.get("tasks", []):
         if isinstance(t, dict) and t.get("name") == task_name:
             t["assigned_to"] = agent_id
-            if t.get("status") in (None, "", "planned", "rejected"):
-                t["status"] = "coding"
+            if t.get("status") in (None, "", TaskStatus.PLANNED):
+                t["status"] = TaskStatus.IN_PROGRESS
             _write_board(board)
             logger.debug("task assigned", task=task_name, agent_id=agent_id)
             return
@@ -100,7 +101,7 @@ def unassign_task(task_name: str) -> None:
     """Clear the ``assigned_to`` field for *task_name* in board.yaml."""
     board = _read_board()
     changed = False
-    for t in board.get("open", []):
+    for t in board.get("tasks", []):
         if isinstance(t, dict) and t.get("name") == task_name:
             t.pop("assigned_to", None)
             changed = True
@@ -114,7 +115,7 @@ def clear_all_assignments() -> None:
     """Clear all ``assigned_to`` fields — called on startup for crash recovery."""
     board = _read_board()
     changed = False
-    for t in board.get("open", []):
+    for t in board.get("tasks", []):
         if isinstance(t, dict) and t.pop("assigned_to", None) is not None:
             changed = True
     if changed:
@@ -123,12 +124,12 @@ def clear_all_assignments() -> None:
 
 
 def _active_task_name() -> str | None:
-    """Return the file name of the first open task, or None if the board is empty."""
+    """Return the file name of the first task, or None if the board is empty."""
     board = _read_board()
-    open_tasks = board.get("open", [])
-    if not open_tasks:
+    tasks = board.get("tasks", [])
+    if not tasks:
         return None
-    first = open_tasks[0]
+    first = tasks[0]
     return first["name"] if isinstance(first, dict) else str(first)
 
 

@@ -31,14 +31,14 @@ def _minimal_squad(**kw) -> SquadConfig:
 
 
 def _mock_coord(monkeypatch, open_tasks=None) -> MagicMock:
-    """Patch StateManager and CoordinationServer so no real I/O happens in tests."""
+    """Patch BoardStateManager and CoordinationServer so no real I/O happens in tests."""
     if open_tasks is None:
         open_tasks = [{"name": "0001-test.md"}]
     mock_state = MagicMock()
-    mock_state.get_open_tasks.return_value = open_tasks
+    mock_state.get_tasks.return_value = open_tasks
     mock_state.get_pending_visions.return_value = []
     mock_server = MagicMock()
-    monkeypatch.setattr(_run_mod, "StateManager", lambda *a, **kw: mock_state)
+    monkeypatch.setattr(_run_mod, "BoardStateManager", lambda *a, **kw: mock_state)
     monkeypatch.setattr(_run_mod, "CoordinationServer", lambda *a, **kw: mock_server)
     return mock_state
 
@@ -261,7 +261,7 @@ class TestEarlyExit:
         _patch_run_deps(
             monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
         )
-        # Override StateManager to return no open tasks so all work sources are empty.
+        # Override BoardStateManager to return no open tasks so all work sources are empty.
         _mock_coord(monkeypatch, open_tasks=[])
         dispatcher_run_called = []
         monkeypatch.setattr(
@@ -293,16 +293,6 @@ class TestSafeFeaturesDone:
 
 class TestServiceAdapters:
     """Tests for the service adapter classes created in _run()."""
-
-    def test_messaging_svc_post_resolved_delegates(self, monkeypatch):
-        """_MessagingSvc.post_resolved delegates to _wf._post_resolved."""
-        import orc.engine.workflow as _wf
-
-        called = []
-        monkeypatch.setattr(_wf, "_post_resolved", lambda a, s, r: called.append((a, s, r)))
-        svc = _run_mod._MessagingSvc()
-        svc.post_resolved("agent-1", "blocked", "human-reply")
-        assert called == [("agent-1", "blocked", "human-reply")]
 
     def test_workflow_svc_do_close_board_delegates(self, monkeypatch):
         """_WorkflowSvc.do_close_board delegates to _wf._do_close_board."""

@@ -6,10 +6,10 @@ Orc is an agent-driven e2e multi-stage implementation pipeline which takes visio
 You can run orc with `just orc` or with `uv run --with qorc orc`. 
 Or if you plan on running this more often, probably you should `uv tool install orc`!
 
-- You write vision docs in ./vision
-- Squad definitions are in ./squads
-- Agent instructions are in ./roles
-- ./work is the orchestration workplace, you shouldn't have to touch it.
+- You write vision docs in `./vision/ready`
+- Squad definitions are in `./squads`
+- Agent instructions are in `./roles`
+- `./work` is the orchestration workplace, you shouldn't have to touch it.
 
 # Working with orc
 The core idea is: 

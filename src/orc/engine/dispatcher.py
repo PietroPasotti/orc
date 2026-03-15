@@ -58,6 +58,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import structlog
+import structlog.contextvars as contextvars
 import typer
 
 import orc.config as _cfg
@@ -69,7 +70,6 @@ from orc.engine.services import (
     WorkflowService,
     WorktreeService,
 )
-from orc.engine.work import Work
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole, SquadConfig
 
@@ -165,13 +165,7 @@ class Dispatcher:
         self.only_role = only_role
         self.pool = AgentPool()
         self._id_counters: dict[str, int] = defaultdict(int)
-        self._merge_queue: list[str] = []
         self._total_spawned = 0
-        self._loop_count: int = 0
-        self.work: Work = Work([], [], [], [], [])
-        # Soft-block tracking: when a planner is dispatched to resolve one
-        # we record (blocked_agent_id, blocked_state) so we can post [orc](resolved).
-        self._resolving_soft_block: tuple[str, str] | None = None
 
         # Graceful shutdown: kill agents on SIGTERM/SIGINT.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -181,21 +175,14 @@ class Dispatcher:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def _refresh_work(self, messages: list[dict]) -> Work:
-        """Build a fresh :class:`Work` snapshot from the current callbacks.
-
-        Called once at the top of every dispatch cycle so that the rest of
-        the cycle can read ``self.work`` instead of re-querying board,
-        git, and the file-system on every decision point.
-        """
-        blocked_agent, blocked_state = self.messaging.has_unresolved_block(messages)
-        stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
-        return Work(
-            open_tasks=self.board.get_open_tasks(),
-            open_visions=self.board.get_pending_visions(),
-            open_todos_and_fixmes=self.board.scan_todos(),
-            open_PRs=self.board.get_pending_reviews(),
-            stalled_agents=stalled,
+    def _any_work(self) -> bool:
+        """Return True if there is any work that could be dispatched."""
+        return bool(
+            self.board.get_tasks()
+            or self.board.get_pending_visions()
+            or self.board.scan_todos()
+            or self.board.get_pending_reviews()
+            or self.board.get_blocked_tasks()
         )
 
     def _set_orc_status(self, status: str, task: str | None = None) -> None:
@@ -245,93 +232,89 @@ class Dispatcher:
     # Internal loop
     # ------------------------------------------------------------------
 
+    def _poll_completed_agents(self):
+        """Poll completed agents."""
+        pool = self.pool
+
+        if not pool.is_empty():
+            self._set_orc_status("running", "polling completed agents")
+            for agent, rc in pool.poll():
+                self._handle_completion(agent, rc)
+
+    def _kill_timed_out_agents(self):
+        """Kill stuck agents."""
+        timeout_sec = self.squad.timeout_minutes * 60.0
+        for agent in self.pool.check_watchdog(timeout_sec):
+            self._set_orc_status("running", f"killing timed-out {agent.agent_id}")
+            self._handle_watchdog(agent)
+
+    def _drain_merge_queue(self) -> None:
+        """Merge feature branches whose tasks have been QA-approved (status 'done')."""
+        for branch in self.board.get_pending_reviews():
+            feat_idx = branch.find("feat/")
+            task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
+            task_name = task_stem + ".md"
+            token, _ = self.workflow.derive_task_state(task_name)
+            if token == QA_PASSED:
+                self._set_orc_status("running", f"merging {task_name}")
+                self._do_merge(task_name)
+
+    def _dispatch_agents(self, call_budget: int) -> int:
+        if self.dry_run:
+            self._echo(f"would dispatch up to {call_budget} agents")
+            return 0
+        if call_budget > 0:
+            self._echo("dispatching agents...")
+            return self._dispatch(call_budget=call_budget)
+        return 0
+
     def _loop(self, maxcalls: int) -> None:
+        loop_count: int = 0
+        spawn_count: int = 0
+
         while True:
-            self._loop_count += 1
-            import structlog.contextvars as _cv
+            loop_count += 1
+            contextvars.clear_contextvars()
+            contextvars.bind_contextvars(cycle=loop_count)
+            self._set_orc_status("running", "cycle {loop_count}")
 
-            _cv.clear_contextvars()
-            _cv.bind_contextvars(cycle=self._loop_count)
-            self._set_orc_status("running", "checking pending work")
-            messages = self.messaging.get_messages()
+            self._poll_completed_agents()
+            self._drain_merge_queue()
+            self._kill_timed_out_agents()
 
-            # 1. Poll for completed agents.
-            if not self.pool.is_empty():
-                self._set_orc_status("running", "polling completed agents")
-            for agent, rc in self.pool.poll():
-                self._handle_completion(agent, rc, messages)
-                # Refresh messages after completion (agent may have posted).
-                messages = self.messaging.get_messages()
+            # Dispatch new agents (skip when the call limit is already reached).
+            dispatched_count = self._dispatch_agents(maxcalls - spawn_count)
+            # subtract number of dispatched agents from the allowed budget
+            spawn_count += dispatched_count
 
-            # 2. Drain merge queue (serialized; one merge per cycle).
-            if self._merge_queue:
-                task = self._merge_queue.pop(0)
-                self._do_merge(task)
-                messages = self.messaging.get_messages()
-
-            # 3. Watchdog: kill stuck agents.
-            timeout_sec = self.squad.timeout_minutes * 60.0
-            for agent in self.pool.check_watchdog(timeout_sec):
-                self._handle_watchdog(agent)
-
-            # 4. Build a fresh work snapshot for this cycle.
-            self.work = self._refresh_work(messages)
-
-            # 5. Check for hard-blocked state (pauses all new dispatches).
-            if self.work.hard_blocked:
-                blocked_agent, _ = self.work.hard_blocked
-                self._handle_hard_block(blocked_agent, messages)
-                messages = self.messaging.get_messages()
-                self.work = self._refresh_work(messages)
-
-            # 6. Dispatch new agents (skip when the call limit is already reached).
-            at_limit = self._total_spawned >= maxcalls
-            if not at_limit:
-                if not self.dry_run or self._total_spawned == 0:
-                    call_budget = maxcalls - self._total_spawned
-                    self._echo("dispatching agents...")
-                    dispatched = self._dispatch(messages, call_budget=call_budget)
-                    self._total_spawned += dispatched
-                else:
-                    dispatched = 0  # pragma: no cover
-            else:
-                dispatched = 0
-
-            # 7. Check termination.
+            # Check termination.
             if self.dry_run:
                 logger.info("dry-run mode: printed one cycle, stopping")
                 break
-
             # When the call limit is reached, keep polling until all running
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
-            if at_limit and self.pool.is_empty():
-                self._set_orc_status("shutting down")
-                logger.info("reached maxcalls and pool drained, stopping", maxcalls=maxcalls)
-                self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Stopping.", final=True)
-                break
-
-            # Check idle-complete: nothing running, nothing to dispatch.
-            if not at_limit and self.pool.is_empty() and dispatched == 0:
-                self._set_orc_status("running", "checking pending work")
-                # When only_role is set, we can't rely on any_work()
-                # because it checks all roles.  If nothing was dispatched for
-                # the filtered role, the workflow is done for that role.
-                if self.only_role is not None or not self.work.any_work():
-                    self._set_orc_status("shutting down")
-                    if self.only_role is not None:
-                        logger.info(
-                            "no dispatchable work for filtered role — stopping",
-                            only_role=self.only_role,
-                        )
-                        self._echo(
-                            f"\n✓ No dispatchable work for --agent {self.only_role}. Stopping.",
-                            final=True,
-                        )
-                    else:
-                        logger.info("no pending work and pool empty — workflow complete")
-                        self._echo("\n✓ No pending work. Workflow complete.", final=True)
+            if self.pool.is_empty():
+                if spawn_count == maxcalls:
+                    self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Shutting down.", final=True)
                     break
+
+                if not dispatched_count:
+                    # Check idle-complete: nothing running, nothing to dispatch.
+                    self._set_orc_status("running", "checking pending work")
+                    # When only_role is set, we can't rely on any_work()
+                    # because it checks all roles.  If nothing was dispatched for
+                    # the filtered role, the workflow is done for that role.
+                    if self.only_role is not None or not self._any_work():
+                        if self.only_role is not None:
+                            self._echo(
+                                f"\n✓ No dispatchable work for --agent"
+                                f" {self.only_role}. Shutting down.",
+                                final=True,
+                            )
+                        else:
+                            self._echo("\n✓ No pending work. Workflow complete.", final=True)
+                        break
 
             time.sleep(_POLL_INTERVAL)
 
@@ -339,16 +322,15 @@ class Dispatcher:
     # Dispatch
     # ------------------------------------------------------------------
 
-    def _dispatch(self, messages: list[dict], call_budget: int) -> int:
+    def _dispatch(self, call_budget: int) -> int:
         """Spawn up to `call_budget` agents for all unassigned work.
 
-        Reads pending work from ``self.work`` (populated by ``_refresh_work``
-        at the top of each cycle) rather than re-querying board/git on every
-        decision point.
+        Reads directly from board/git services on each call so the data
+        is always fresh (no stale snapshot).
 
         When ``self.only_role`` is set, only agents matching that role are
-        dispatched; merge-queue bookkeeping and board operations (QA_PASSED,
-        CLOSE_BOARD) still run so the workflow state stays consistent.
+        dispatched; board operations (QA_PASSED, CLOSE_BOARD) still run so
+        the workflow state stays consistent.
 
         Return number spawned.
         """
@@ -370,25 +352,14 @@ class Dispatcher:
 
         dispatched = 0
 
-        if not self.work.open_tasks:
-            # No open tasks — queue any unmerged feat/* branches for merge
-            # and/or dispatch a planner for unplanned vision docs / TODOs.
-            # _do_merge handles clean merges automatically; a coder is only
-            # spawned if there are conflicts.
-            for branch in self.work.open_PRs:
-                # Convert branch name → task name.
-                # With a branch prefix (e.g. "orc"), branches look like
-                # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
-                # Strip everything up to and including "feat/" to get the stem.
-                feat_idx = branch.find("feat/")
-                task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
-                task_name = task_stem + ".md"
-                if task_name not in self._merge_queue:
-                    self._merge_queue.append(task_name)
-            if not self.work.has_planner_work:
+        open_tasks = self.board.get_tasks()
+        has_planner_work = bool(self.board.get_pending_visions() or self.board.scan_todos())
+
+        if not open_tasks:
+            if not has_planner_work:
                 return dispatched
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
-                dispatched += self._spawn_planner(messages)
+                dispatched += self._spawn_planner()
             return dispatched
         else:
             # Keep the pipeline full when open tasks are fewer
@@ -397,37 +368,14 @@ class Dispatcher:
             # task to finish before a new planner run creates more work.
             if (
                 _role_allowed(AgentRole.PLANNER)
-                and len(self.work.open_tasks) < self.squad.count(AgentRole.CODER)
-                and self.work.has_planner_work
+                and len(open_tasks) < self.squad.count(AgentRole.CODER)
+                and has_planner_work
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
-                dispatched += _spawn(lambda: self._spawn_planner(messages))
-
-        for branch in self.work.open_PRs:
-            # Convert branch name → task name.
-            # With a branch prefix (e.g. "orc"), branches look like
-            # "orc/feat/NNNN-foo"; without a prefix they are "feat/NNNN-foo".
-            # Strip everything up to and including "feat/" to get the stem.
-            feat_idx = branch.find("feat/")
-            task_stem = branch[feat_idx + len("feat/") :] if feat_idx != -1 else branch
-            task_name = task_stem + ".md"
-
-            if task_name not in self._merge_queue:
-                self._merge_queue.append(task_name)
-
-        # Check for soft-block: route one planner to resolve it.
-        if self.work.soft_blocked:
-            blocked_agent, blocked_state = self.work.soft_blocked
-            if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
-                self._resolving_soft_block = (blocked_agent, blocked_state)
-                agent_id = self._next_id(AgentRole.PLANNER)
-                dispatched += _spawn(
-                    lambda: self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
-                )
-            return dispatched
+                dispatched += _spawn(lambda: self._spawn_planner())
 
         # Dispatch coder/QA for each unassigned task up to squad capacity.
-        for task in self.work.open_tasks:
+        for task in open_tasks:
             task_name = task["name"] if isinstance(task, dict) else str(task)
             assigned_to = task.get("assigned_to") if isinstance(task, dict) else None
 
@@ -438,8 +386,6 @@ class Dispatcher:
             logger.debug("task state", task=task_name, token=token, reason=reason)
 
             if token == QA_PASSED:
-                if task_name not in self._merge_queue:
-                    self._merge_queue.append(task_name)
                 continue
 
             if token == CLOSE_BOARD:
@@ -460,7 +406,7 @@ class Dispatcher:
                 continue
 
             agent_id = self._next_id(token)
-            dispatched += _spawn(lambda: self._spawn_agent(token, agent_id, task_name, messages))
+            dispatched += _spawn(lambda: self._spawn_agent(token, agent_id, task_name))
 
         return dispatched
 
@@ -472,9 +418,9 @@ class Dispatcher:
         self._id_counters[role] += 1
         return tg.make_agent_id(role, self._id_counters[role])
 
-    def _spawn_planner(self, messages: list[dict]) -> int:
+    def _spawn_planner(self) -> int:
         agent_id = self._next_id(AgentRole.PLANNER)
-        self._spawn_agent(AgentRole.PLANNER, agent_id, None, messages)
+        self._spawn_agent(AgentRole.PLANNER, agent_id, None)
         return 1
 
     def _spawn_agent(
@@ -482,7 +428,6 @@ class Dispatcher:
         role: AgentRole | str,
         agent_id: str,
         task_name: str | None,
-        messages: list[dict],
     ) -> None:
         """Build context and spawn an agent subprocess (or print for dry-run)."""
         if role == AgentRole.PLANNER:
@@ -492,17 +437,14 @@ class Dispatcher:
         else:
             raise ValueError(f"No worktree: role={role!r} requires task_name")
 
-        model, context = self.agent.build_context(role, agent_id, messages, worktree)
+        model, context = self.agent.build_context(role, agent_id, [], worktree)
 
         if self.dry_run:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
         self.messaging.post_boot_message(agent_id)
-
-        import structlog.contextvars as _cv
-
-        _cv.bind_contextvars(agent_id=agent_id)
+        contextvars.bind_contextvars(agent_id=agent_id)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
         spawn_result = self.agent.spawn(context, worktree, model, log_path)
@@ -539,7 +481,7 @@ class Dispatcher:
     # Completion handling
     # ------------------------------------------------------------------
 
-    def _handle_completion(self, agent: AgentProcess, rc: int, messages: list[dict]) -> None:
+    def _handle_completion(self, agent: AgentProcess, rc: int) -> None:
         logger.info("agent exited", agent_id=agent.agent_id, exit_code=rc)
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
@@ -564,12 +506,6 @@ class Dispatcher:
 
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
-
-        # Post [orc](resolved) if this planner was resolving a soft-block.
-        if agent.role == AgentRole.PLANNER and self._resolving_soft_block is not None:
-            blocked_a, blocked_s = self._resolving_soft_block
-            self.messaging.post_resolved(blocked_a, blocked_s, agent.agent_id)
-            self._resolving_soft_block = None
 
     # ------------------------------------------------------------------
     # Merge (serialized)
@@ -609,33 +545,6 @@ class Dispatcher:
         _cleanup_context_tmp(agent.context_tmp)
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
-
-    # ------------------------------------------------------------------
-    # Hard-block handling
-    # ------------------------------------------------------------------
-
-    def _handle_hard_block(self, blocked_agent_id: str, messages: list[dict]) -> None:
-        self._set_orc_status("running", f"handling hard-blocked {blocked_agent_id}")
-        self._echo(f"\n⏸  {blocked_agent_id}(blocked) — waiting for your reply in Telegram…")
-        logger.info("hard block detected, waiting for human reply", agent=blocked_agent_id)
-        try:
-            human_reply = self.messaging.wait_for_human_reply(messages)
-        except TimeoutError:
-            timeout_h = self.squad.timeout_minutes / 60.0
-            timeout_msg = tg.format_agent_message(
-                blocked_agent_id,
-                "blocked",
-                f"Stopped waiting for human reply after {timeout_h:.0f}h. Exiting.",
-            )
-            tg.send_message(timeout_msg)
-            self._set_orc_status("shutting down", "timed out waiting for human reply")
-            self._echo("\n✗ Timed out waiting for human reply. Stopping.", final=True)
-            raise typer.Exit(code=1)
-        self._set_orc_status("running", "resuming after human reply")
-        self._echo(f"\n↩ Reply received: {human_reply[:80]!r}. Resuming…")
-        # Post [orc](resolved) so _has_unresolved_block returns (None, None) on
-        # the next cycle instead of seeing the block as still active.
-        self.messaging.post_resolved(blocked_agent_id, "blocked", "human-reply")
 
     # ------------------------------------------------------------------
     # Graceful shutdown

@@ -13,7 +13,7 @@ Usage::
         # server unreachable
         ...
     else:
-        # snap.visions, snap.tasks, snap.done
+        # snap.visions, snap.tasks
         ...
 """
 
@@ -33,10 +33,7 @@ class BoardSnapshot:
     """Vision filenames pending refinement (``GET /visions``)."""
 
     tasks: list[dict] = field(default_factory=list)
-    """Open task entries from ``GET /board/tasks``."""
-
-    done: list[dict] = field(default_factory=list)
-    """Done task entries from ``GET /board/done``."""
+    """Active task entries from ``GET /board/tasks``."""
 
 
 def get_board_snapshot() -> BoardSnapshot | None:
@@ -54,15 +51,13 @@ def get_board_snapshot() -> BoardSnapshot | None:
         with httpx.Client(transport=transport, base_url="http://orc") as client:
             visions_resp = client.get("/visions")
             tasks_resp = client.get("/board/tasks")
-            done_resp = client.get("/board/done")
     except Exception:
         return None
 
     try:
         visions: list[str] = visions_resp.json()
         tasks: list[dict] = tasks_resp.json()
-        done: list[dict] = done_resp.json()
     except Exception:
         return None
 
-    return BoardSnapshot(visions=visions, tasks=tasks, done=done)
+    return BoardSnapshot(visions=visions, tasks=tasks)

@@ -20,7 +20,6 @@ class TestStatusCoverage:
         self,
         monkeypatch,
         *,
-        blocked=(None, None),
         squad_cfg=None,
         open_tasks=None,
         done_tasks=None,
@@ -33,8 +32,6 @@ class TestStatusCoverage:
         last_commit=None,
         open_todos=None,
     ):
-        monkeypatch.setattr(_st.tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_st._wf, "_has_unresolved_block", lambda msgs: blocked)
         if squad_cfg is None:
             monkeypatch.setattr(
                 _st,
@@ -44,11 +41,11 @@ class TestStatusCoverage:
         else:
             monkeypatch.setattr(_st, "load_squad", lambda n, orc_dir: squad_cfg)
         open_dicts = [{"name": t} if isinstance(t, str) else t for t in (open_tasks or [])]
-        monkeypatch.setattr(_st._board, "get_open_tasks", lambda: open_dicts)
+        monkeypatch.setattr(_st._board, "get_tasks", lambda: open_dicts)
         monkeypatch.setattr(
             _st._board,
             "_read_board",
-            lambda: {"open": open_dicts, "done": done_tasks or []},
+            lambda: {"tasks": open_dicts},
         )
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
@@ -126,12 +123,10 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             features_pending=["feat/0001-foo", "feat/0002-bar"],
-            done_tasks=[{"name": "0001-foo.md", "commit-tag": "v1", "timestamp": "2024-01-01"}],
         )
         result = runner.invoke(m.app, ["status"])
         assert "2 feature" in result.output
         assert "feat/0001-foo" in result.output
-        assert "0001-foo.md" in result.output
 
     def test_status_hard_block(self, tmp_path, monkeypatch):
         squad = SquadConfig(
@@ -140,11 +135,11 @@ class TestStatusCoverage:
         self._setup(
             monkeypatch,
             squad_cfg=squad,
-            blocked=("coder-1", "blocked"),
+            open_tasks=[{"name": "0001-foo.md", "status": "blocked"}],
             ahead=0,
         )
         result = runner.invoke(m.app, ["status"])
-        assert "Hard block" in result.output
+        assert "Blocked" in result.output
 
     def test_status_soft_block(self, tmp_path, monkeypatch):
         squad = SquadConfig(
@@ -153,21 +148,20 @@ class TestStatusCoverage:
         self._setup(
             monkeypatch,
             squad_cfg=squad,
-            blocked=("coder-1", "soft-blocked"),
+            open_tasks=[{"name": "0001-foo.md", "status": "blocked"}],
             ahead=0,
         )
         _st._status()
 
     def test_status_soft_block_with_open_tasks(self, tmp_path, monkeypatch):
-        """Lines 210-211: soft-block planner note shown when tasks exist."""
+        """Blocked planner note shown when tasks include blocked status."""
         squad = SquadConfig(
             planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
         )
         self._setup(
             monkeypatch,
             squad_cfg=squad,
-            open_tasks=["0001-foo.md"],
-            blocked=("coder-1", "soft-blocked"),
+            open_tasks=[{"name": "0001-foo.md", "status": "blocked"}],
             ahead=0,
         )
         result = _st._status()
@@ -257,7 +251,7 @@ class TestStatusCoverage:
         monkeypatch.setattr(
             _st._board,
             "_read_board",
-            lambda: {"open": [{"name": "feature-a.md"}], "done": []},
+            lambda: {"tasks": [{"name": "feature-a.md"}]},
         )
         result = _st._pending_visions()
         assert result == ["feature-b.md"]
@@ -375,11 +369,11 @@ class TestStatusCoverage:
         assert "feat/0002-bar" in result.output
 
     def test_get_wip_branches_filters_coder_done(self, monkeypatch, tmp_path):
-        """_get_wip_branches returns branches for open tasks with status=review."""
+        """_get_wip_branches returns branches for tasks with status=in-review."""
         monkeypatch.setattr(
             _st._board,
-            "get_open_tasks",
-            lambda: [{"name": "0001-foo.md", "status": "review"}],
+            "get_tasks",
+            lambda: [{"name": "0001-foo.md", "status": "in-review"}],
         )
         monkeypatch.setattr(
             _st._git,
@@ -392,8 +386,8 @@ class TestStatusCoverage:
         """_get_approved_branches returns branches for open tasks with status=approved."""
         monkeypatch.setattr(
             _st._board,
-            "get_open_tasks",
-            lambda: [{"name": "0001-foo.md", "status": "approved"}],
+            "get_tasks",
+            lambda: [{"name": "0001-foo.md", "status": "done"}],
         )
         monkeypatch.setattr(
             _st._git,

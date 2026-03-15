@@ -13,12 +13,10 @@ import typer
 import orc.board as _board
 import orc.config as _cfg
 import orc.engine.context as _ctx
-import orc.engine.workflow as _wf
 import orc.git.core as _git
+from orc.board_manager import TaskStatus
 from orc.cli import app
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
-from orc.engine.work import Work
-from orc.messaging import telegram as tg
 from orc.squad import AgentRole, load_squad
 
 logger = structlog.get_logger(__name__)
@@ -52,9 +50,7 @@ def _pending_visions() -> list[str]:
         return []
     board = _board._read_board()
     all_task_stems = {
-        (t["name"] if isinstance(t, dict) else str(t))
-        for tasks in (board.get("open", []), board.get("done", []))
-        for t in tasks
+        (t["name"] if isinstance(t, dict) else str(t)) for t in board.get("tasks", [])
     }
     result = []
     for f in sorted(ready_dir.glob("*.md")):
@@ -101,13 +97,13 @@ _pending_reviews = _unmerged_feature_branches
 
 
 def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
-    """Return feature branches for open tasks in ``review`` status (awaiting QA).
+    """Return feature branches for tasks in ``in-review`` status (awaiting QA).
 
     When *branches* is provided, only branches in that list are included.
     """
     result = []
-    for task in _board.get_open_tasks():
-        if task.get("status") == "review":
+    for task in _board.get_tasks():
+        if task.get("status") == TaskStatus.IN_REVIEW:
             branch = _git._feature_branch(task["name"])
             if branches is None or branch in branches:
                 result.append(branch)
@@ -115,13 +111,13 @@ def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
 
 
 def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
-    """Return feature branches for open tasks in ``approved`` status (QA passed).
+    """Return feature branches for tasks in ``done`` status (QA passed, ready to merge).
 
     When *branches* is provided, only branches in that list are included.
     """
     result = []
-    for task in _board.get_open_tasks():
-        if task.get("status") == "approved":
+    for task in _board.get_tasks():
+        if task.get("status") == "done":
             branch = _git._feature_branch(task["name"])
             if branches is None or branch in branches:
                 result.append(branch)
@@ -142,18 +138,11 @@ def _dev_log_since_main() -> list[str]:
 
 
 def _status(squad: str = "default") -> None:
-    messages = tg.get_messages()
-
-    # Build a single work snapshot — used for all display decisions below.
-    blocked_agent, blocked_state = _wf._has_unresolved_block(messages)
-    stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
-    work = Work(
-        open_tasks=_board.get_open_tasks(),
-        open_visions=_pending_visions(),
-        open_todos_and_fixmes=_ctx._scan_todos(_cfg.get().repo_root),
-        open_PRs=_pending_reviews(),
-        stalled_agents=stalled,
-    )
+    open_tasks = _board.get_tasks()
+    open_visions = _pending_visions()
+    open_todos_and_fixmes = _ctx._scan_todos(_cfg.get().repo_root)
+    open_PRs = _pending_reviews()
+    blocked_task = next((t["name"] for t in open_tasks if t.get("status") == "blocked"), None)
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
@@ -170,10 +159,9 @@ def _status(squad: str = "default") -> None:
             f"  (1 planner · {coder_label} · {qa_label} · {squad_cfg.timeout_minutes} min)"
         )
 
-    # --- Hard block warning --------------------------------------------------
-    if work.hard_blocked:
-        hard_agent, _ = work.hard_blocked
-        _echo_wrapped(f"\n⛔ Hard block: {hard_agent} is waiting for human intervention.")
+    # --- Blocked task warning -------------------------------------------------
+    if blocked_task:
+        _echo_wrapped(f"\n⛔ Blocked: task {blocked_task!r} needs human intervention.")
 
     # --- dev vs main ---------------------------------------------------------
     features_pending = _git._features_in_dev_not_main()
@@ -191,7 +179,7 @@ def _status(squad: str = "default") -> None:
         coder_tasks: list[tuple[str, str]] = []
         qa_tasks: list[tuple[str, str]] = []
         merge_pending: list[str] = []
-        for task in work.open_tasks:
+        for task in open_tasks:
             name = task["name"]
             token, reason = _git._derive_task_state(name)
             if token == AgentRole.CODER:
@@ -204,8 +192,8 @@ def _status(squad: str = "default") -> None:
         # TODO: use has_ready_visions instead of has_open_work for the planner check
         if not _board.has_open_work():
             planner_note = "ready (visions pending)"
-        elif blocked_agent and blocked_state == "soft-blocked":
-            planner_note = f"ready to clarify soft-block from {blocked_agent}"
+        elif blocked_task:
+            planner_note = f"ready to clarify block on {blocked_task}"
         else:
             planner_note = "idle"
 
@@ -254,14 +242,15 @@ def _status(squad: str = "default") -> None:
             _echo_wrapped(f"\n  ⟳ Merge pending: {', '.join(merge_pending)}")
 
     # --- Board summary -------------------------------------------------------
-    board = _board._read_board()
-    done_tasks = board.get("done", [])
-
-    if work.open_tasks:
+    if open_tasks:
         _echo_wrapped("\nPending tasks:")
-        for task in work.open_tasks:
+        for task in open_tasks:
             name = task["name"] if isinstance(task, dict) else str(task)
-            status = task.get("status", "coding") if isinstance(task, dict) else "coding"
+            status = (
+                task.get("status", TaskStatus.IN_PROGRESS)
+                if isinstance(task, dict)
+                else TaskStatus.IN_PROGRESS
+            )
             branch = _git._feature_branch(name)
             if _git._feature_branch_exists(branch):
                 _echo_wrapped(f"  • {name}  ({branch})  status: {status}")
@@ -269,16 +258,16 @@ def _status(squad: str = "default") -> None:
                 _echo_wrapped(f"  • {name}  (no branch yet)")
 
     # --- Pending visions -----------------------------------------------------
-    if work.open_visions:
-        shown = work.open_visions[:5]
-        _echo_wrapped(f"\nPending visions ({len(shown)} of {len(work.open_visions)}):")
+    if open_visions:
+        shown = open_visions[:5]
+        _echo_wrapped(f"\nPending visions ({len(shown)} of {len(open_visions)}):")
         for v in shown:
             _echo_wrapped(f"  📄 {v}")
 
     # --- TODOs / FIXMEs ------------------------------------------------------
-    if work.open_todos_and_fixmes:
-        shown_t = work.open_todos_and_fixmes[:5]
-        total_t = len(work.open_todos_and_fixmes)
+    if open_todos_and_fixmes:
+        shown_t = open_todos_and_fixmes[:5]
+        total_t = len(open_todos_and_fixmes)
         _echo_wrapped(f"\nTODOs / FIXMEs ({len(shown_t)} of {total_t}):")
         for item in shown_t:
             tag = item.get("tag", "TODO")
@@ -288,7 +277,7 @@ def _status(squad: str = "default") -> None:
             _echo_wrapped(f"  [{tag}] {path}:{lineno}  {text}")
 
     # --- Branches awaiting QA review -----------------------------------------
-    wip = _get_wip_branches(work.open_PRs)
+    wip = _get_wip_branches(open_PRs)
     if wip:
         shown_w = wip[:5]
         _echo_wrapped(f"\nAwaiting review ({len(shown_w)} of {len(wip)}):")
@@ -296,23 +285,12 @@ def _status(squad: str = "default") -> None:
             _echo_wrapped(f"  🔍 {branch}")
 
     # --- Branches approved by QA, pending merge ------------------------------
-    approved = _get_approved_branches(work.open_PRs)
+    approved = _get_approved_branches(open_PRs)
     if approved:
         shown_a = approved[:5]
         _echo_wrapped(f"\nApproved, pending merge ({len(shown_a)} of {len(approved)}):")
         for branch in shown_a:
             _echo_wrapped(f"  🔀 {branch}")
-
-    # --- Last completed tasks (newest first, capped at 5) --------------------
-    if done_tasks:
-        recent = list(reversed(done_tasks[-5:]))
-        _echo_wrapped(f"\nLast completed tasks ({len(recent)} of {len(done_tasks)}):")
-        for task in recent:
-            name = task.get("name", "?") if isinstance(task, dict) else str(task)
-            tag = task.get("commit-tag", "?") if isinstance(task, dict) else "?"
-            ts = task.get("timestamp", "") if isinstance(task, dict) else ""
-            ts_str = f"  {ts}" if ts else ""
-            _echo_wrapped(f"  ✓ {name}  ({tag}){ts_str}")
 
 
 def _is_tty() -> bool:

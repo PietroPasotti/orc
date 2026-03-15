@@ -1,4 +1,4 @@
-"""Tests for orc.coordination.state.StateManager."""
+"""Tests for orc.coordination.state.BoardStateManager."""
 
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ def _orc_dir(tmp_path: Path) -> Path:
     orc.mkdir(exist_ok=True)
     (orc / "work").mkdir(exist_ok=True)
     (orc / "vision" / "ready").mkdir(parents=True, exist_ok=True)
-    (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+    (orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
     return orc
 
 
 def _state(orc_dir: Path):
-    """Return a StateManager rooted at *orc_dir* (already set up by _orc_dir)."""
-    from orc.coordination.state import StateManager
+    """Return a BoardStateManager rooted at *orc_dir* (already set up by _orc_dir)."""
+    from orc.coordination.state import BoardStateManager
 
-    return StateManager(orc_dir)
+    return BoardStateManager(orc_dir)
 
 
 _VISION = "0001-test-vision.md"
@@ -45,27 +45,27 @@ def _task_body(**overrides) -> dict:
 class TestStateManagerBoardQueries:
     def test_get_open_tasks_empty(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        assert _state(orc).get_open_tasks() == []
+        assert _state(orc).get_tasks() == []
 
     def test_get_open_tasks_wraps_strings(self, tmp_path):
         orc = _orc_dir(tmp_path)
-        (orc / "work" / "board.yaml").write_text("open:\n  - 0001-foo.md\ndone: []\n")
-        result = _state(orc).get_open_tasks()
+        (orc / "work" / "board.yaml").write_text("tasks:\n  - 0001-foo.md\n")
+        result = _state(orc).get_tasks()
         assert result == [{"name": "0001-foo.md"}]
 
     def test_get_open_tasks_returns_dicts(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: coding\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: in-progress\n"
         )
-        result = _state(orc).get_open_tasks()
+        result = _state(orc).get_tasks()
         assert result[0]["name"] == "0001-foo.md"
-        assert result[0]["status"] == "coding"
+        assert result[0]["status"] == "in-progress"
 
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: planned\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: planned\n"
         )
         t = _state(orc).get_task("0001-foo.md")
         assert t is not None
@@ -85,8 +85,8 @@ class TestStateManagerBoardMutations:
         assert path.exists()
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
         assert board["counter"] == 1
-        assert board["open"][0]["name"] == filename
-        assert board["open"][0]["status"] == "planned"
+        assert board["tasks"][0]["name"] == filename
+        assert board["tasks"][0]["status"] == "planned"
 
     def test_create_task_increments_counter(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -99,30 +99,30 @@ class TestStateManagerBoardMutations:
     def test_set_task_status(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: planned\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: planned\n"
         )
-        _state(orc).set_task_status("0001-foo.md", "review")
+        _state(orc).set_task_status("0001-foo.md", "in-review")
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0]["status"] == "review"
+        assert board["tasks"][0]["status"] == "in-review"
 
     def test_assign_task_sets_assigned_to(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: planned\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: planned\n"
         )
         _state(orc).assign_task("0001-foo.md", "coder-1")
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0]["assigned_to"] == "coder-1"
-        assert board["open"][0]["status"] == "coding"
+        assert board["tasks"][0]["assigned_to"] == "coder-1"
+        assert board["tasks"][0]["status"] == "in-progress"
 
     def test_assign_task_preserves_advanced_status(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: review\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: in-review\n"
         )
         _state(orc).assign_task("0001-foo.md", "qa-1")
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0]["status"] == "review"
+        assert board["tasks"][0]["status"] == "in-review"
 
     def test_assign_task_not_found_warns(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -131,11 +131,11 @@ class TestStateManagerBoardMutations:
     def test_unassign_task(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    assigned_to: coder-1\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    assigned_to: coder-1\n"
         )
         _state(orc).unassign_task("0001-foo.md")
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0].get("assigned_to") is None
+        assert board["tasks"][0].get("assigned_to") is None
 
     def test_unassign_task_not_found_no_write(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -144,11 +144,11 @@ class TestStateManagerBoardMutations:
     def test_clear_all_assignments(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    assigned_to: coder-1\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    assigned_to: coder-1\n"
         )
         _state(orc).clear_all_assignments()
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        assert board["open"][0].get("assigned_to") is None
+        assert board["tasks"][0].get("assigned_to") is None
 
     def test_clear_all_assignments_no_change_skips_write(self, tmp_path):
         # No assigned_to fields → no write needed (should not raise).
@@ -158,11 +158,11 @@ class TestStateManagerBoardMutations:
     def test_add_task_comment(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-foo.md\n    status: review\ndone: []\n"
+            "tasks:\n  - name: 0001-foo.md\n    status: in-review\n"
         )
         _state(orc).add_task_comment("0001-foo.md", "qa-1", "Missing tests")
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
-        comments = board["open"][0]["comments"]
+        comments = board["tasks"][0]["comments"]
         assert len(comments) == 1
         assert comments[0]["from"] == "qa-1"
         assert comments[0]["text"] == "Missing tests"
@@ -177,10 +177,10 @@ class TestStateManagerVisions:
         orc = tmp_path / ".orc"
         orc.mkdir(exist_ok=True)
         (orc / "work").mkdir(exist_ok=True)
-        (orc / "work" / "board.yaml").write_text("open: []\ndone: []\n")
-        from orc.coordination.state import StateManager
+        (orc / "work" / "board.yaml").write_text("tasks: []\n")
+        from orc.coordination.state import BoardStateManager
 
-        assert StateManager(orc).get_pending_visions() == []
+        assert BoardStateManager(orc).get_pending_visions() == []
 
     def test_get_pending_visions_with_file(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -202,14 +202,14 @@ class TestStateManagerVisions:
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
         (orc / "work" / "board.yaml").write_text(
-            "open:\n  - name: 0001-feature.md\n    status: planned\ndone: []\n"
+            "tasks:\n  - name: 0001-feature.md\n    status: planned\n"
         )
         assert _state(orc).get_pending_visions() == []
 
     def test_get_pending_visions_skips_stem_matched_tasks(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
-        (orc / "work" / "board.yaml").write_text("done:\n  - name: 0001-feature.md\nopen: []\n")
+        (orc / "work" / "board.yaml").write_text("tasks:\n  - name: 0001-feature.md\n")
         assert _state(orc).get_pending_visions() == []
 
     def test_read_vision_found(self, tmp_path):

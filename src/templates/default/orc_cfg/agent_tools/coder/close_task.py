@@ -60,7 +60,7 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        resp = client.put(f"/board/tasks/{task_name}/status", json={"status": "review"})
+        resp = client.put(f"/board/tasks/{task_name}/status", json={"status": "in-review"})
         resp.raise_for_status()
 
 

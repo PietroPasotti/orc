@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from orc.coordination.routes import board, visions, work
-from orc.coordination.state import StateManager
+from orc.coordination.state import BoardStateManager
 
 
-def create_app(state: StateManager) -> FastAPI:
+def create_app(state: BoardStateManager) -> FastAPI:
     """Create and return a configured FastAPI app backed by *state*.
 
     The *state* manager is stored on ``app.state.coord_state`` and injected

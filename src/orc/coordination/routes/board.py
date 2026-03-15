@@ -11,45 +11,37 @@ from orc.coordination.models import (
     SetStatusRequest,
     TaskEntry,
 )
-from orc.coordination.state import StateManager
+from orc.coordination.state import BoardStateManager
 
 router = APIRouter(prefix="/board", tags=["board"])
 
 
-def _get_state(request: Request) -> StateManager:
+def _get_state(request: Request) -> BoardStateManager:
     return request.app.state.coord_state  # type: ignore[no-any-return]
 
 
 @router.get("/tasks", response_model=list[TaskEntry])
 def get_tasks(
-    state: StateManager = Depends(_get_state),
+    state: BoardStateManager = Depends(_get_state),
     status_filter: str | None = Query(
         None,
         alias="status",
-        description="Filter tasks by status bucket: open (default), done, or all.",
+        description="Filter tasks by status (e.g. planned, in-progress, in-review, done, blocked).",
     ),
 ) -> list[dict]:
     """Return tasks from board.yaml.
 
-    - ``status=open`` (default, omitted) — open tasks only.
-    - ``status=done`` — done tasks only.
-    - ``status=all`` — open and done tasks combined.
+    - No filter (default) — all active tasks.
+    - ``status=<value>`` — tasks with that exact status value.
     """
-    if status_filter == "done":
-        return state.get_done_tasks()
-    if status_filter == "all":
-        return state.get_all_tasks()
-    return state.get_open_tasks()
-
-
-@router.get("/done", response_model=list[TaskEntry])
-def get_done_tasks(state: StateManager = Depends(_get_state)) -> list[dict]:
-    """Return the done-tasks list from board.yaml."""
-    return state.get_done_tasks()
+    tasks = state.get_tasks()
+    if status_filter is not None:
+        tasks = [t for t in tasks if t.get("status") == status_filter]
+    return tasks
 
 
 @router.get("/tasks/{task_name:path}/content")
-def get_task_content(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
+def get_task_content(task_name: str, state: BoardStateManager = Depends(_get_state)) -> dict:
     """Return the raw markdown content of a task file by exact filename."""
     try:
         content = state.read_task_content(task_name)
@@ -59,7 +51,7 @@ def get_task_content(task_name: str, state: StateManager = Depends(_get_state)) 
 
 
 @router.get("/tasks/{task_name:path}", response_model=TaskEntry)
-def get_task(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
+def get_task(task_name: str, state: BoardStateManager = Depends(_get_state)) -> dict:
     """Return a single task entry by exact filename."""
     task = state.get_task(task_name)
     if task is None:
@@ -68,7 +60,7 @@ def get_task(task_name: str, state: StateManager = Depends(_get_state)) -> dict:
 
 
 @router.post("/tasks", response_model=CreateTaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(body: CreateTaskRequest, state: StateManager = Depends(_get_state)) -> dict:
+def create_task(body: CreateTaskRequest, state: BoardStateManager = Depends(_get_state)) -> dict:
     """Create a new task file and board entry."""
     filename, path = state.create_task(body.title, body.vision, body.body.model_dump())
     return {"filename": filename, "path": str(path)}
@@ -78,7 +70,7 @@ def create_task(body: CreateTaskRequest, state: StateManager = Depends(_get_stat
 def set_status(
     task_name: str,
     body: SetStatusRequest,
-    state: StateManager = Depends(_get_state),
+    state: BoardStateManager = Depends(_get_state),
 ) -> None:
     """Set the status of a task."""
     state.set_task_status(task_name, body.status)
@@ -91,7 +83,7 @@ def set_status(
 def add_comment(
     task_name: str,
     body: AddCommentRequest,
-    state: StateManager = Depends(_get_state),
+    state: BoardStateManager = Depends(_get_state),
 ) -> dict:
     """Append a comment to a task's comments list."""
     state.add_task_comment(task_name, body.author, body.text)

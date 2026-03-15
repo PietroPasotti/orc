@@ -11,7 +11,7 @@
 ![orc diagram](assets/orc.drawio.svg)
 
 Inter-agent synchronisation happens over the **board** (a YAML file in the
-project); interaction with you is mediated by a Telegram bot.
+project).
 The orchestrator reads board task-status fields to determine which agent(s)
 to run next.  Git is used only for branch management and code merging.
 
@@ -141,8 +141,7 @@ Occasionally the agents may get stuck working on something, and they'll notify y
 ```
 [coder-2](blocked) 2026-03-01T14:00:00Z: I'm having trouble implementing task 0003 because I cannot inject the sql in the booper...
 ```
-
-You can reply to that message in the Telegram thread, and the orchestrator will pick up your response and send it back to the agent as additional context.
+Future work: ability to reply to telegram chat messages, and the orchestrator will pick up your response and send it back to the agent as additional context.
 
 ## Configuration
 

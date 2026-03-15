@@ -28,39 +28,39 @@ class TestBootMessageBody:
         [
             (
                 "orc",
-                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
                 "picking up work/0002-foo.md.",
             ),
             (
                 "orc",
-                "counter: 3\nopen:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n",
+                "counter: 3\ntasks:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n",
                 "picking up work/0002-foo.md, work/0003-bar.md.",
             ),
-            ("orc", "counter: 2\nopen: []\n", "no open tasks on board."),
+            ("orc", "counter: 2\ntasks: []\n", "no open tasks on board."),
             ("orc", None, "no open tasks on board."),  # missing board
             (
                 "planner-1",
-                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
                 "planning 0002-foo.md.",
             ),
             (
                 "planner-1",
-                "counter: 2\nopen: []\nvisions:\n  - vision.md\n",
+                "counter: 2\ntasks: []\nvisions:\n  - vision.md\n",
                 "translating vision docs.",
             ),
-            ("planner-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+            ("planner-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
             (
                 "coder-1",
-                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
                 "picking up work/0002-foo.md.",
             ),
-            ("coder-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+            ("coder-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
             (
                 "qa-1",
-                "counter: 2\nopen:\n  - name: 0002-foo.md\n",
+                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
                 "reviewing feat/0002-foo.",
             ),
-            ("qa-1", "counter: 2\nopen: []\n", "no open tasks on board."),
+            ("qa-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
         ],
     )
     def test_boot_message_body(self, agent_id, board_content, expected):
@@ -207,9 +207,7 @@ class TestWaitForHumanReply:
 
 
 class TestContextCoverage:
-    def _setup_context(
-        self, monkeypatch, tmp_path, *, roles_dir=None, board_content="open: []\ndone: []\n"
-    ):
+    def _setup_context(self, monkeypatch, tmp_path, *, roles_dir=None, board_content="tasks: []\n"):
         """Set up full context with config, directories, and mocks."""
         if roles_dir is None:
             roles_dir = tmp_path / "roles"
@@ -352,7 +350,7 @@ class TestContextCoverage:
         self._setup_context(monkeypatch, tmp_path)
         work_dir = tmp_path / ".orc" / "work"
         (work_dir / "board.yaml").write_text(
-            "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
@@ -372,7 +370,7 @@ class TestContextCoverage:
         self._setup_context(monkeypatch, tmp_path)
         work_dir = tmp_path / ".orc" / "work"
         (work_dir / "board.yaml").write_text(
-            "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feature/0001-task")
@@ -387,7 +385,7 @@ class TestContextCoverage:
         orc_dir = tmp_path / "external-orc"
         orc_dir.mkdir(exist_ok=True)
         (orc_dir / "work").mkdir(exist_ok=True)
-        (orc_dir / "work" / "board.yaml").write_text("open: []\ndone: []\n")
+        (orc_dir / "work" / "board.yaml").write_text("tasks: []\n")
         roles_dir = orc_dir / "roles"
         roles_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(
@@ -563,7 +561,7 @@ class TestBuildContextTodos:
         roles_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
-        (work_dir / "board.yaml").write_text("open: []\ndone: []\n")
+        (work_dir / "board.yaml").write_text("tasks: []\n")
         monkeypatch.setattr(
             _cfg,
             "_config",
@@ -599,7 +597,7 @@ class TestBuildContextTodos:
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
         work_dir = tmp_path / ".orc" / "work"
         (work_dir / "board.yaml").write_text(
-            "open:\n  - name: 0001-task.md\n    assigned_to: null\ndone: []\n"
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
         _, ctx = _ctx.build_agent_context("coder", [])
         assert "Code TODOs and FIXMEs" not in ctx
@@ -796,7 +794,7 @@ class TestReadWorkScoped:
     def test_active_only_includes_only_target_task(self, tmp_path, monkeypatch):
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
+        (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
         (work_dir / "0001-a.md").write_text("Task A content.")
         (work_dir / "0002-b.md").write_text("Task B content.")
         monkeypatch.setattr(
@@ -822,7 +820,7 @@ class TestReadWorkScoped:
     def test_no_active_only_includes_all(self, tmp_path, monkeypatch):
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text("open:\n  - name: 0001-a.md\n")
+        (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n")
         (work_dir / "0001-a.md").write_text("Task A content.")
         monkeypatch.setattr(
             _cfg,

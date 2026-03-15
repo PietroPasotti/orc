@@ -15,15 +15,15 @@ def _orc_dir(tmp_path: Path) -> Path:
     orc.mkdir(exist_ok=True)
     (orc / "work").mkdir(exist_ok=True)
     (orc / "vision" / "ready").mkdir(parents=True, exist_ok=True)
-    (orc / "work" / "board.yaml").write_text("counter: 0\nopen: []\ndone: []\n")
+    (orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
     return orc
 
 
 def _state(orc_dir: Path):
-    """Return a StateManager rooted at *orc_dir* (already set up by _orc_dir)."""
-    from orc.coordination.state import StateManager
+    """Return a BoardStateManager rooted at *orc_dir* (already set up by _orc_dir)."""
+    from orc.coordination.state import BoardStateManager
 
-    return StateManager(orc_dir)
+    return BoardStateManager(orc_dir)
 
 
 def _make_create_request(title: str):
@@ -47,12 +47,12 @@ class TestBoardRoutes:
     """Test route handlers from orc.coordination.routes.board directly."""
 
     def _req(self, tmp_path):
-        """Return a mock Request whose app.state.coord_state is a real StateManager."""
-        from orc.coordination.state import StateManager
+        """Return a mock Request whose app.state.coord_state is a real BoardStateManager."""
+        from orc.coordination.state import BoardStateManager
 
         req = MagicMock()
         orc = _orc_dir(tmp_path)
-        req.app.state.coord_state = StateManager(orc)
+        req.app.state.coord_state = BoardStateManager(orc)
         return req
 
     def test_get_tasks_empty(self, tmp_path):
@@ -96,9 +96,9 @@ class TestBoardRoutes:
         req = self._req(tmp_path)
         created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
         name = created["filename"]
-        set_status(task_name=name, body=SetStatusRequest(status="review"), state=_get_state(req))
+        set_status(task_name=name, body=SetStatusRequest(status="in-review"), state=_get_state(req))
         task = get_task(task_name=name, state=_get_state(req))
-        assert task["status"] == "review"
+        assert task["status"] == "in-review"
 
     def test_add_comment(self, tmp_path):
         from orc.coordination.models import AddCommentRequest
@@ -121,11 +121,11 @@ class TestVisionRoutes:
     """Test route handlers from orc.coordination.routes.visions directly."""
 
     def _req(self, tmp_path):
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         req = MagicMock()
         orc = _orc_dir(tmp_path)
-        req.app.state.coord_state = StateManager(orc)
+        req.app.state.coord_state = BoardStateManager(orc)
         return req
 
     def test_get_pending_visions_empty(self, tmp_path):
@@ -197,11 +197,11 @@ class TestWorkRoutes:
     """Test the health/work route."""
 
     def _req(self, tmp_path):
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         req = MagicMock()
         orc = _orc_dir(tmp_path)
-        req.app.state.coord_state = StateManager(orc)
+        req.app.state.coord_state = BoardStateManager(orc)
         return req
 
     def test_health_returns_ok(self, tmp_path):
@@ -221,37 +221,37 @@ class TestWorkRoutes:
 class TestCreateApp:
     def test_app_has_board_route(self, tmp_path):
         from orc.coordination.app import create_app
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
-        app = create_app(StateManager(orc))
+        app = create_app(BoardStateManager(orc))
         routes = {r.path for r in app.routes}  # type: ignore[attr-defined]
         assert "/board/tasks" in routes
 
     def test_app_has_visions_route(self, tmp_path):
         from orc.coordination.app import create_app
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
-        app = create_app(StateManager(orc))
+        app = create_app(BoardStateManager(orc))
         routes = {r.path for r in app.routes}  # type: ignore[attr-defined]
         assert "/visions" in routes
 
     def test_app_has_health_route(self, tmp_path):
         from orc.coordination.app import create_app
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
-        app = create_app(StateManager(orc))
+        app = create_app(BoardStateManager(orc))
         routes = {r.path for r in app.routes}  # type: ignore[attr-defined]
         assert "/health" in routes
 
     def test_app_state_has_coord_state(self, tmp_path):
         from orc.coordination.app import create_app
-        from orc.coordination.state import StateManager
+        from orc.coordination.state import BoardStateManager
 
         orc = _orc_dir(tmp_path)
-        state = StateManager(orc)
+        state = BoardStateManager(orc)
         app = create_app(state)
         assert app.state.coord_state is state
 

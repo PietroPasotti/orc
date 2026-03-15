@@ -156,12 +156,10 @@ class TestRouteMatchesImplementation:
 
     _STATUS_TO_LAST_COMMIT = {
         "planned": LastCommit.CODER_WORK,
-        "coding": LastCommit.CODER_WORK,
-        "review": LastCommit.CODER_DONE,
-        "approved": LastCommit.QA_PASSED,
-        "rejected": LastCommit.QA_OTHER,
+        "in-progress": LastCommit.CODER_WORK,
+        "in-review": LastCommit.CODER_DONE,
+        "done": LastCommit.QA_PASSED,
         "blocked": LastCommit.CODER_WORK,
-        "soft-blocked": LastCommit.CODER_WORK,
     }
 
     @pytest.mark.parametrize(
@@ -171,10 +169,10 @@ class TestRouteMatchesImplementation:
             (False, False, True, None),
             (True, False, False, None),
             (True, False, True, None),
-            (True, True, False, "coding"),
-            (True, True, False, "review"),
-            (True, True, False, "approved"),
-            (True, True, False, "rejected"),
+            (True, True, False, "in-progress"),
+            (True, True, False, "in-review"),
+            (True, True, False, "done"),
+            (True, True, False, "blocked"),
         ],
     )
     def test_route_matches_derive_task_state(

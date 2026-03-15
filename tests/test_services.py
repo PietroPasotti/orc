@@ -14,7 +14,7 @@ from orc.engine.services import BoardService, MessagingService, WorktreeService
 
 
 class StubBoard:
-    def get_open_tasks(self) -> list[dict]:
+    def get_tasks(self) -> list[dict]:
         return []
 
     def assign_task(self, task_name: str, agent_id: str) -> None:
@@ -78,7 +78,7 @@ def test_stub_satisfies_protocol(stub, protocol):
 class TestBoardServiceProtocol:
     def test_incomplete_class_does_not_satisfy_protocol(self):
         class Incomplete:
-            def get_open_tasks(self):
+            def get_tasks(self):
                 return []
 
             # missing all other methods

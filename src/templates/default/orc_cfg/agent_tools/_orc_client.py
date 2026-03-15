@@ -5,7 +5,7 @@ Usage in agent tools::
     from _orc_client import get_client, find_task_by_code
 
     with get_client() as client:
-        resp = client.put(f"/board/tasks/{name}/status", json={"status": "review"})
+        resp = client.put(f"/board/tasks/{name}/status", json={"status": "in-review"})
         resp.raise_for_status()
 
 The socket path is read from the ``ORC_API_SOCKET`` environment variable,

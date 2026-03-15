@@ -20,10 +20,10 @@ import orc.git.core as _git
 from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
 from orc.cli import tui as _tui
-from orc.coordination import CoordinationServer, StateManager
+from orc.coordination import BoardStateManager, CoordinationServer
 from orc.engine import dispatcher as _disp
 from orc.engine.pool import AgentProcess
-from orc.engine.work import Work
+from orc.engine.services import BoardService
 from orc.messaging import telegram as tg
 from orc.squad import load_squad
 
@@ -39,12 +39,13 @@ _FEATURES_DONE_REFRESH_INTERVAL = 30.0  # seconds between git queries
 # ---------------------------------------------------------------------------
 
 
-class _BoardSvc:
-    def __init__(self, state: StateManager) -> None:
+# TODO: Remove this mediator class and use BoardStateManager directly.
+class _BoardSvc(BoardService):
+    def __init__(self, state: BoardStateManager) -> None:
         self._state = state
 
-    def get_open_tasks(self) -> list[dict]:
-        return self._state.get_open_tasks()
+    def get_tasks(self) -> list[dict]:
+        return self._state.get_tasks()
 
     def assign_task(self, task_name: str, agent_id: str) -> None:
         self._state.assign_task(task_name, agent_id)
@@ -58,10 +59,21 @@ class _BoardSvc:
     def get_pending_reviews(self) -> list[str]:
         return _status_mod._pending_reviews()
 
+    def get_blocked_tasks(self) -> list[str]:
+        return [
+            t["name"]
+            for t in self._state.get_tasks()
+            if isinstance(t, dict) and t.get("status") == "blocked"
+        ]
+
     def scan_todos(self) -> list[dict]:
         return _ctx._scan_todos(_cfg.get().repo_root)
 
 
+# TODO: replace this with a git.WorktreeManager class that exposes:
+#     - ensure_feature_worktree(task_name) -> Path
+#     - delete_feature_worktree(task_name) -> None
+#     - ensure_dev_worktree() -> Path
 class _WorktreeSvc:
     def ensure_feature_worktree(self, task_name: str) -> Path:
         return _git._ensure_feature_worktree(task_name)
@@ -70,23 +82,17 @@ class _WorktreeSvc:
         return _git._ensure_dev_worktree()
 
 
+# TODO: turn this into a TelegramMessagingService class
+#   which subclasses from a generic MessagingService ABC
 class _MessagingSvc:
     def get_messages(self) -> list[dict]:
         return tg.get_messages()
 
-    def has_unresolved_block(self, messages: list[dict]) -> tuple[str | None, str | None]:
-        return _wf._has_unresolved_block(messages)
-
-    def wait_for_human_reply(self, messages: list[dict]) -> str:
-        return _ctx.wait_for_human_reply(messages)
-
     def post_boot_message(self, agent_id: str) -> None:
         _wf._post_boot_message(agent_id)
 
-    def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
-        _wf._post_resolved(blocked_agent, blocked_state, resolver)
 
-
+# TODO: remove this.
 class _WorkflowSvc:
     def __init__(self, squad_cfg) -> None:
         self._merge = _wf._make_merge_feature_fn(squad_cfg)
@@ -101,6 +107,7 @@ class _WorkflowSvc:
         _wf._do_close_board(task_name)
 
 
+# TODO: remove this mediator class.
 class _AgentSvc:
     def __init__(self, squad_cfg) -> None:
         self._build = _wf._make_context_builder(squad_cfg)
@@ -162,7 +169,7 @@ def _run(
     # Start the coordination API server so agent tools in worktrees always
     # write to the correct (main) .orc/ directory.
     cfg = _cfg.get()
-    _coord_state = StateManager(cfg.orc_dir)
+    _coord_state = BoardStateManager(cfg.orc_dir)
     _coord_state.clear_all_assignments()
     _coord_server = CoordinationServer(_coord_state, cfg.api_socket_path)
     _coord_server.start()
@@ -208,16 +215,13 @@ def _run(
             on_orc_status=_on_orc_status,
         )
 
-    blocked_agent, blocked_state = messaging_svc.has_unresolved_block(messages)
-    stalled = [(blocked_agent, blocked_state)] if blocked_agent else []
-    initial_work = Work(
-        open_tasks=board_svc.get_open_tasks(),
-        open_visions=board_svc.get_pending_visions(),
-        open_todos_and_fixmes=board_svc.scan_todos(),
-        open_PRs=board_svc.get_pending_reviews(),
-        stalled_agents=stalled,
-    )
-    if not initial_work.any_work():
+    if not (
+        board_svc.get_tasks()
+        or board_svc.get_pending_visions()
+        or board_svc.scan_todos()
+        or board_svc.get_pending_reviews()
+        or board_svc.get_blocked_tasks()
+    ):
         typer.echo("No pending work. Go write some vision!")
         return
 

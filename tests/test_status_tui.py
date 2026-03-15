@@ -644,10 +644,10 @@ class TestRenderBoardWithData:
             visions=["0007-vision.md"],
             tasks=[
                 {"name": "0001-task.md", "status": "planned"},
-                {"name": "0002-task.md", "status": "coding", "assigned_to": "coder-1"},
-                {"name": "0003-task.md", "status": "review"},
+                {"name": "0002-task.md", "status": "in-progress", "assigned_to": "coder-1"},
+                {"name": "0003-task.md", "status": "in-review"},
+                {"name": "0004-task.md", "status": "done"},
             ],
-            done=[{"name": "0004-task.md", "commit_tag": "abc123", "timestamp": "2026-01-01"}],
         )
 
     def _render_to_str(self, table: rich.table.Table) -> str:
@@ -723,7 +723,7 @@ class TestRenderBoardWithData:
     def test_empty_columns_show_empty_marker(self, monkeypatch):
         from orc.coordination.client import BoardSnapshot
 
-        snap = BoardSnapshot(visions=[], tasks=[], done=[])
+        snap = BoardSnapshot(visions=[], tasks=[])
         monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
         result = _render_board()
         assert isinstance(result, rich.table.Table)
@@ -731,31 +731,29 @@ class TestRenderBoardWithData:
         assert rendered.count("(empty)") == 5
 
     def test_in_progress_statuses_covered(self, monkeypatch):
-        """blocked and soft-blocked tasks also go into In progress."""
+        """blocked tasks go into In progress column."""
         from orc.coordination.client import BoardSnapshot
 
         snap = BoardSnapshot(
             visions=[],
             tasks=[
                 {"name": "blocked-task.md", "status": "blocked"},
-                {"name": "soft-task.md", "status": "soft-blocked"},
+                {"name": "inprog-task.md", "status": "in-progress"},
             ],
-            done=[],
         )
         monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
         result = _render_board()
         assert isinstance(result, rich.table.Table)
         rendered = self._render_to_str(result)
         assert "blocked-task.md" in rendered
-        assert "soft-task.md" in rendered
+        assert "inprog-task.md" in rendered
 
     def test_review_task_with_branch_shows_branch(self, monkeypatch):
         from orc.coordination.client import BoardSnapshot
 
         snap = BoardSnapshot(
             visions=[],
-            tasks=[{"name": "review-task.md", "status": "review", "branch": "feat/0009-x"}],
-            done=[],
+            tasks=[{"name": "review-task.md", "status": "in-review", "branch": "feat/0009-x"}],
         )
         monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
         result = _render_board()

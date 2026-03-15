@@ -12,6 +12,7 @@ import typer
 
 import orc.board as _board
 import orc.config as _cfg
+from orc.board_manager import TaskStatus
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
@@ -22,14 +23,11 @@ logger = structlog.get_logger(__name__)
 
 # Map board task status → LastCommit enum for state machine routing.
 _STATUS_TO_LAST_COMMIT: dict[str, LastCommit] = {
-    "planned": LastCommit.CODER_WORK,
-    "coding": LastCommit.CODER_WORK,
-    "review": LastCommit.CODER_DONE,
-    "approved": LastCommit.QA_PASSED,
-    "rejected": LastCommit.QA_OTHER,
-    "blocked": LastCommit.CODER_WORK,
-    "soft-blocked": LastCommit.CODER_WORK,
-    "merged": LastCommit.QA_PASSED,
+    TaskStatus.PLANNED: LastCommit.CODER_WORK,
+    TaskStatus.IN_PROGRESS: LastCommit.CODER_WORK,
+    TaskStatus.IN_REVIEW: LastCommit.CODER_DONE,
+    TaskStatus.DONE: LastCommit.QA_PASSED,
+    TaskStatus.BLOCKED: LastCommit.CODER_WORK,
 }
 
 
@@ -216,22 +214,14 @@ def _append_changelog_entry(
     logger.info("changelog updated", task=task_name, merge_sha=merge_sha)
 
 
-def _close_task_on_board(task_name: str, commit_tag: str = "pending") -> None:
-    """Move *task_name* from ``open`` to ``done`` in the board and delete its task file."""
+def _close_task_on_board(task_name: str) -> None:
+    """Remove *task_name* from the board and delete its task file."""
     board = _board._read_board()
-    board["open"] = [
+    board["tasks"] = [
         t
-        for t in board.get("open", [])
+        for t in board.get("tasks", [])
         if (t["name"] if isinstance(t, dict) else str(t)) != task_name
     ]
-    board.setdefault("done", [])
-    board["done"].append(
-        {
-            "name": task_name,
-            "commit-tag": commit_tag,
-            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-    )
     _board._write_board(board)
     _board._get_manager().delete_task_file(task_name)
 
@@ -285,7 +275,7 @@ def _merge_feature_into_dev(task_name: str) -> None:
         check=True,
     ).stdout.strip()
 
-    _close_task_on_board(task_name, commit_tag=merge_sha)
+    _close_task_on_board(task_name)
     logger.info("board updated", task=task_name, commit_tag=merge_sha)
     _append_changelog_entry(task_name, branch, merge_sha, cfg.orc_dir)
 
@@ -366,7 +356,7 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
         return AgentRole.CODER, f"feature branch {branch!r} has no commits ahead of main"
 
     task_data = _board.get_task(task_name)
-    status = (task_data or {}).get("status") or "coding"
+    status = (task_data or {}).get("status") or TaskStatus.IN_PROGRESS
     last_commit = _STATUS_TO_LAST_COMMIT.get(status, LastCommit.CODER_WORK)
     logger.debug(
         "derive_task_state: board status", task=task_name, status=status, last_commit=last_commit
@@ -378,9 +368,8 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
     action = _route(world_state)
 
     _REASONS = {
-        "review": f"coder finished {branch!r}, awaiting QA",
-        "approved": f"qa approved {branch!r} — ready to merge",
-        "rejected": f"qa rejected {branch!r} — back to coder",
+        TaskStatus.IN_REVIEW: f"coder finished {branch!r}, awaiting QA",
+        TaskStatus.DONE: f"qa approved {branch!r} — ready to merge",
     }
     reason = _REASONS.get(status, f"{branch!r} status={status!r}")
     return action, reason  # type: ignore[return-value]

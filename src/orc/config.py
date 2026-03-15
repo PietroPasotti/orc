@@ -49,6 +49,8 @@ class Config:
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
     api_socket_path: Path
     """Unix domain socket for the coordination API — ``orc_dir/run/orc.sock``."""
+    main_branch: str = "main"
+    """Name of the main branch in the repository, used as the default target for dev merges."""
 
 
 _config: Config | None = None

@@ -13,7 +13,7 @@ Having named protocols rather than a single callbacks dataclass improves:
 Usage example::
 
     class MyBoardService:
-        def get_open_tasks(self) -> list[dict]:
+        def get_tasks(self) -> list[dict]:
             return []
         # ... other methods ...
 
@@ -31,7 +31,7 @@ from typing import Protocol, runtime_checkable
 class BoardService(Protocol):
     """Read/write access to the kanban board and pending-work queries."""
 
-    def get_open_tasks(self) -> list[dict]:
+    def get_tasks(self) -> list[dict]:
         """Return the list of open task dicts from board.yaml."""
         ...
 
@@ -51,8 +51,12 @@ class BoardService(Protocol):
         """Return feat/* branches not yet merged into dev."""
         ...
 
+    def get_blocked_tasks(self) -> list[str]:
+        """Return task names with blocked status."""
+        ...
+
     def scan_todos(self) -> list[dict]:
-        """Return TODO/FIXME comment dicts from the repository source."""
+        """Return TO-DO/FIX-ME comment dicts from the repository source."""
         ...
 
 
@@ -71,27 +75,18 @@ class WorktreeService(Protocol):
 
 @runtime_checkable
 class MessagingService(Protocol):
-    """Telegram message send / receive and boot-message helpers."""
+    """Telegram messaging (write-only for agents — send status updates to user)."""
 
     def get_messages(self) -> list[dict]:
         """Fetch the latest Telegram message history."""
-        ...
-
-    def has_unresolved_block(self, messages: list[dict]) -> tuple[str | None, str | None]:
-        """Return ``(agent_id, state)`` if there is an unresolved block."""
-        ...
-
-    def wait_for_human_reply(self, messages: list[dict]) -> str:
-        """Block until a human replies on Telegram; return the reply text."""
         ...
 
     def post_boot_message(self, agent_id: str) -> None:
         """Build and send ``[{agent_id}](boot) …`` to Telegram."""
         ...
 
-    def post_resolved(self, blocked_agent: str, blocked_state: str, resolver: str) -> None:
-        """Send ``[orc](resolved) …`` to Telegram."""
-        ...
+    # TODO: incoming Telegram replies from the user should be appended to the
+    #       relevant Task's comments list on the board, not consumed here.
 
 
 @runtime_checkable
