@@ -8,6 +8,7 @@ import pytest
 from conftest import make_msg
 
 from orc.messaging import telegram as tg
+from orc.messaging.messages import ChatMessage as _ChatMessage
 
 # ---------------------------------------------------------------------------
 # Local chat.log – read/write and get_messages merging
@@ -24,9 +25,9 @@ class TestLocalChatLog:
             entries = tg._read_log()
 
         assert len(entries) == 1
-        assert entries[0]["text"] == "hello world"
-        assert "date" in entries[0]
-        assert entries[0]["from"]["username"] == "bot"
+        assert entries[0].text == "hello world"
+        assert entries[0].date > 0
+        assert entries[0].sender_name == "bot"
 
     def test_read_log_returns_empty_when_missing(self, tmp_path):
         log_file = tmp_path / "nonexistent.log"
@@ -39,8 +40,8 @@ class TestLocalChatLog:
         with patch.object(tg, "_LOG_FILE", log_file):
             entries = tg._read_log()
         assert len(entries) == 2
-        assert entries[0]["text"] == "ok"
-        assert entries[1]["text"] == "also ok"
+        assert entries[0].text == "ok"
+        assert entries[1].text == "also ok"
 
     def test_send_message_writes_to_log(self, tmp_path):
         log_file = tmp_path / "chat.log"
@@ -71,9 +72,7 @@ class TestLocalChatLog:
             patch.object(tg, "_LOG_FILE", log_file),
             patch.object(tg, "is_configured", return_value=False),
         ):
-            result = tg.send_message("[coder-1](ready) 2026-03-09T10:00:00Z: Done.")
-
-        assert result == {}
+            tg.send_message("[coder-1](ready) 2026-03-09T10:00:00Z: Done.")
         lines = [json.loads(ln) for ln in log_file.read_text().splitlines() if ln.strip()]
         assert len(lines) == 1
         assert lines[0]["text"] == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
@@ -97,8 +96,8 @@ class TestLocalChatLog:
             msgs = tg.get_messages()
 
         assert len(msgs) == 2
-        assert msgs[0]["date"] == 1000
-        assert msgs[1]["date"] == 2000
+        assert msgs[0].date == 1000
+        assert msgs[1].date == 2000
 
     def test_get_messages_no_telegram_returns_log_only(self, tmp_path):
         """When Telegram is not configured, get_messages returns local log only."""
@@ -117,7 +116,7 @@ class TestLocalChatLog:
             msgs = tg.get_messages()
 
         assert len(msgs) == 1
-        assert msgs[0]["text"] == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
+        assert msgs[0].text == "[coder-1](ready) 2026-03-09T10:00:00Z: Done."
 
     def test_get_messages_deduplicates_by_text(self, tmp_path):
         log_file = tmp_path / "chat.log"
@@ -152,7 +151,7 @@ class TestLocalChatLog:
             msgs = tg.get_messages()
 
         assert len(msgs) == 1
-        assert msgs[0]["text"] == "[coder-1](done) 2026-03-09T11:00:00Z: Done."
+        assert msgs[0].text == "[coder-1](done) 2026-03-09T11:00:00Z: Done."
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +159,8 @@ class TestLocalChatLog:
 # ---------------------------------------------------------------------------
 
 
-def _make_msg(text: str, *, ts: int = 1000) -> dict:
-    return {"text": text, "date": ts, "from": {"username": "agent"}}
+def _make_msg(text: str, *, ts: int = 1000) -> _ChatMessage:
+    return _ChatMessage(text=text, date=ts, sender_name="agent")
 
 
 class TestTelegramCoverage:
@@ -184,7 +183,7 @@ class TestTelegramCoverage:
         monkeypatch.setattr(tg, "_get_log_file", lambda: log_file)
         msgs = tg._read_log()
         assert len(msgs) == 1
-        assert msgs[0]["text"] == "hello"
+        assert msgs[0].text == "hello"
 
     def test_get_telegram_updates_filters_no_message(self, tmp_path, monkeypatch):
         """Lines 132-139: updates without 'message' key are filtered."""
@@ -209,6 +208,7 @@ class TestTelegramCoverage:
         finally:
             httpx_mod.Client = orig
         assert len(msgs) == 1
+        assert msgs[0].text == "hi"
 
     def test_make_agent_id_invalid_role_raises(self):
         with pytest.raises(ValueError, match="Unknown role"):

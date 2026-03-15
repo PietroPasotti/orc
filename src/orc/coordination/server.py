@@ -19,6 +19,7 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -46,7 +47,7 @@ class CoordinationServer:
     def __init__(self, state: BoardStateManager, socket_path: Path) -> None:
         self._state = state
         self._socket_path = socket_path
-        self._server: object | None = None
+        self._server: Any = None  # uvicorn.Server at runtime
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
@@ -79,10 +80,10 @@ class CoordinationServer:
         self._thread.start()
 
         deadline = time.monotonic() + _STARTUP_TIMEOUT
-        while not self._server.started and time.monotonic() < deadline:  # type: ignore[union-attr]
+        while not self._server.started and time.monotonic() < deadline:
             time.sleep(_STARTUP_POLL)
 
-        if not self._server.started:  # type: ignore[union-attr]
+        if not self._server.started:
             self._thread.join(timeout=2.0)
             raise RuntimeError(
                 f"Coordination server failed to start within {_STARTUP_TIMEOUT}s "
@@ -93,7 +94,7 @@ class CoordinationServer:
     def stop(self) -> None:
         """Shut down the server and remove the socket file."""
         if self._server is not None:
-            self._server.should_exit = True  # type: ignore[union-attr]
+            self._server.should_exit = True
         if self._thread is not None:
             self._thread.join(timeout=5.0)
         self._socket_path.unlink(missing_ok=True)

@@ -70,7 +70,7 @@ from orc.engine.services import (
     WorkflowService,
     WorktreeService,
 )
-from orc.messaging import telegram as tg
+from orc.messaging.messages import make_agent_id as _make_agent_id
 from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
@@ -221,7 +221,7 @@ class Dispatcher:
     # Internal loop
     # ------------------------------------------------------------------
 
-    def _poll_completed_agents(self):
+    def _poll_completed_agents(self) -> None:
         """Poll completed agents."""
         pool = self.pool
 
@@ -230,7 +230,7 @@ class Dispatcher:
             for agent, rc in pool.poll():
                 self._handle_completion(agent, rc)
 
-    def _kill_timed_out_agents(self):
+    def _kill_timed_out_agents(self) -> None:
         """Kill stuck agents."""
         timeout_sec = self.squad.timeout_minutes * 60.0
         for agent in self.pool.check_watchdog(timeout_sec):
@@ -317,7 +317,7 @@ class Dispatcher:
         """
         remaining_budget = call_budget
 
-        def _spawn(call):
+        def _spawn(call: Callable[[], object]) -> int:
             nonlocal remaining_budget
 
             if remaining_budget > 0:
@@ -361,14 +361,13 @@ class Dispatcher:
 
         # Dispatch coder/QA for each unassigned task up to squad capacity.
         for task in open_tasks:
-            task_name = task["name"] if isinstance(task, dict) else str(task)
-            assigned_to = task.get("assigned_to") if isinstance(task, dict) else None
+            task_name = task.name
+            assigned_to = task.assigned_to
 
             if assigned_to:
                 continue  # already assigned to a running agent
 
-            task_data = task if isinstance(task, dict) else None
-            token, reason = self.workflow.derive_task_state(task_name, task_data)
+            token, reason = self.workflow.derive_task_state(task_name, task)
             logger.debug("task state", task=task_name, token=token, reason=reason)
 
             if token == QA_PASSED:
@@ -396,7 +395,7 @@ class Dispatcher:
                 continue
 
             agent_id = self._next_id(token)
-            dispatched += _spawn(lambda: self._spawn_agent(token, agent_id, task_name))
+            dispatched += _spawn(lambda: self._spawn_agent(AgentRole(token), agent_id, task_name))
 
         return dispatched
 
@@ -406,7 +405,7 @@ class Dispatcher:
 
     def _next_id(self, role: AgentRole | str) -> str:
         self._id_counters[role] += 1
-        return tg.make_agent_id(role, self._id_counters[role])
+        return _make_agent_id(role, self._id_counters[role])
 
     def _spawn_planner(self) -> int:
         agent_id = self._next_id(AgentRole.PLANNER)
@@ -415,7 +414,7 @@ class Dispatcher:
 
     def _spawn_agent(
         self,
-        role: AgentRole | str,
+        role: AgentRole,
         agent_id: str,
         task_name: str | None,
     ) -> None:

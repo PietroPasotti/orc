@@ -23,6 +23,7 @@ import typer
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
+from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
@@ -55,7 +56,7 @@ class ConflictResolver:
         Current Telegram message history; passed as context to the agent.
     """
 
-    def __init__(self, squad_cfg: SquadConfig, messages: list[dict]) -> None:
+    def __init__(self, squad_cfg: SquadConfig, messages: list[ChatMessage]) -> None:
         self.squad_cfg = squad_cfg
         self.messages = messages
 

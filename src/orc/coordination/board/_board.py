@@ -14,56 +14,47 @@ All public functions delegate to the module-level :data:`_manager` singleton
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import structlog
 
 import orc.config as _cfg
-from orc.coordination.board._manager import TaskStatus
+from orc.coordination.board._manager import FileBoardManager, TaskStatus
+from orc.coordination.models import Board, TaskBody, TaskEntry
 
 logger = structlog.get_logger(__name__)
 
-_manager = None
+_manager: FileBoardManager | None = None
 
 
 def init_manager() -> None:
     """Initialise (or reinitialise) the module-level BoardManager from Config."""
     global _manager
-    from orc.coordination.board._manager import FileBoardManager  # noqa: PLC0415
-
     _manager = FileBoardManager(_cfg.get().orc_dir)
 
 
-def _get_manager():
+def _get_manager() -> FileBoardManager:
     global _manager
-    from orc.coordination.board._manager import FileBoardManager  # noqa: PLC0415
-
     orc_dir = _cfg.get().orc_dir
     if _manager is None or _manager._work_dir != orc_dir / "work":
         _manager = FileBoardManager(orc_dir)
     return _manager
 
 
-def _read_board() -> dict:
+def _read_board() -> Board:
     return _get_manager().read_board()
 
 
-def _write_board(board: dict) -> None:
+def _write_board(board: Board) -> None:
     _get_manager().write_board(board)
 
 
-# TODO: we should use pydantic for validating these data structures
-def get_tasks() -> list[dict]:
-    """Return the list of task dicts from board.yaml."""
-    board = _read_board()
-    result = []
-    for t in board.get("tasks", []):
-        if isinstance(t, dict):
-            result.append(t)
-        else:
-            result.append({"name": str(t)})
-    return result
+def get_tasks() -> list[TaskEntry]:
+    """Return the list of task entries from board.yaml."""
+    return _read_board().tasks
 
 
-def get_task(task_name: str) -> dict | None:
+def get_task(task_name: str) -> TaskEntry | None:
     """Return the board entry for *task_name*, or ``None`` if absent."""
     return _get_manager().get_task(task_name)
 
@@ -86,11 +77,11 @@ def has_open_work() -> bool:
 def assign_task(task_name: str, agent_id: str) -> None:
     """Write ``assigned_to: {agent_id}`` for *task_name* and set status to ``in-progress``."""
     board = _read_board()
-    for t in board.get("tasks", []):
-        if isinstance(t, dict) and t.get("name") == task_name:
-            t["assigned_to"] = agent_id
-            if t.get("status") in (None, "", TaskStatus.PLANNED):
-                t["status"] = TaskStatus.IN_PROGRESS
+    for entry in board.tasks:
+        if entry.name == task_name:
+            entry.assigned_to = agent_id
+            if entry.status in (None, "", TaskStatus.PLANNED):
+                entry.status = TaskStatus.IN_PROGRESS
             _write_board(board)
             logger.debug("task assigned", task=task_name, agent_id=agent_id)
             return
@@ -101,9 +92,9 @@ def unassign_task(task_name: str) -> None:
     """Clear the ``assigned_to`` field for *task_name* in board.yaml."""
     board = _read_board()
     changed = False
-    for t in board.get("tasks", []):
-        if isinstance(t, dict) and t.get("name") == task_name:
-            t.pop("assigned_to", None)
+    for entry in board.tasks:
+        if entry.name == task_name:
+            entry.assigned_to = None
             changed = True
             break
     if changed:
@@ -115,8 +106,9 @@ def clear_all_assignments() -> None:
     """Clear all ``assigned_to`` fields — called on startup for crash recovery."""
     board = _read_board()
     changed = False
-    for t in board.get("tasks", []):
-        if isinstance(t, dict) and t.pop("assigned_to", None) is not None:
+    for entry in board.tasks:
+        if entry.assigned_to is not None:
+            entry.assigned_to = None
             changed = True
     if changed:
         _write_board(board)
@@ -127,23 +119,17 @@ def delete_task(task_name: str) -> None:
     """Remove *task_name* from board.yaml and delete its task file."""
     mgr = _get_manager()
     board = _read_board()
-    board["tasks"] = [
-        t
-        for t in board.get("tasks", [])
-        if (t["name"] if isinstance(t, dict) else str(t)) != task_name
-    ]
+    board.tasks = [t for t in board.tasks if t.name != task_name]
     _write_board(board)
     mgr.delete_task_file(task_name)
 
 
 def _active_task_name() -> str | None:
     """Return the file name of the first task, or None if the board is empty."""
-    board = _read_board()
-    tasks = board.get("tasks", [])
+    tasks = _read_board().tasks
     if not tasks:
         return None
-    first = tasks[0]
-    return first["name"] if isinstance(first, dict) else str(first)
+    return tasks[0].name
 
 
 def _read_work(*, active_only: str | None = None) -> str:
@@ -166,3 +152,8 @@ def _read_work(*, active_only: str | None = None) -> str:
             parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
 
     return "\n\n".join(parts) if parts else "_No active work._"
+
+
+def create_task(title: str, vision: str, body: TaskBody) -> tuple[str, Path]:
+    """Create a task file and add a *planned* entry to board.yaml."""
+    return _get_manager().create_task(title, vision, body)

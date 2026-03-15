@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import orc.engine.workflow as _wf
+from orc.coordination.models import TaskEntry
 from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED
 from orc.engine.state_machine import (
     ACTION_CLOSE_BOARD,
@@ -177,7 +178,7 @@ class TestRouteMatchesImplementation:
         merged_into_dev,
         board_status,
     ):
-        task_data = {"name": "0001-foo.md", "status": board_status} if board_status else None
+        task_data = TaskEntry(name="0001-foo.md", status=board_status) if board_status else None
         self._patch_git(
             monkeypatch,
             branch_exists=branch_exists,

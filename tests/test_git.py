@@ -9,6 +9,7 @@ import yaml
 
 import orc.config as _cfg
 import orc.git.core as _git
+from orc.coordination.models import TaskEntry
 from orc.git.core import (
     _ensure_feature_worktree,
     _feature_branch,
@@ -37,7 +38,7 @@ class TestDeriveStateFromGit:
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
         )
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
-        self._task_data = {"name": active_task, "status": board_status} if board_status else None
+        self._task_data = TaskEntry(name=active_task, status=board_status) if board_status else None
 
     @pytest.mark.parametrize(
         "branch_exists,has_commits,is_merged,board_status,expected_agent,expected_reason_substr",
@@ -88,7 +89,7 @@ class TestDeriveStateFromGit:
             has_commits=True,
             board_status="coding",
         )
-        task_data = {"name": "0003-resource-type-enum.md", "status": "coding"}
+        task_data = TaskEntry(name="0003-resource-type-enum.md", status="coding")
         _, reason = _derive_task_state("0003-resource-type-enum.md", task_data)
         assert "feat/0003-resource-type-enum" in reason
 
@@ -692,7 +693,7 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="in-review")
-        task_data = {"name": "0002-foo.md", "status": "in-review"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-review")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "qa"
         assert "awaiting QA" in reason
@@ -702,7 +703,7 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="done")
-        task_data = {"name": "0002-foo.md", "status": "done"}
+        task_data = TaskEntry(name="0002-foo.md", status="done")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == QA_PASSED
         assert "ready to merge" in reason
@@ -711,7 +712,7 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="in-progress")
-        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-progress")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
@@ -719,7 +720,7 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="in-progress")
-        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-progress")
         agent, _ = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 

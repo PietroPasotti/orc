@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
@@ -15,9 +16,32 @@ import orc.git.core as _git
 from orc.ai import invoke as inv
 from orc.coordination.state import BoardStateManager
 from orc.messaging import telegram as tg
+from orc.messaging.messages import (
+    ChatMessage,
+)
+from orc.messaging.messages import (
+    is_agent_message as _is_agent_message,
+)
+from orc.messaging.messages import (
+    messages_to_text as _messages_to_text,
+)
+from orc.messaging.messages import (
+    parse_agent_id as _parse_agent_id,
+)
 from orc.squad import AgentRole
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class TodoItem:
+    """A single TODO or FIXME comment found in the codebase."""
+
+    file: str
+    line: int
+    tag: str
+    text: str
+
 
 _DEFAULT_MODEL = "claude-sonnet-4.6"
 _BLOCKED_TIMEOUT = 3600.0  # seconds before giving up on a human reply
@@ -209,11 +233,11 @@ def _window_chat(chat_text: str, *, max_recent: int = _CHAT_WINDOW_SIZE) -> str:
     return "\n".join(kept + recent)
 
 
-def _scan_todos(root: Path) -> list[dict]:
+def _scan_todos(root: Path) -> list[TodoItem]:
     """Scan *root* for ``#TO-DO`` and ``#FIX-ME`` comments using ``git grep``.
 
-    Returns a list of ``{"file": str, "line": int, "tag": str, "text": str}``
-    dicts, one per matching line.  Returns an empty list when *root* is not a
+    Returns a list of :class:`TodoItem` objects, one per matching line.
+    Returns an empty list when *root* is not a
     git repository or when the command fails for any other reason.
 
     Paths listed in ``Config.todo_scan_exclude`` (YAML key
@@ -243,28 +267,28 @@ def _scan_todos(root: Path) -> list[dict]:
     except Exception:
         return []
 
-    todos: list[dict] = []
-    for line in result.stdout.splitlines():
-        parts = line.split(":", 2)
+    todos: list[TodoItem] = []
+    for raw_line in result.stdout.splitlines():
+        parts = raw_line.split(":", 2)
         if len(parts) < 3:
             continue
-        filepath, lineno_str, content = parts[0], parts[1], parts[2]
+        filepath, lineno_str, text_content = parts[0], parts[1], parts[2]
         try:
             lineno = int(lineno_str)
         except ValueError:
             continue
-        tag = "FIXME" if "FIXME" in content.upper() else "TODO"
-        todos.append({"file": filepath, "line": lineno, "tag": tag, "text": content.strip()})
+        tag = "FIXME" if "FIXME" in text_content.upper() else "TODO"
+        todos.append(TodoItem(file=filepath, line=lineno, tag=tag, text=text_content.strip()))
     return todos
 
 
-def _format_todos(todos: list[dict]) -> str:
+def _format_todos(todos: list[TodoItem]) -> str:
     """Format *todos* (from :func:`_scan_todos`) as a Markdown table."""
     if not todos:
         return "_No TODO or FIXME comments found in the codebase._"
     rows = ["| File | Line | Tag | Comment |", "|------|------|-----|---------|"]
     for t in todos:
-        rows.append(f"| `{t['file']}` | {t['line']} | `{t['tag']}` | {t['text']} |")
+        rows.append(f"| `{t.file}` | {t.line} | `{t.tag}` | {t.text} |")
     return "\n".join(rows)
 
 
@@ -346,7 +370,7 @@ def _role_symbol(role: str) -> str:
 
 def build_agent_context(
     agent_name: str,
-    messages: list[dict],
+    messages: list[ChatMessage],
     board: BoardStateManager | None = None,
     extra: str = "",
     worktree: Path | None = None,
@@ -383,7 +407,7 @@ def build_agent_context(
     # ADRs: full for planner, summarised for coder/QA
     adrs = _read_adrs(summarize=agent_name != AgentRole.PLANNER)
 
-    chat = tg.messages_to_text(messages)
+    chat = _messages_to_text(messages)
     chat = _window_chat(chat)
 
     # Board: scoped to active task for coder/QA
@@ -461,7 +485,7 @@ def build_agent_context(
 
 
 def wait_for_human_reply(
-    messages_snapshot: list[dict],
+    messages_snapshot: list[ChatMessage],
     *,
     initial_delay: float = 5.0,
     backoff_factor: float = 2.0,
@@ -472,7 +496,7 @@ def wait_for_human_reply(
     if not tg.is_configured():
         logger.warning("Telegram not configured — cannot wait for human reply; treating as timeout")
         raise TimeoutError("Telegram not configured; human reply not possible.")
-    seen = frozenset((m.get("date", 0), m.get("text", "")) for m in messages_snapshot)
+    seen = frozenset((m.date, m.text) for m in messages_snapshot)
     delay = initial_delay
     deadline = time.monotonic() + timeout
     while True:
@@ -483,21 +507,17 @@ def wait_for_human_reply(
         logger.info("waiting for telegram reply", delay_s=round(actual_delay))
         time.sleep(actual_delay)
         for msg in tg.get_messages():
-            key = (msg.get("date", 0), msg.get("text", ""))
-            if key not in seen and not tg.is_agent_message(msg.get("text", "")):
-                return msg.get("text", "")
+            key = (msg.date, msg.text)
+            if key not in seen and not _is_agent_message(msg.text):
+                return msg.text
         delay = min(delay * backoff_factor, max_delay)
 
 
 def _boot_message_body(agent_id: str, board: BoardStateManager) -> str:
     """Build the role-specific body text for a boot message."""
-    role, _ = tg.parse_agent_id(agent_id)
+    role, _ = _parse_agent_id(agent_id)
     open_tasks = board.get_tasks()
-    first_task = (
-        (open_tasks[0]["name"] if isinstance(open_tasks[0], dict) else str(open_tasks[0]))
-        if open_tasks
-        else None
-    )
+    first_task = open_tasks[0].name if open_tasks else None
 
     if role == AgentRole.PLANNER:
         if first_task:
@@ -520,7 +540,7 @@ def _boot_message_body(agent_id: str, board: BoardStateManager) -> str:
     # Default fallback: list all open tasks
     if not open_tasks:
         return "no open tasks on board."
-    names = [(t["name"] if isinstance(t, dict) else str(t)) for t in open_tasks]
+    names = [t.name for t in open_tasks]
     paths = ", ".join(f"work/{n}" for n in names)
     return f"picking up {paths}."
 

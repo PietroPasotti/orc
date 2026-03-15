@@ -140,7 +140,7 @@ def _column_panel(role: str, rows: list[AgentData]) -> rich.panel.Panel:
     else:
         model_str = ""
 
-    role_style = _ROLE_STYLE.get(role, "white")
+    role_style = _ROLE_STYLE.get(AgentRole(role.lower()), "white")
     title = f"[{role_style}]{role}[/{role_style}]"
     if model_str:
         title += rf"  \[{model_str}]"

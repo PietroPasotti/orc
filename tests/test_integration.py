@@ -395,7 +395,7 @@ class TestFullWorkflowLoop:
         messages = tg.get_messages()
         parsed: list[tuple[str, str]] = []
         for msg in messages:
-            mo = tg._MSG_RE.match(msg.get("text", ""))
+            mo = tg._MSG_RE.match(msg.text)
             if mo:
                 parsed.append((mo.group(1), mo.group(2)))
 

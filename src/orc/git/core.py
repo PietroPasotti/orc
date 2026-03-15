@@ -11,6 +11,7 @@ import structlog
 import typer
 
 import orc.config as _cfg
+from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
@@ -443,7 +444,7 @@ def _count_features_done() -> int:
     return len(_features_in_dev_not_main())
 
 
-def _rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
+def _rebase_dev_on_main(messages: list[ChatMessage], squad_cfg: SquadConfig | None = None) -> None:
     """Rebase dev on top of main so every session starts with the latest instructions."""
     import orc.engine.context as _ctx
 

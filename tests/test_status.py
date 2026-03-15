@@ -9,6 +9,8 @@ import orc.cli.status as _st
 import orc.config as _cfg
 import orc.main as m
 from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main
+from orc.coordination.models import Board, TaskEntry
+from orc.engine.context import TodoItem
 from orc.engine.dispatcher import QA_PASSED
 from orc.squad import SquadConfig
 
@@ -40,16 +42,22 @@ class TestStatusCoverage:
             )
         else:
             monkeypatch.setattr(_st, "load_squad", lambda n, orc_dir: squad_cfg)
-        open_dicts = [{"name": t} if isinstance(t, str) else t for t in (open_tasks or [])]
-        monkeypatch.setattr(_st._board, "get_tasks", lambda: open_dicts)
+        open_entries = [
+            TaskEntry(name=t)
+            if isinstance(t, str)
+            else (TaskEntry(**t) if isinstance(t, dict) else t)
+            for t in (open_tasks or [])
+        ]
+        monkeypatch.setattr(_st._board, "get_tasks", lambda: open_entries)
         monkeypatch.setattr(
-            _st._board,
+            _st._board_impl,
             "_read_board",
-            lambda: {"tasks": open_dicts},
+            lambda: Board(counter=0, tasks=open_entries),
         )
         monkeypatch.setattr(_st, "_pending_visions", lambda: [])
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
-        monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: open_todos or [])
+        _todo_items = [TodoItem(**t) if isinstance(t, dict) else t for t in (open_todos or [])]
+        monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: _todo_items)
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
         monkeypatch.setattr(_st, "_dev_log_since_main", lambda: dev_log or [])
         # Patch the git helper used by _status() for dev-vs-main display.
@@ -249,9 +257,9 @@ class TestStatusCoverage:
             _replace(_cfg.get(), orc_dir=tmp_path, vision_dir=vision_dir),
         )
         monkeypatch.setattr(
-            _st._board,
+            _st._board_impl,
             "_read_board",
-            lambda: {"tasks": [{"name": "feature-a.md"}]},
+            lambda: Board(counter=0, tasks=[TaskEntry(name="feature-a.md")]),
         )
         result = _st._pending_visions()
         assert result == ["feature-b.md"]
@@ -373,7 +381,7 @@ class TestStatusCoverage:
         monkeypatch.setattr(
             _st._board,
             "get_tasks",
-            lambda: [{"name": "0001-foo.md", "status": "in-review"}],
+            lambda: [TaskEntry(name="0001-foo.md", status="in-review")],
         )
         monkeypatch.setattr(
             _st._git,
@@ -387,7 +395,7 @@ class TestStatusCoverage:
         monkeypatch.setattr(
             _st._board,
             "get_tasks",
-            lambda: [{"name": "0001-foo.md", "status": "done"}],
+            lambda: [TaskEntry(name="0001-foo.md", status="done")],
         )
         monkeypatch.setattr(
             _st._git,

@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from orc.messaging.messages import ChatMessage
+
 # ---------------------------------------------------------------------------
 # Stub out dotenv before any orc module is imported
 # ---------------------------------------------------------------------------
@@ -61,13 +63,9 @@ def _init_config(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def make_msg(text: str, ts: int = 1_700_000_000, username: str = "bot") -> dict:
-    """Build a minimal Telegram message dict."""
-    return {
-        "text": text,
-        "date": ts,
-        "from": {"username": username, "first_name": username},
-    }
+def make_msg(text: str, ts: int = 1_700_000_000, username: str = "bot") -> ChatMessage:
+    """Build a minimal chat message for tests."""
+    return ChatMessage(text=text, date=ts, sender_name=username)
 
 
 class FakePopen:
@@ -122,9 +120,7 @@ class FakeBoard:
         )
 
     def query_tasks(self, status: str) -> list[str]:
-        return [
-            t["name"] for t in self.get_tasks() if isinstance(t, dict) and t.get("status") == status
-        ]
+        return [t.name for t in self.get_tasks() if t.status == status]
 
 
 class FakeWorktree:

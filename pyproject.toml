@@ -50,6 +50,8 @@ dev = [
     "hatch-vcs>=0.4",
     "pytest-cov>=7.0.0",
     "qorc",  # orc developing orc!
+    "mypy>=1.19.1",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [tool.hatch.version]
@@ -87,6 +89,16 @@ select = ["E", "F", "I", "T20", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "src/orc/main.py" = ["T201"]
 "src/templates/**" = ["T201"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+pretty = true
+exclude = [
+    "src/orc/_version\\.py",
+    "src/templates/",
+]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

@@ -11,6 +11,8 @@ import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.git.core as _git
 import orc.messaging.telegram as tg
+from orc.engine.context import TodoItem
+from orc.messaging.messages import ChatMessage
 
 # ---------------------------------------------------------------------------
 # _boot_message_body
@@ -85,8 +87,8 @@ class TestBootMessageBody:
 
 
 class TestWaitForHumanReply:
-    def _human(self, text: str, ts: int) -> dict:
-        return {"text": text, "date": ts, "from": {"username": "pietro", "first_name": "Pietro"}}
+    def _human(self, text: str, ts: int) -> ChatMessage:
+        return ChatMessage(text=text, date=ts, sender_name="Pietro")
 
     def _patch_configured(self, monkeypatch) -> None:
         monkeypatch.setattr(tg, "is_configured", lambda: True)
@@ -141,7 +143,7 @@ class TestWaitForHumanReply:
 
     def test_exponential_backoff(self, monkeypatch):
         self._patch_configured(monkeypatch)
-        snapshot: list[dict] = []
+        snapshot: list[ChatMessage] = []
         human = self._human("Done.", ts=9000)
         call_count = 0
 
@@ -160,7 +162,7 @@ class TestWaitForHumanReply:
 
     def test_backoff_capped_at_max_delay(self, monkeypatch):
         self._patch_configured(monkeypatch)
-        snapshot: list[dict] = []
+        snapshot: list[ChatMessage] = []
         human = self._human("Done.", ts=9000)
         call_count = 0
 
@@ -181,7 +183,7 @@ class TestWaitForHumanReply:
         import pytest
 
         self._patch_configured(monkeypatch)
-        snapshot: list[dict] = []
+        snapshot: list[ChatMessage] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
         self._mock_time(monkeypatch, [0.0, 3601.0])
 
@@ -193,7 +195,7 @@ class TestWaitForHumanReply:
         import pytest
 
         self._patch_configured(monkeypatch)
-        snapshot: list[dict] = []
+        snapshot: list[ChatMessage] = []
         monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
         sleeps = self._mock_time(monkeypatch, [0.0, 9.0, 10.1])
 
@@ -450,24 +452,14 @@ class TestScanTodos:
         self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 2
-        assert todos[0] == {
-            "file": "src/foo.py",
-            "line": 42,
-            "tag": "TODO",
-            "text": "# TODO: fix this",
-        }
-        assert todos[1] == {
-            "file": "src/bar.py",
-            "line": 7,
-            "tag": "FIXME",
-            "text": "# FIXME: broken",
-        }
+        assert todos[0] == TodoItem(file="src/foo.py", line=42, tag="TODO", text="# TODO: fix this")
+        assert todos[1] == TodoItem(file="src/bar.py", line=7, tag="FIXME", text="# FIXME: broken")
 
     def test_tags_fixme_correctly(self, tmp_path, monkeypatch):
         grep_output = "a.py:1:    # FIXME: something\n"
         self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
-        assert todos[0]["tag"] == "FIXME"
+        assert todos[0].tag == "FIXME"
 
     def test_returns_empty_on_exception(self, tmp_path, monkeypatch):
         def _raise(*a, **kw):
@@ -481,14 +473,14 @@ class TestScanTodos:
         self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 1
-        assert todos[0]["file"] == "src/ok.py"
+        assert todos[0].file == "src/ok.py"
 
     def test_skips_lines_with_non_int_line_number(self, tmp_path, monkeypatch):
         grep_output = "src/foo.py:notanumber:    # TODO: bad\nsrc/ok.py:3:    # TODO: good\n"
         self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 1
-        assert todos[0]["line"] == 3
+        assert todos[0].line == 3
 
     def test_empty_output_returns_empty(self, tmp_path, monkeypatch):
         self._mock_grep(monkeypatch, "", returncode=1)
@@ -507,8 +499,8 @@ class TestScanTodos:
         self._mock_grep(monkeypatch, grep_output)
         todos = _ctx._scan_todos(tmp_path)
         assert len(todos) == 1
-        assert todos[0]["tag"] == "TODO"
-        assert todos[0]["text"] == "# TODO: real action item"
+        assert todos[0].tag == "TODO"
+        assert todos[0].text == "# TODO: real action item"
 
     def test_uses_anchored_regex_pattern(self, tmp_path, monkeypatch):
         """git grep is invoked with ^\\s*#\\s*(TODO|FIXME) to avoid false positives."""
@@ -565,7 +557,7 @@ class TestFormatTodos:
         assert "_No TODO" in result
 
     def test_formats_as_markdown_table(self):
-        todos = [{"file": "src/x.py", "line": 10, "tag": "TODO", "text": "# TODO: do it"}]
+        todos = [TodoItem(file="src/x.py", line=10, tag="TODO", text="# TODO: do it")]
         result = _ctx._format_todos(todos)
         assert "| File |" in result
         assert "`src/x.py`" in result
@@ -604,7 +596,7 @@ class TestBuildContextTodos:
 
     def test_planner_context_includes_todos_section(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
-        fake_todos = [{"file": "x.py", "line": 5, "tag": "TODO", "text": "# TODO: later"}]
+        fake_todos = [TodoItem(file="x.py", line=5, tag="TODO", text="# TODO: later")]
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: fake_todos)
         from orc.coordination.state import BoardStateManager
 
@@ -617,7 +609,7 @@ class TestBuildContextTodos:
         monkeypatch.setattr(
             _ctx,
             "_scan_todos",
-            lambda root: [{"file": "x.py", "line": 1, "tag": "TODO", "text": "x"}],
+            lambda root: [TodoItem(file="x.py", line=1, tag="TODO", text="x")],
         )
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-x")
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")

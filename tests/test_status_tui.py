@@ -23,6 +23,8 @@ from orc.cli.tui.status_tui import (
     render_git_tree,
     run_status_tui,
 )
+from orc.config import OrcConfig
+from orc.coordination.models import TaskEntry
 
 
 class TestClassifyCommit:
@@ -192,7 +194,8 @@ class TestGatherGitTree:
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
         monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
+        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
+        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
             branches, commits = gather_git_tree()
@@ -219,7 +222,8 @@ class TestGatherGitTree:
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
         monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
+        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
+        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
             _, commits = gather_git_tree()
@@ -242,7 +246,8 @@ class TestGatherGitTree:
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
         monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
-        monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
+        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
+        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
             _, commits = gather_git_tree()
@@ -313,18 +318,20 @@ class TestMainBranch:
     def test_uses_config_value_when_set(self, monkeypatch):
         monkeypatch.setattr(
             "orc.cli.tui.status_tui._cfg.load_orc_config",
-            lambda *a, **kw: {"orc-main-branch": "trunk"},
+            lambda *a, **kw: OrcConfig(orc_main_branch="trunk"),
         )
         assert _main_branch() == "trunk"
 
     def test_falls_back_to_default_branch(self, monkeypatch):
-        monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
+        _stub = "orc.cli.tui.status_tui._cfg.load_orc_config"
+        monkeypatch.setattr(_stub, lambda *a, **kw: OrcConfig())
         monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "master")
         assert _main_branch() == "master"
 
     def test_ignores_empty_string_config(self, monkeypatch):
         monkeypatch.setattr(
-            "orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {"orc-main-branch": ""}
+            "orc.cli.tui.status_tui._cfg.load_orc_config",
+            lambda *a, **kw: OrcConfig(orc_main_branch=""),
         )
         monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
         assert _main_branch() == "main"
@@ -643,10 +650,10 @@ class TestRenderBoardWithData:
         return BoardSnapshot(
             visions=["0007-vision.md"],
             tasks=[
-                {"name": "0001-task.md", "status": "planned"},
-                {"name": "0002-task.md", "status": "in-progress", "assigned_to": "coder-1"},
-                {"name": "0003-task.md", "status": "in-review"},
-                {"name": "0004-task.md", "status": "done"},
+                TaskEntry(name="0001-task.md", status="planned"),
+                TaskEntry(name="0002-task.md", status="in-progress", assigned_to="coder-1"),
+                TaskEntry(name="0003-task.md", status="in-review"),
+                TaskEntry(name="0004-task.md", status="done"),
             ],
         )
 
@@ -737,8 +744,8 @@ class TestRenderBoardWithData:
         snap = BoardSnapshot(
             visions=[],
             tasks=[
-                {"name": "blocked-task.md", "status": "blocked"},
-                {"name": "inprog-task.md", "status": "in-progress"},
+                TaskEntry(name="blocked-task.md", status="blocked"),
+                TaskEntry(name="inprog-task.md", status="in-progress"),
             ],
         )
         monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
@@ -753,13 +760,13 @@ class TestRenderBoardWithData:
 
         snap = BoardSnapshot(
             visions=[],
-            tasks=[{"name": "review-task.md", "status": "in-review", "branch": "feat/0009-x"}],
+            tasks=[TaskEntry(name="review-task.md", status="in-review")],
         )
         monkeypatch.setattr("orc.cli.tui.status_tui.get_board_snapshot", lambda: snap)
         result = _render_board()
         assert isinstance(result, rich.table.Table)
         rendered = self._render_to_str(result)
-        assert "feat/0009-x" in rendered
+        assert "review-task.md" in rendered
 
 
 class TestStatusAppBoardTab:

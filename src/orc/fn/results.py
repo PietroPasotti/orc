@@ -9,8 +9,8 @@ from typing import Generic, ParamSpec, TypeVar, final
 from orc.fn.result_combinators import ResultCombinators
 
 type WithErrors[A] = Result[Sequence[str], A]
-E = TypeVar("E", covariant=True)
-A = TypeVar("A", covariant=True)
+E = TypeVar("E")
+A = TypeVar("A")
 P = ParamSpec("P")
 
 
@@ -71,7 +71,7 @@ class Result(ABC, ResultCombinators, Generic[E, A]):  # noqa
         results: list[B1] = []
         for a in values:
             f(a).fold(errors.extend, results.append)
-        return Err(errors) if errors else Ok(results)
+        return Err(errors) if errors else Ok(results)  # type: ignore[return-value]
 
     @staticmethod
     def safe[E1, A1](run: Callable[[], A1], on_error: Callable[[Exception], E1]) -> Result[E1, A1]:
@@ -104,7 +104,7 @@ class Ok(Result[E, A]):
         return Ok(f(self.value))
 
     def flat_map[B, E1](self, f: Callable[[A], Result[E1, B]]) -> Result[E | E1, B]:
-        return f(self.value)
+        return f(self.value)  # type: ignore[return-value]
 
     def map_error[E1](self, f: Callable[[E], E1]) -> Result[E1, A]:
         return Ok(self.value)

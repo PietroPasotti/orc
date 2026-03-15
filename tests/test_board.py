@@ -6,6 +6,7 @@ import yaml
 import orc.coordination.board as _board
 import orc.coordination.board._board as _board_impl
 import orc.coordination.board._manager as _bm
+from orc.coordination.models import Board
 
 
 def _board_file(tmp_path):
@@ -22,19 +23,22 @@ class TestBoardCoverage:
         """Corrupt board.yaml → returns default empty board."""
         _board_file(tmp_path).write_text(": : invalid")
         board = _board_impl._read_board()
-        assert board == {"counter": 0, "tasks": []}
+        assert board == Board(counter=0, tasks=[])
 
     def test_get_open_tasks_wraps_string_entries(self, tmp_path):
         """String entries in open list get wrapped in a dict."""
         _board_file(tmp_path).write_text("tasks:\n  - 0001-foo.md\n")
         tasks = _board.get_tasks()
-        assert tasks == [{"name": "0001-foo.md"}]
+        assert len(tasks) == 1
+        assert tasks[0].name == "0001-foo.md"
 
     def test_get_open_tasks_returns_dict_entries_as_is(self, tmp_path):
         """Dict entries in the open list are returned unchanged."""
         _board_file(tmp_path).write_text("tasks:\n  - name: 0001-foo.md\n    status: planned\n")
         tasks = _board.get_tasks()
-        assert tasks == [{"name": "0001-foo.md", "status": "planned"}]
+        assert len(tasks) == 1
+        assert tasks[0].name == "0001-foo.md"
+        assert tasks[0].status == "planned"
 
     def test_unassign_task_clears_assigned_to(self, tmp_path):
         """unassign_task removes the assigned_to field from a task."""
@@ -98,7 +102,7 @@ class TestBoardCoverage:
         monkeypatch.setattr(_bm.Path, "replace", failing_replace)
 
         with pytest.raises(OSError, match="disk full"):
-            _board_impl._write_board({"open": [], "done": []})
+            _board_impl._write_board(Board())
 
         tmp_file = _board_file(tmp_path).with_suffix(".yaml.tmp")
         assert not tmp_file.exists()
@@ -142,8 +146,8 @@ class TestBoardCoverage:
         _board_file(tmp_path).write_text("tasks:\n  - name: 0001-foo.md\n    status: in-progress\n")
         t = _board.get_task("0001-foo.md")
         assert t is not None
-        assert t["name"] == "0001-foo.md"
-        assert t["status"] == "in-progress"
+        assert t.name == "0001-foo.md"
+        assert t.status == "in-progress"
 
 
 class TestFileBoardManagerCoverage:

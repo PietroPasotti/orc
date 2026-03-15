@@ -9,17 +9,18 @@ Public symbols (all re-exported from :mod:`orc.messaging.telegram`):
 
 * :data:`KNOWN_ROLES` — frozenset of valid agent role names
 * :data:`INFORMATIONAL_STATES` — states that do not drive state-machine transitions
+* :class:`ChatMessage` — immutable representation of a chat message
 * :func:`parse_agent_id` — ``"{role}-{n}"`` → ``(role, n)``
 * :func:`make_agent_id` — ``(role, n)`` → ``"{role}-{n}"``
 * :func:`is_agent_message` — test if a text string is a formatted agent message
 * :func:`format_agent_message` — build a formatted agent message string
 * :func:`messages_to_text` — render a message list as a plain-text chat log
-* :func:`parse_last_agent_message` — scan a history and return the latest agent state
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from orc.squad import AgentRole
@@ -33,8 +34,7 @@ from orc.squad import AgentRole
 KNOWN_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 
 # States that are informational only — not used for state-machine transitions.
-# ``parse_last_agent_message`` skips messages with these states so a boot
-# message never stalls the workflow.
+# A boot message never stalls the workflow.
 INFORMATIONAL_STATES: frozenset[str] = frozenset({"boot"})
 
 # Matches: [name](state) 2026-03-01T10:00:00Z: message
@@ -42,6 +42,23 @@ _MSG_RE = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)\s+\S+:\s+.*$")
 
 # Matches the agent-ID convention: ``{role}-{n}`` where n >= 1.
 _AGENT_ID_RE = re.compile(r"^([a-z]+)-(\d+)$")
+
+
+# ---------------------------------------------------------------------------
+# Chat message type
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ChatMessage:
+    """Immutable representation of a chat message (local log or Telegram API)."""
+
+    text: str
+    """Message body."""
+    date: int
+    """Unix timestamp."""
+    sender_name: str
+    """Display name of the sender (username or first_name)."""
 
 
 # ---------------------------------------------------------------------------
@@ -100,14 +117,10 @@ def is_agent_message(text: str) -> bool:
     return role is not None
 
 
-def messages_to_text(messages: list[dict]) -> str:
+def messages_to_text(messages: list[ChatMessage]) -> str:
     """Render *messages* as a plain-text chat log for inclusion in agent context."""
     lines: list[str] = []
     for msg in messages:
-        sender = msg.get("from", {})
-        name = sender.get("username") or sender.get("first_name", "unknown")
-        text = msg.get("text", "")
-        date = msg.get("date", 0)
-        ts = datetime.fromtimestamp(date, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        lines.append(f"[{ts}] {name}: {text}")
+        ts = datetime.fromtimestamp(msg.date, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lines.append(f"[{ts}] {msg.sender_name}: {msg.text}")
     return "\n".join(lines) if lines else "_No messages yet._"

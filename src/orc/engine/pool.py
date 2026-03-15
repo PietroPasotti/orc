@@ -50,7 +50,7 @@ class AgentProcess:
     task_name: str | None
     """Name of the board task this agent is working on, or ``None`` for the planner."""
 
-    process: subprocess.Popen
+    process: subprocess.Popen[bytes]
     """The underlying subprocess handle."""
 
     worktree: Path

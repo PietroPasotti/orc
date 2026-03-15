@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from orc.coordination.models import CloseVisionRequest
+from orc.coordination.models import CloseVisionRequest, VisionContent
 from orc.coordination.state import BoardStateManager
 
 router = APIRouter(prefix="/visions", tags=["visions"])
@@ -20,14 +20,14 @@ def get_pending_visions(state: BoardStateManager = Depends(_get_state)) -> list[
     return state.get_pending_visions()
 
 
-@router.get("/{name:path}")
-def get_vision(name: str, state: BoardStateManager = Depends(_get_state)) -> dict:
+@router.get("/{name:path}", response_model=VisionContent)
+def get_vision(name: str, state: BoardStateManager = Depends(_get_state)) -> VisionContent:
     """Return the content of a vision file."""
     try:
         content = state.read_vision(name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Vision not found: {name}")
-    return {"name": name, "content": content}
+    return VisionContent(name=name, content=content)
 
 
 @router.post("/{name:path}/close", status_code=status.HTTP_204_NO_CONTENT)

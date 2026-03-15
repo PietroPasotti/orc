@@ -93,7 +93,7 @@ class SquadConfig:
         if role not in _VALID_ROLES:
             raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
         role_value = role.value if isinstance(role, AgentRole) else role
-        return getattr(self, role_value)
+        return int(getattr(self, role_value))
 
     def model(self, role: AgentRole | str) -> str:
         """Return the configured model name for *role*.
