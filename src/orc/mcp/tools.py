@@ -64,7 +64,7 @@ def get_task(task_filename: str) -> str:
         if content_resp.status_code == 404:
             raise ValueError(f"Task {task_filename!r} not found on the board.")
         content_resp.raise_for_status()
-        content = content_resp.json().get("content", "")
+        content: str = content_resp.json().get("content", "")
 
         meta_resp = client.get(f"/board/tasks/{task_filename}")
         meta_resp.raise_for_status()
@@ -208,7 +208,7 @@ def create_task(
             json={"title": task_title, "vision": vision_file, "body": body},
         )
         resp.raise_for_status()
-        task_filename = resp.json()["filename"]
+        task_filename: str = resp.json()["filename"]
 
     if extra_files:
         for f in extra_files:
