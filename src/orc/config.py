@@ -48,6 +48,12 @@ class OrcConfig(BaseModel):
         default_factory=lambda: [".orc"], alias="orc-todo-scan-exclude"
     )
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans."""
+    default_model: str = Field(default="claude-sonnet-4.6", alias="default-model")
+    """Default AI model used when a squad profile does not specify one."""
+    human_reply_wait_timeout: float = Field(default=3600.0, alias="human-reply-wait-timeout")
+    """Seconds to wait for a human Telegram reply before giving up."""
+    chat_window_size: int = Field(default=50, alias="chat-window-size")
+    """Maximum number of recent messages kept in full in the chat window."""
 
 
 # ── Immutable config object ───────────────────────────────────────────────
@@ -74,6 +80,12 @@ class Config:
     """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans (git pathspec format)."""
     api_socket_path: Path
     """Unix domain socket for the coordination API — ``orc_dir/run/orc.sock``."""
+    default_model: str
+    """Default AI model used when a squad profile does not specify one."""
+    human_reply_wait_timeout: float
+    """Seconds to wait for a human Telegram reply before giving up."""
+    chat_window_size: int
+    """Maximum number of recent messages kept in full in the chat window."""
     main_branch: str = "main"
     """Name of the main branch in the repository, used as the default target for dev merges."""
 
@@ -143,6 +155,9 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         chat_log=log_dir / "chat.log",
         todo_scan_exclude=todo_scan_exclude,
         api_socket_path=orc_dir / "run" / "orc.sock",
+        default_model=orc_yaml.default_model,
+        human_reply_wait_timeout=orc_yaml.human_reply_wait_timeout,
+        chat_window_size=orc_yaml.chat_window_size,
     )
     # Reinitialise the board manager to match the new config.
     import orc.coordination.board as _board  # noqa: PLC0415

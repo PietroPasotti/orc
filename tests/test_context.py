@@ -211,6 +211,17 @@ class TestWaitForHumanReply:
         with pytest.raises(TimeoutError, match="not configured"):
             _ctx.wait_for_human_reply([], timeout=3600.0)
 
+    def test_default_timeout_reads_from_config(self, monkeypatch):
+        """When timeout is omitted, the value is read from orc.config."""
+        self._patch_configured(monkeypatch)
+        snapshot = [self._human("hi", ts=1)]
+        human = self._human("reply", ts=2)
+        monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [human])
+        self._mock_time(monkeypatch, [0.0, 1.0])
+        # Call without explicit timeout — should use config default (3600.0)
+        result = _ctx.wait_for_human_reply(snapshot)
+        assert result == "reply"
+
 
 # ---------------------------------------------------------------------------
 # Coverage tests for context.py helpers

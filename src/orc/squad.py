@@ -222,7 +222,6 @@ _PACKAGE_SQUADS_DIR = Path(__file__).parent.parent / "templates" / "default" / "
 
 _VALID_ROLES: frozenset[AgentRole] = frozenset(AgentRole)
 _DEFAULT_TIMEOUT_MINUTES = 120
-_DEFAULT_MODEL = "claude-sonnet-4.6"
 
 
 @dataclass(frozen=True)
@@ -259,12 +258,17 @@ class SquadConfig:
     def model(self, role: AgentRole | str) -> str:
         """Return the configured model name for *role*.
 
-        Falls back to ``_DEFAULT_MODEL`` when no model is specified for the role.
+        Falls back to the ``default-model`` setting from ``OrcConfig`` when no
+        model is specified for the role.
         """
         if role not in _VALID_ROLES:
             raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
         role_value = role.value if isinstance(role, AgentRole) else role
-        return self._models.get(role_value, _DEFAULT_MODEL)
+        if role_value in self._models:
+            return self._models[role_value]
+        import orc.config as _cfg  # noqa: PLC0415
+
+        return _cfg.get().default_model
 
     def permissions(self, role: AgentRole | str) -> PermissionConfig:
         """Return the resolved :class:`PermissionConfig` for *role*.

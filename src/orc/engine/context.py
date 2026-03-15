@@ -41,12 +41,6 @@ class TodoItem:
     text: str
 
 
-# TODO move all these globals to config as
-#  'default-model', 'human-reply-wait-timeout', 'chat-window-size'.
-_DEFAULT_MODEL = "claude-sonnet-4.6"
-_BLOCKED_TIMEOUT = 3600.0  # seconds before giving up on a human reply
-_CHAT_WINDOW_SIZE = 50  # max recent messages to keep in full
-
 # ---- Chat-history windowing -----------------------------------------------
 
 _AGENT_STATE_RE = re.compile(r"^\[.+?\]\(.+?\)")
@@ -250,9 +244,11 @@ def wait_for_human_reply(
     initial_delay: float = 5.0,
     backoff_factor: float = 2.0,
     max_delay: float = 300.0,
-    timeout: float = _BLOCKED_TIMEOUT,
+    timeout: float | None = None,
 ) -> str:
     """Poll Telegram until a new human message appears after *messages_snapshot*."""
+    if timeout is None:
+        timeout = _cfg.get().human_reply_wait_timeout
     if not tg.is_configured():
         logger.warning("Telegram not configured — cannot wait for human reply; treating as timeout")
         raise TimeoutError("Telegram not configured; human reply not possible.")

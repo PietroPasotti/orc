@@ -5,7 +5,6 @@ import textwrap
 import pytest
 
 from orc.squad import (
-    _DEFAULT_MODEL,
     ReviewThreshold,
     SquadConfig,
     list_squads,
@@ -261,9 +260,9 @@ class TestSquadConfig:
 
     def test_model_method_falls_back_to_default(self):
         cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
-        assert cfg.model("coder") == _DEFAULT_MODEL
-        assert cfg.model("planner") == _DEFAULT_MODEL
-        assert cfg.model("qa") == _DEFAULT_MODEL
+        assert cfg.model("coder") == "claude-sonnet-4.6"
+        assert cfg.model("planner") == "claude-sonnet-4.6"
+        assert cfg.model("qa") == "claude-sonnet-4.6"
 
     def test_model_unknown_role_raises(self):
         cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)

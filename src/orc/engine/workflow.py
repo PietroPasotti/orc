@@ -252,7 +252,7 @@ def rebase_dev_on_main(squad_cfg: SquadConfig | None = None) -> None:
             # Use a minimal stand-in so ConflictResolver can pick the default model
             class _DefaultModel:
                 def model(self, role: str) -> str:
-                    return _ctx._DEFAULT_MODEL
+                    return _cfg.get().default_model
 
             _squad = _DefaultModel()  # type: ignore[assignment]
         resolver = ConflictResolver(squad_cfg=_squad)  # type: ignore[arg-type]
