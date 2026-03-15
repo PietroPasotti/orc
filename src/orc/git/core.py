@@ -187,6 +187,29 @@ def _ensure_feature_worktree(task_name: str) -> Path:
     return wt_path
 
 
+class WorktreeManager:
+    """Manages feature and dev worktrees for the run command."""
+
+    def ensure_feature_worktree(self, task_name: str) -> Path:
+        """Ensure a feature branch and linked worktree exist for *task_name*."""
+        return _ensure_feature_worktree(task_name)
+
+    def ensure_dev_worktree(self) -> Path:
+        """Ensure the ``dev`` branch and its worktree exist."""
+        return _ensure_dev_worktree()
+
+    def delete_feature_worktree(self, task_name: str) -> None:
+        """Remove the feature worktree for *task_name* if it exists."""
+        wt_path = _feature_worktree_path(task_name)
+        if wt_path.exists():
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=_cfg.get().repo_root,
+                check=True,
+                capture_output=True,
+            )
+
+
 def _append_changelog_entry(
     task_name: str,
     branch: str,

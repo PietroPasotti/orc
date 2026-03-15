@@ -6,7 +6,6 @@ import atexit
 import os
 import sys
 import time
-from pathlib import Path
 from typing import Annotated
 
 import structlog
@@ -17,7 +16,6 @@ import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
 import orc.git.core as _git
-from orc.ai import invoke as inv
 from orc.cli import _check_env_or_exit, app
 from orc.cli import tui as _tui
 from orc.coordination import BoardStateManager, CoordinationServer
@@ -39,32 +37,11 @@ _FEATURES_DONE_REFRESH_INTERVAL = 30.0  # seconds between git queries
 # ---------------------------------------------------------------------------
 
 
-# TODO: Remove this mediator class and use BoardStateManager directly.
-class _BoardSvc(BoardService):
-    def __init__(self, state: BoardStateManager) -> None:
-        self._state = state
-
-    def get_tasks(self) -> list[dict]:
-        return self._state.get_tasks()
-
-    def assign_task(self, task_name: str, agent_id: str) -> None:
-        self._state.assign_task(task_name, agent_id)
-
-    def unassign_task(self, task_name: str) -> None:
-        self._state.unassign_task(task_name)
-
-    def get_pending_visions(self) -> list[str]:
-        return self._state.get_pending_visions()
+class _BoardSvc(BoardStateManager, BoardService):
+    """BoardStateManager extended with git/filesystem queries for the run command."""
 
     def get_pending_reviews(self) -> list[str]:
         return _status_mod._pending_reviews()
-
-    def get_blocked_tasks(self) -> list[str]:
-        return [
-            t["name"]
-            for t in self._state.get_tasks()
-            if isinstance(t, dict) and t.get("status") == "blocked"
-        ]
 
     def scan_todos(self) -> list[dict]:
         return _ctx._scan_todos(_cfg.get().repo_root)
@@ -77,68 +54,6 @@ class _BoardSvc(BoardService):
             or self.get_pending_reviews()
             or self.get_blocked_tasks()
         )
-
-    def query_tasks(self, status: str) -> list[str]:
-        return [
-            t["name"]
-            for t in self._state.get_tasks()
-            if isinstance(t, dict) and t.get("status") == status
-        ]
-
-
-# TODO: replace this with a git.WorktreeManager class that exposes:
-#     - ensure_feature_worktree(task_name) -> Path
-#     - delete_feature_worktree(task_name) -> None
-#     - ensure_dev_worktree() -> Path
-class _WorktreeSvc:
-    def ensure_feature_worktree(self, task_name: str) -> Path:
-        return _git._ensure_feature_worktree(task_name)
-
-    def ensure_dev_worktree(self) -> Path:
-        return _git._ensure_dev_worktree()
-
-
-# TODO: turn this into a TelegramMessagingService class
-#   which subclasses from a generic MessagingService ABC
-class _MessagingSvc:
-    def get_messages(self) -> list[dict]:
-        return tg.get_messages()
-
-    def post_boot_message(self, agent_id: str) -> None:
-        _wf._post_boot_message(agent_id)
-
-
-# TODO: remove this.
-class _WorkflowSvc:
-    def __init__(self, squad_cfg) -> None:
-        self._merge = _wf._make_merge_feature_fn(squad_cfg)
-
-    def derive_task_state(self, task_name: str) -> tuple[str, str]:
-        return _git._derive_task_state(task_name)
-
-    def merge_feature(self, task_name: str) -> None:
-        self._merge(task_name)
-
-    def do_close_board(self, task_name: str) -> None:
-        _wf._do_close_board(task_name)
-
-
-# TODO: remove this mediator class.
-class _AgentSvc:
-    def __init__(self, squad_cfg) -> None:
-        self._build = _wf._make_context_builder(squad_cfg)
-
-    def build_context(
-        self,
-        role: str,
-        agent_id: str,
-        messages: list[dict],
-        worktree: Path | None,
-    ) -> tuple[str, str]:
-        return self._build(role, agent_id, messages, worktree)
-
-    def spawn(self, context: str, cwd: Path, model: str | None, log_path: Path | None) -> object:
-        return inv.spawn(context, cwd, model, log_path)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +100,7 @@ def _run(
     # Start the coordination API server so agent tools in worktrees always
     # write to the correct (main) .orc/ directory.
     cfg = _cfg.get()
-    _coord_state = BoardStateManager(cfg.orc_dir)
+    _coord_state = _BoardSvc(cfg.orc_dir)
     _coord_state.clear_all_assignments()
     _coord_server = CoordinationServer(_coord_state, cfg.api_socket_path)
     _coord_server.start()
@@ -194,11 +109,10 @@ def _run(
 
     _last_dev_refresh: list[float] = [0.0]
 
-    board_svc = _BoardSvc(_coord_state)
-    messaging_svc = _MessagingSvc()
-    workflow_svc = _WorkflowSvc(squad_cfg)
-    agent_svc = _AgentSvc(squad_cfg)
-    worktree_svc = _WorktreeSvc()
+    messaging_svc = tg.TelegramMessagingService()
+    workflow_svc = _wf.WorkflowSvc(squad_cfg)
+    agent_svc = _wf.AgentSvc(squad_cfg)
+    worktree_svc = _git.WorktreeManager()
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:
@@ -232,14 +146,14 @@ def _run(
             on_orc_status=_on_orc_status,
         )
 
-    if board_svc.is_empty():
+    if _coord_state.is_empty():
         typer.echo("No pending work. Go write some vision!")
         return
 
     try:
         dispatcher = _disp.Dispatcher(
             squad_cfg,
-            board=board_svc,
+            board=_coord_state,
             worktree=worktree_svc,
             messaging=messaging_svc,
             workflow=workflow_svc,

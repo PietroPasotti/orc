@@ -76,3 +76,40 @@ def _make_merge_feature_fn(squad_cfg: SquadConfig) -> Callable[[str], None]:
                 raise typer.Exit(code=e.code) from e
 
     return _merge
+
+
+class WorkflowSvc:
+    """Bundles workflow callbacks that require *squad_cfg* at construction time."""
+
+    def __init__(self, squad_cfg: SquadConfig) -> None:
+        self._merge = _make_merge_feature_fn(squad_cfg)
+
+    def derive_task_state(self, task_name: str) -> tuple[str, str]:
+        return _git._derive_task_state(task_name)
+
+    def merge_feature(self, task_name: str) -> None:
+        self._merge(task_name)
+
+    def do_close_board(self, task_name: str) -> None:
+        _do_close_board(task_name)
+
+
+class AgentSvc:
+    """Bundles agent-spawn callbacks that require *squad_cfg* at construction time."""
+
+    def __init__(self, squad_cfg: SquadConfig) -> None:
+        self._build = _make_context_builder(squad_cfg)
+
+    def build_context(
+        self,
+        role: str,
+        agent_id: str,
+        messages: list[dict],
+        worktree: Path | None,
+    ) -> tuple[str, str]:
+        return self._build(role, agent_id, messages, worktree)
+
+    def spawn(self, context: str, cwd: Path, model: str | None, log_path: Path | None) -> object:
+        from orc.ai import invoke as inv
+
+        return inv.spawn(context, cwd, model, log_path)

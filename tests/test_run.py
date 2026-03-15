@@ -31,14 +31,18 @@ def _minimal_squad(**kw) -> SquadConfig:
 
 
 def _mock_coord(monkeypatch, open_tasks=None) -> MagicMock:
-    """Patch BoardStateManager and CoordinationServer so no real I/O happens in tests."""
+    """Patch _BoardSvc and CoordinationServer so no real I/O happens in tests."""
     if open_tasks is None:
         open_tasks = [{"name": "0001-test.md"}]
     mock_state = MagicMock()
     mock_state.get_tasks.return_value = open_tasks
     mock_state.get_pending_visions.return_value = []
+    mock_state.scan_todos.return_value = []
+    mock_state.get_pending_reviews.return_value = []
+    mock_state.get_blocked_tasks.return_value = []
+    mock_state.is_empty.return_value = not open_tasks
     mock_server = MagicMock()
-    monkeypatch.setattr(_run_mod, "BoardStateManager", lambda *a, **kw: mock_state)
+    monkeypatch.setattr(_run_mod, "_BoardSvc", lambda *a, **kw: mock_state)
     monkeypatch.setattr(_run_mod, "CoordinationServer", lambda *a, **kw: mock_server)
     return mock_state
 
@@ -292,16 +296,16 @@ class TestSafeFeaturesDone:
 
 
 class TestServiceAdapters:
-    """Tests for the service adapter classes created in _run()."""
+    """Tests for the service adapter classes."""
 
     def test_workflow_svc_do_close_board_delegates(self, monkeypatch):
-        """_WorkflowSvc.do_close_board delegates to _wf._do_close_board."""
+        """WorkflowSvc.do_close_board delegates to _do_close_board."""
         import orc.engine.workflow as _wf
 
         called = []
         monkeypatch.setattr(_wf, "_do_close_board", lambda t: called.append(t))
         monkeypatch.setattr(_wf, "_make_merge_feature_fn", lambda squad: lambda t: None)
-        svc = _run_mod._WorkflowSvc(_minimal_squad())
+        svc = _wf.WorkflowSvc(_minimal_squad())
         svc.do_close_board("0001-foo.md")
         assert called == ["0001-foo.md"]
 

@@ -78,6 +78,16 @@ class BoardStateManager:
             result.append(t if isinstance(t, dict) else {"name": str(t)})
         return result
 
+    def query_tasks(self, status: str) -> list[str]:
+        """Return names of tasks whose ``status`` field matches *status*."""
+        return [
+            t["name"] for t in self.get_tasks() if isinstance(t, dict) and t.get("status") == status
+        ]
+
+    def get_blocked_tasks(self) -> list[str]:
+        """Return names of tasks with ``status == "blocked"``."""
+        return self.query_tasks("blocked")
+
     def read_task_content(self, task_name: str) -> str:
         """Return the raw markdown content of *task_name*'s task file.
 

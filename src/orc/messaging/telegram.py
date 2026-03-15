@@ -199,3 +199,15 @@ def get_messages(limit: int = 100) -> list[dict]:
 
     local.sort(key=lambda m: m.get("date", 0))
     return local
+
+
+class TelegramMessagingService:
+    """Implements :class:`~orc.engine.services.MessagingService` via Telegram."""
+
+    def get_messages(self) -> list[dict]:
+        return get_messages()
+
+    def post_boot_message(self, agent_id: str) -> None:
+        from orc.engine.workflow import _post_boot_message
+
+        _post_boot_message(agent_id)
