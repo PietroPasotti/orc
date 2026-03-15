@@ -278,6 +278,12 @@ class DispatchHooks:
     on_feature_merged: Callable[[], None] | None = None
     """Called immediately after a feature branch is successfully merged into dev."""
 
+    on_cycle: Callable[[], None] | None = None
+    """Called once per dispatch loop iteration, just before the inter-cycle sleep.
+
+    Useful for periodic TUI state refreshes (e.g. refreshing counters that
+    require git queries) without blocking the main dispatch loop."""
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher
@@ -458,6 +464,10 @@ class Dispatcher:
                 break
 
             self._set_orc_task("idle")
+
+            # Periodic TUI refresh (counters that require git/board queries).
+            if self.hooks.on_cycle is not None:
+                self.hooks.on_cycle()
 
             # When the call limit is reached, keep polling until all running
             # agents finish, then stop.  This avoids orphaning agents that were

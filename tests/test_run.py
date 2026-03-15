@@ -176,13 +176,11 @@ class TestTuiPath:
 
         tui_called = []
         captured_hooks: list = []
-        captured_messaging: list = []
 
         original_init = _disp.Dispatcher.__init__
 
         def capturing_init(self, squad, **kw):
             captured_hooks.append(kw.get("hooks"))
-            captured_messaging.append(kw.get("messaging"))
             original_init(self, squad, **kw)
 
         def fake_run_tui(state, run_fn):
@@ -214,11 +212,9 @@ class TestTuiPath:
 
         assert tui_called == [True]
 
-        # Exercise the closures registered via hooks and messaging service.
+        # Exercise the closures registered via hooks.
         assert captured_hooks
         hooks = captured_hooks[0]
-        assert captured_messaging
-        messaging_svc = captured_messaging[0]
 
         # _on_agent_start
         fake_agent = AgentProcess(
@@ -240,9 +236,8 @@ class TestTuiPath:
         # _on_orc_status
         hooks.on_orc_status("checking pending work")
 
-        # _updating_get_messages (the wrapped get_messages)
-        result = messaging_svc.get_messages()
-        assert isinstance(result, list)
+        # _on_cycle refreshes features_done and stuck_tasks
+        hooks.on_cycle()
 
     def test_no_tui_flag_in_cli(self, tmp_path, monkeypatch):
         """CLI --no-tui flag passes no_tui=True to _run."""

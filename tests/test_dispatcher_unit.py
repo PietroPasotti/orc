@@ -467,6 +467,32 @@ class TestDispatchCallbacksOptional:
         assert d.hooks.on_orc_status is None
         d._set_orc_task("checking pending work")  # must not raise
 
+    def test_on_cycle_called_each_loop_iteration(self, tmp_path, monkeypatch):
+        """on_cycle is called once per dispatch loop iteration."""
+        import orc.engine.dispatcher as _d
+
+        monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
+
+        ticks: list[int] = []
+        hooks = _disp.DispatchHooks(on_cycle=lambda: ticks.append(1))
+
+        svcs = make_services(tmp_path, get_tasks=lambda: [], get_messages=lambda: [])
+        d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
+        d.run(maxcalls=1)
+
+        assert len(ticks) >= 1
+
+    def test_on_cycle_none_is_safe(self, tmp_path, monkeypatch):
+        """on_cycle=None (default) does not crash."""
+        import orc.engine.dispatcher as _d
+
+        monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
+
+        svcs = make_services(tmp_path, get_tasks=lambda: [], get_messages=lambda: [])
+        d = make_dispatcher(minimal_squad(), svcs)
+        assert d.hooks.on_cycle is None
+        d.run(maxcalls=1)  # must not raise
+
     def test_echo_routes_to_logger_when_tui_active(self, tmp_path):
         """_echo logs via structlog instead of typer when TUI hook is active."""
         svcs = make_services(tmp_path)

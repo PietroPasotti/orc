@@ -5,7 +5,6 @@ from __future__ import annotations
 import atexit
 import os
 import sys
-import time
 from typing import Annotated
 
 import structlog
@@ -23,14 +22,11 @@ from orc.engine.context import TodoItem
 from orc.engine.pool import AgentProcess
 from orc.engine.services import BoardService
 from orc.messaging import telegram as tg
-from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole, load_squad
 
 _MAXCALLS_UNLIMITED = sys.maxsize
 
 logger = structlog.get_logger(__name__)
-
-_FEATURES_DONE_REFRESH_INTERVAL = 30.0  # seconds between git queries
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +104,6 @@ def _run(
     os.environ["ORC_API_SOCKET"] = str(cfg.api_socket_path)
     atexit.register(_coord_server.stop)
 
-    _last_dev_refresh: list[float] = [0.0]
-
     messaging_svc = tg.TelegramMessagingService()
     workflow_svc = _wf.WorkflowSvc(squad_cfg)
     agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
@@ -157,11 +151,17 @@ def _run(
             assert state is not None
             state.features_done = _safe_features_done()
 
+        def _on_cycle() -> None:
+            assert state is not None
+            state.features_done = _safe_features_done()
+            state.stuck_tasks = sum(1 for t in _coord_state.get_tasks() if t.status == "stuck")
+
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start,
             on_agent_done=_on_agent_done,
             on_orc_status=_on_orc_status,
             on_feature_merged=_on_feature_merged,
+            on_cycle=_on_cycle,
         )
 
     if _coord_state.is_empty():
@@ -181,22 +181,6 @@ def _run(
             only_role=only_role,
         )
         if use_tui and state is not None:
-            # Wrap get_messages to keep state.current_calls and state.features_done
-            # fresh; the Textual app reads from state on its own timer.
-            _orig_get_messages = messaging_svc.get_messages
-
-            def _updating_get_messages() -> list[ChatMessage]:
-                assert state is not None
-                now = time.monotonic()
-                if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:
-                    state.features_done = _safe_features_done()
-                    state.stuck_tasks = sum(
-                        1 for t in _coord_state.get_tasks() if t.status == "stuck"
-                    )
-                    _last_dev_refresh[0] = now
-                return _orig_get_messages()
-
-            messaging_svc.get_messages = _updating_get_messages  # type: ignore[method-assign]
             _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))
         else:
             dispatcher.run(maxcalls=maxcalls)
