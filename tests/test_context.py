@@ -218,11 +218,13 @@ class TestWaitForHumanReply:
 
 
 class TestContextCoverage:
-    def _setup_context(self, monkeypatch, tmp_path, *, roles_dir=None, board_content="tasks: []\n"):
+    def _setup_context(
+        self, monkeypatch, tmp_path, *, agents_dir=None, board_content="tasks: []\n"
+    ):
         """Set up full context with config, directories, and mocks."""
-        if roles_dir is None:
-            roles_dir = tmp_path / "roles"
-            roles_dir.mkdir(exist_ok=True)
+        if agents_dir is None:
+            agents_dir = tmp_path / "agents"
+            agents_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(board_content)
@@ -231,7 +233,7 @@ class TestContextCoverage:
             "_config",
             _replace(
                 _cfg.get(),
-                roles_dir=roles_dir,
+                agents_dir=agents_dir,
                 orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 work_dir=work_dir,
@@ -241,114 +243,42 @@ class TestContextCoverage:
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
-    def _setup_roles(self, monkeypatch, tmp_path):
-        """Set up minimal roles configuration."""
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), roles_dir=roles_dir))
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", tmp_path / "pkg_roles")
-        return roles_dir
-
-    def test_read_adrs_empty_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
-        result = _ctx._read_adrs()
-        assert result == "_No ADRs found._"
-
-    def test_read_adrs_with_files(self, tmp_path, monkeypatch):
-        adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True, exist_ok=True)
-        (adr_dir / "001-decision.md").write_text("# ADR 001\n\nSome decision.")
-        (adr_dir / "README.md").write_text("# ADRs index")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
-        result = _ctx._read_adrs()
-        assert "001-decision.md" in result
-        assert "README.md" not in result
-
-    def test_parse_role_file_missing_returns_default(self, tmp_path, monkeypatch):
-        self._setup_roles(monkeypatch, tmp_path)
-        result = _ctx._parse_role_file("wizard")
-        assert "wizard" in result
-
-    def test_parse_role_file_directory_format(self, tmp_path, monkeypatch):
-        """Directory format: _main.md loaded first, then remaining files alphabetically."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True, exist_ok=True)
-        (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nIdentity section.")
-        (role_dir / "constraints.md").write_text("Constraints section.")
-        (role_dir / "exit-states.md").write_text("Exit states section.")
-        result = _ctx._parse_role_file("coder")
-        assert "Identity section." in result
-        assert "Constraints section." in result
-        assert "Exit states section." in result
-        assert "symbol" not in result
-        assert result.index("Identity section.") < result.index("Constraints section.")
-        assert result.index("Constraints section.") < result.index("Exit states section.")
-
-    def test_parse_role_file_directory_takes_precedence_over_flat_file(self, tmp_path, monkeypatch):
-        """When both directory and .md file exist, directory wins."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True, exist_ok=True)
-        (role_dir / "_main.md").write_text("Directory version.")
-        (roles_dir / "coder.md").write_text("Flat file version.")
-        result = _ctx._parse_role_file("coder")
-        assert "Directory version." in result
-        assert "Flat file version." not in result
-
-    def test_parse_role_dir_empty_returns_fallback(self, tmp_path, monkeypatch):
-        """Empty directory returns a fallback string."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True, exist_ok=True)
-        result = _ctx._parse_role_file("coder")
-        assert "coder" in result
-
-    def test_parse_role_file_project_dir_overrides_pkg_flat(self, tmp_path, monkeypatch):
-        """Project-level directory overrides package-level flat file."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        role_dir = roles_dir / "coder"
-        role_dir.mkdir(parents=True, exist_ok=True)
-        (role_dir / "_main.md").write_text("Project directory version.")
-        pkg_roles = tmp_path / "pkg_roles"
-        pkg_roles.mkdir(exist_ok=True)
-        (pkg_roles / "coder.md").write_text("Package flat version.")
-        monkeypatch.setattr(_cfg, "_PACKAGE_ROLES_DIR", pkg_roles)
-        result = _ctx._parse_role_file("coder")
-        assert "Project directory version." in result
-        assert "Package flat version." not in result
+    def _setup_agents(self, monkeypatch, tmp_path):
+        """Set up minimal agents configuration."""
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), agents_dir=agents_dir))
+        monkeypatch.setattr(_cfg, "_PACKAGE_AGENTS_DIR", tmp_path / "pkg_agents")
+        return agents_dir
 
     def test_role_symbol_directory_format(self, tmp_path, monkeypatch):
         """_role_symbol reads from _main.md when role is a directory."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        role_dir = roles_dir / "coder"
+        agents_dir = self._setup_agents(monkeypatch, tmp_path)
+        role_dir = agents_dir / "coder"
         role_dir.mkdir(parents=True, exist_ok=True)
         (role_dir / "_main.md").write_text("---\nsymbol: 🛠️\n---\nYou are a coder.\n")
         assert _ctx._role_symbol("coder") == "🛠️"
 
-    def test_parse_role_file_with_frontmatter(self, tmp_path, monkeypatch):
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are the coder agent.")
-        result = _ctx._parse_role_file("coder")
-        assert "coder agent" in result
-        assert "symbol" not in result
-
     def test_role_symbol_returns_empty_when_no_file(self, tmp_path, monkeypatch):
-        self._setup_roles(monkeypatch, tmp_path)
+        self._setup_agents(monkeypatch, tmp_path)
         assert _ctx._role_symbol("wizard") == ""
 
     def test_role_symbol_no_frontmatter(self, tmp_path, monkeypatch):
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        (roles_dir / "coder.md").write_text("You are the coder.")
+        agents_dir = self._setup_agents(monkeypatch, tmp_path)
+        (agents_dir / "coder.md").write_text("You are the coder.")
         assert _ctx._role_symbol("coder") == ""
 
     def test_role_symbol_frontmatter_no_end(self, tmp_path, monkeypatch):
         """Frontmatter with no closing --- → symbol not extracted."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\nno closing marker")
+        agents_dir = self._setup_agents(monkeypatch, tmp_path)
+        (agents_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\nno closing marker")
         assert _ctx._role_symbol("coder") == ""
+
+    def test_role_symbol_with_symbol_in_frontmatter(self, tmp_path, monkeypatch):
+        """Role file has valid frontmatter containing 'symbol' key."""
+        agents_dir = self._setup_agents(monkeypatch, tmp_path)
+        (agents_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are a coder.\n")
+        assert _ctx._role_symbol("coder") == "🧑‍💻"
 
     def test_build_agent_context_planner(self, tmp_path, monkeypatch):
         self._setup_context(monkeypatch, tmp_path)
@@ -358,7 +288,7 @@ class TestContextCoverage:
             "planner", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
         )
         assert isinstance(ctx, str)
-        assert len(ctx) > 0
+        assert ".orc/agents/planner/_main.md" in ctx
 
     def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
         """QA agent with an active feature branch gets review-specific git info."""
@@ -378,14 +308,8 @@ class TestContextCoverage:
         assert "feat/0001-task" in ctx
         assert "Branch to review" in ctx
 
-    def test_role_symbol_with_symbol_in_frontmatter(self, tmp_path, monkeypatch):
-        """Lines 65-67: role file has valid frontmatter containing 'symbol' key."""
-        roles_dir = self._setup_roles(monkeypatch, tmp_path)
-        (roles_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are a coder.\n")
-        assert _ctx._role_symbol("coder") == "🧑‍💻"
-
     def test_build_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
-        """Line 136: else-branch with feature_branch set (agent_name not coder/qa)."""
+        """else-branch with feature_branch set (agent_name not coder/qa)."""
         self._setup_context(monkeypatch, tmp_path)
         work_dir = tmp_path / ".orc" / "work"
         (work_dir / "board.yaml").write_text(
@@ -402,21 +326,21 @@ class TestContextCoverage:
         assert "feature/0001-task" in ctx
 
     def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
-        """Lines 86-87: ORC_DIR not under REPO_ROOT → falls back to dir name."""
+        """ORC_DIR not under REPO_ROOT → falls back to dir name in role path."""
         repo = tmp_path / "repo"
         repo.mkdir(exist_ok=True)
         orc_dir = tmp_path / "external-orc"
         orc_dir.mkdir(exist_ok=True)
         (orc_dir / "work").mkdir(exist_ok=True)
         (orc_dir / "work" / "board.yaml").write_text("tasks: []\n")
-        roles_dir = orc_dir / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        agents_dir = orc_dir / "agents"
+        agents_dir.mkdir(exist_ok=True)
         monkeypatch.setattr(
             _cfg,
             "_config",
             _replace(
                 _cfg.get(),
-                roles_dir=roles_dir,
+                agents_dir=agents_dir,
                 orc_dir=orc_dir,
                 repo_root=repo,
                 dev_worktree=tmp_path / "dev-wt",
@@ -572,8 +496,8 @@ class TestFormatTodos:
 
 class TestBuildContextTodos:
     def _setup(self, tmp_path, monkeypatch):
-        roles_dir = tmp_path / "roles"
-        roles_dir.mkdir(exist_ok=True)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir(exist_ok=True)
         work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text("tasks: []\n")
@@ -582,7 +506,7 @@ class TestBuildContextTodos:
             "_config",
             _replace(
                 _cfg.get(),
-                roles_dir=roles_dir,
+                agents_dir=agents_dir,
                 orc_dir=tmp_path / ".orc",
                 repo_root=tmp_path,
                 dev_worktree=tmp_path / "dev-wt",
@@ -620,147 +544,6 @@ class TestBuildContextTodos:
 
         _, ctx = _ctx.build_agent_context("coder", [], BoardStateManager(_cfg.get().orc_dir))
         assert "Code TODOs and FIXMEs" not in ctx
-
-
-# ---------------------------------------------------------------------------
-# _summarize_adr / _read_adrs(summarize=True)
-# ---------------------------------------------------------------------------
-
-
-class TestAdrSummarize:
-    def test_summarize_adr_extracts_title_and_status(self, tmp_path):
-        adr = tmp_path / "0001-test.md"
-        adr.write_text(
-            "# ADR-0001 — My Decision\n\n"
-            "**Status:** Accepted\n\n---\n\n"
-            "## Context\n\n"
-            "We need to decide on a database.\n\n"
-            "## Decision\n\nUse PostgreSQL.\n"
-        )
-        result = _ctx._summarize_adr(adr)
-        assert "ADR-0001 — My Decision" in result
-        assert "**Status:** Accepted" in result
-        assert "We need to decide on a database." in result
-        assert "Full text:" in result
-        # Should NOT include full body
-        assert "Use PostgreSQL" not in result
-
-    def test_summarize_adr_no_status(self, tmp_path):
-        adr = tmp_path / "0002-simple.md"
-        adr.write_text("# Simple ADR\n\nJust a paragraph of context.\n")
-        result = _ctx._summarize_adr(adr)
-        assert "Simple ADR" in result
-        assert "Just a paragraph of context." in result
-
-    def test_summarize_adr_stops_at_next_heading_after_paragraph(self, tmp_path):
-        adr = tmp_path / "0003-heading.md"
-        adr.write_text(
-            "# ADR 003\n\n**Status:** Accepted\n\n"
-            "First paragraph line.\n"
-            "## Decision\n\nShould not appear.\n"
-        )
-        result = _ctx._summarize_adr(adr)
-        assert "First paragraph line." in result
-        assert "Should not appear" not in result
-
-    def test_read_adrs_summarize_mode(self, tmp_path, monkeypatch):
-        adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True, exist_ok=True)
-        (adr_dir / "0001-first.md").write_text(
-            "# ADR 001\n\n**Status:** Accepted\n\n---\n\n"
-            "## Context\n\nSome decision context.\n\n"
-            "## Decision\n\nLots of detail here that should not appear.\n"
-        )
-        (adr_dir / "README.md").write_text("# Index")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
-        result = _ctx._read_adrs(summarize=True)
-        assert "ADR 001" in result
-        assert "Full text:" in result
-        assert "Lots of detail" not in result
-
-    def test_read_adrs_full_mode(self, tmp_path, monkeypatch):
-        adr_dir = tmp_path / "docs" / "adr"
-        adr_dir.mkdir(parents=True, exist_ok=True)
-        (adr_dir / "0001-first.md").write_text("# ADR 001\n\nFull body text.\n")
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
-        result = _ctx._read_adrs(summarize=False)
-        assert "Full body text." in result
-        assert "Full text:" not in result
-
-
-# ---------------------------------------------------------------------------
-# _extract_readme / _extract_contributing / _keep_sections
-# ---------------------------------------------------------------------------
-
-
-class TestDocExtraction:
-    _SAMPLE_README = (
-        "# My Project\n\nProject description.\n\n"
-        "## How it works\n\nIt does things.\n\n"
-        "## Installation\n\n```bash\npip install myproj\n```\n\n"
-        "## Quick start\n\nRun the thing.\n\n"
-        "## Architecture\n\nModular design.\n"
-    )
-
-    _SAMPLE_CONTRIBUTING = (
-        "# Contributing\n\nWelcome.\n\n"
-        "## First-time setup\n\nClone and install.\n\n"
-        "## The development loop (TDD)\n\nWrite tests first.\n\n"
-        "## Committing\n\nUse conventional commits.\n\n"
-        "## Package layout\n\nsrc/myproj/...\n\n"
-        "## Writing an ADR\n\nFollow the template.\n"
-    )
-
-    def test_extract_readme_strips_install_sections(self):
-        result = _ctx._extract_readme(self._SAMPLE_README)
-        assert "Project description." in result
-        assert "It does things." in result
-        assert "Modular design." in result
-        assert "pip install" not in result
-        assert "Run the thing" not in result
-
-    def test_extract_contributing_for_coder(self):
-        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "coder")
-        assert "Write tests first" in result
-        assert "Use conventional commits" in result
-        assert "src/myproj" in result
-        # Should NOT include setup or ADR writing
-        assert "Clone and install" not in result
-        assert "Follow the template" not in result
-
-    def test_extract_contributing_for_planner(self):
-        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "planner")
-        assert "src/myproj" in result
-        assert "Follow the template" in result
-        # Should NOT include TDD or committing
-        assert "Write tests first" not in result
-        assert "Use conventional commits" not in result
-
-    def test_extract_contributing_for_qa(self):
-        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "qa")
-        assert "Write tests first" in result
-        assert "Use conventional commits" in result
-        assert "src/myproj" in result
-        assert "Clone and install" not in result
-
-    def test_extract_contributing_unknown_role_returns_full(self):
-        result = _ctx._extract_contributing(self._SAMPLE_CONTRIBUTING, "unknown_role")
-        assert "Clone and install" in result
-        assert "Write tests first" in result
-
-    def test_keep_sections_skip_mode(self):
-        text = "# Title\n\nIntro.\n\n## Keep\n\nGood.\n\n## Drop\n\nBad.\n"
-        result = _ctx._keep_sections(text, skip=frozenset({"drop"}))
-        assert "Good." in result
-        assert "Bad." not in result
-        assert "Intro." in result
-
-    def test_keep_sections_keep_mode(self):
-        text = "# Title\n\nPreamble.\n\n## Alpha\n\nA content.\n\n## Beta\n\nB content.\n"
-        result = _ctx._keep_sections(text, keep=frozenset({"alpha"}))
-        assert "Preamble." in result
-        assert "A content." in result
-        assert "B content." not in result
 
 
 # ---------------------------------------------------------------------------

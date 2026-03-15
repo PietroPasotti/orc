@@ -27,7 +27,7 @@ class TestBootstrap:
         result = runner.invoke(m.app, ["bootstrap"])
         assert result.exit_code == 0
         orc = _orc_dir(tmp_path)
-        assert (orc / "roles").is_dir()
+        assert (orc / "agents").is_dir()
         assert (orc / "squads").is_dir()
         assert (orc / "vision").is_dir()
         assert (orc / "work").is_dir()
@@ -36,7 +36,7 @@ class TestBootstrap:
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
         for role in ("planner", "coder", "qa"):
-            role_dir = tmp_path / ".orc" / "roles" / role
+            role_dir = tmp_path / ".orc" / "agents" / role
             assert role_dir.is_dir(), f"Missing {role}/ directory"
             main_file = role_dir / "_main.md"
             assert main_file.exists(), f"Missing {role}/_main.md"
@@ -160,7 +160,7 @@ class TestBootstrapUpgrade:
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
         # Mutate a role file and a squad file
-        role_file = tmp_path / ".orc" / "roles" / "coder" / "_main.md"
+        role_file = tmp_path / ".orc" / "agents" / "coder" / "_main.md"
         squad_file = tmp_path / ".orc" / "squads" / "default.yaml"
         role_file.write_text("# custom coder")
         squad_file.write_text("custom: true")

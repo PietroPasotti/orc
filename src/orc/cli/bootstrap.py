@@ -117,7 +117,7 @@ def _bootstrap(force: bool = False) -> None:
         f"""
 Next steps
 ──────────
-1. Edit {to}/roles/*/  — customise agent instructions for your project.
+1. Edit {to}/agents/*/  — customise agent instructions for your project.
 2. Add vision docs to {to}/vision/
 3. Copy .env.example → .env and fill in your credentials.
 4. Add to your root justfile:
@@ -135,7 +135,7 @@ def _upgrade(*, yes: bool = False) -> None:
     """Overwrite bundled template files in an existing .orc/ installation.
 
     Preserves: orc-CHANGELOG.md, worktrees/, logs/, work/, vision/.
-    Everything else (roles/, squads/, agent_tools/, justfile, config.yaml, …)
+    Everything else (agents/, squads/, agent_tools/, justfile, config.yaml, …)
     is replaced with the version shipped in the currently installed package.
     """
     _obs.setup()
@@ -151,7 +151,7 @@ def _upgrade(*, yes: bool = False) -> None:
         typer.echo("This will overwrite all files in .orc/ EXCEPT:")
         for name in sorted(_UPGRADE_PRESERVE):
             typer.echo(f"  .orc/{name}")
-        typer.echo("\nChanges to roles/, squads/, and agent_tools/ will be lost.")
+        typer.echo("\nChanges to agents/, squads/, and agent_tools/ will be lost.")
         typer.confirm("Continue?", abort=True)
 
     updated: list[str] = []
@@ -201,7 +201,7 @@ def bootstrap(
             help=(
                 "Upgrade an existing .orc/ installation to the bundled template version. "
                 "Preserves orc-CHANGELOG.md, worktrees/, logs/, work/, and vision/. "
-                "All other files (roles/, squads/, agent_tools/, …) are overwritten."
+                "All other files (agents/, squads/, agent_tools/, …) are overwritten."
             ),
         ),
     ] = False,
@@ -218,7 +218,7 @@ def bootstrap(
     After bootstrapping:
 
     \\b
-    1. Edit .orc/roles/*/ to customise the agent instructions for your project.
+    1. Edit .orc/agents/*/ to customise the agent instructions for your project.
     2. Add vision documents to .orc/vision/
     3. Add 'mod orc \\".orc/justfile\\"' to your root justfile (if you use just).
     4. Copy .env.example to .env and fill in your credentials.
