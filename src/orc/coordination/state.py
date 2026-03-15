@@ -1,6 +1,6 @@
 """Thread-safe state manager for the orc coordination API.
 
-:class:`BoardStateManager` wraps :class:`~orc.board_manager.FileBoardManager`
+:class:`BoardStateManager` wraps :class:`~orc.coordination.board.FileBoardManager`
 with a :class:`threading.RLock` so that concurrent HTTP request handlers
 (running in anyio's thread pool) and the orchestrator's main thread can
 safely share board and vision state.
@@ -16,7 +16,7 @@ from pathlib import Path
 import pydantic
 import structlog
 
-from orc.board_manager import FileBoardManager, TaskStatus
+from orc.coordination.board import FileBoardManager, TaskStatus
 
 logger = structlog.get_logger(__name__)
 

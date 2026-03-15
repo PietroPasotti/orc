@@ -105,7 +105,7 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         api_socket_path=orc_dir / "run" / "orc.sock",
     )
     # Reinitialise the board manager to match the new config.
-    import orc.board as _board  # noqa: PLC0415
+    import orc.coordination.board as _board  # noqa: PLC0415
 
     _board.init_manager()
     return _config

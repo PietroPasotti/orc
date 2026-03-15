@@ -10,9 +10,9 @@ from pathlib import Path
 import structlog
 import typer
 
-import orc.board as _board
 import orc.config as _cfg
-from orc.board_manager import TaskStatus
+import orc.coordination.board as _board
+from orc.coordination.board import TaskStatus
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
@@ -239,14 +239,7 @@ def _append_changelog_entry(
 
 def _close_task_on_board(task_name: str) -> None:
     """Remove *task_name* from the board and delete its task file."""
-    board = _board._read_board()
-    board["tasks"] = [
-        t
-        for t in board.get("tasks", [])
-        if (t["name"] if isinstance(t, dict) else str(t)) != task_name
-    ]
-    _board._write_board(board)
-    _board._get_manager().delete_task_file(task_name)
+    _board.delete_task(task_name)
 
 
 def _merge_feature_into_dev(task_name: str) -> None:

@@ -1,10 +1,11 @@
-"""Tests for orc/board.py and orc/board_manager.py."""
+"""Tests for orc/coordination/board."""
 
 import pytest
 import yaml
 
-import orc.board as _board
-import orc.board_manager as _bm
+import orc.coordination.board as _board
+import orc.coordination.board._board as _board_impl
+import orc.coordination.board._manager as _bm
 
 
 def _board_file(tmp_path):
@@ -20,7 +21,7 @@ class TestBoardCoverage:
     def test_read_board_exception_returns_empty(self, tmp_path):
         """Corrupt board.yaml → returns default empty board."""
         _board_file(tmp_path).write_text(": : invalid")
-        board = _board._read_board()
+        board = _board_impl._read_board()
         assert board == {"counter": 0, "tasks": []}
 
     def test_get_open_tasks_wraps_string_entries(self, tmp_path):
@@ -81,7 +82,7 @@ class TestBoardCoverage:
     def test_active_task_name_returns_none_for_empty_board(self, tmp_path):
         """_active_task_name returns None when board is empty."""
         _board_file(tmp_path).write_text("tasks: []\n")
-        assert _board._active_task_name() is None
+        assert _board_impl._active_task_name() is None
 
     def test_write_board_atomic_cleans_up_on_error(self, tmp_path, monkeypatch):
         """_write_board cleans up the .tmp file and re-raises on OSError."""
@@ -97,7 +98,7 @@ class TestBoardCoverage:
         monkeypatch.setattr(_bm.Path, "replace", failing_replace)
 
         with pytest.raises(OSError, match="disk full"):
-            _board._write_board({"open": [], "done": []})
+            _board_impl._write_board({"open": [], "done": []})
 
         tmp_file = _board_file(tmp_path).with_suffix(".yaml.tmp")
         assert not tmp_file.exists()

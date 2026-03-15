@@ -187,7 +187,7 @@ class TestModels:
 
 class TestFileBoardManagerCreateTask:
     def _mgr(self, tmp_path):
-        from orc.board_manager import FileBoardManager
+        from orc.coordination.board import FileBoardManager
 
         orc = tmp_path / ".orc"
         orc.mkdir(exist_ok=True)

@@ -809,7 +809,7 @@ class TestReadWorkScoped:
             ),
         )
 
-        import orc.board as _board
+        import orc.coordination.board as _board
 
         result = _board._read_work(active_only="0001-a.md")
         assert "Task A content." in result
@@ -834,7 +834,7 @@ class TestReadWorkScoped:
             ),
         )
 
-        import orc.board as _board
+        import orc.coordination.board as _board
 
         result = _board._read_work()
         assert "Task A content." in result

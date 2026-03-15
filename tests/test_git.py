@@ -9,7 +9,7 @@ import yaml
 
 import orc.config as _cfg
 import orc.git.core as _git
-from orc.board import _active_task_name
+from orc.coordination.board import _active_task_name
 from orc.git.core import (
     _close_task_on_board,
     _derive_task_state,
@@ -35,7 +35,7 @@ class TestDeriveStateFromGit:
         is_merged=False,
         board_status=None,
     ):
-        monkeypatch.setattr("orc.board._active_task_name", lambda: active_task)
+        monkeypatch.setattr("orc.coordination.board._active_task_name", lambda: active_task)
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
         monkeypatch.setattr(
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
@@ -43,7 +43,7 @@ class TestDeriveStateFromGit:
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
         if board_status is not None and active_task:
             monkeypatch.setattr(
-                "orc.board.get_task",
+                "orc.coordination.board.get_task",
                 lambda name: {"name": name, "status": board_status},
             )
 
@@ -706,7 +706,7 @@ class TestDeriveTaskStateBoardStatus:
         monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
         monkeypatch.setattr(
-            "orc.board.get_task",
+            "orc.coordination.board.get_task",
             lambda name: {"name": name, "status": board_status},
         )
 

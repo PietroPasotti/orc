@@ -149,10 +149,10 @@ class TestRouteMatchesImplementation:
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: merged_into_dev)
         if board_status is not None:
             monkeypatch.setattr(
-                "orc.board.get_task",
+                "orc.coordination.board.get_task",
                 lambda name: {"name": name, "status": board_status},
             )
-        monkeypatch.setattr("orc.board._active_task_name", lambda: "0001-foo.md")
+        monkeypatch.setattr("orc.coordination.board._active_task_name", lambda: "0001-foo.md")
 
     _STATUS_TO_LAST_COMMIT = {
         "planned": LastCommit.CODER_WORK,
