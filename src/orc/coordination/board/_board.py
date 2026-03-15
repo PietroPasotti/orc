@@ -127,26 +127,27 @@ def _active_task_name() -> str | None:
     return tasks[0].name
 
 
-def _read_work(*, active_only: str | None = None) -> str:
-    """Return a human-readable summary of the kanban board + open task files.
+def _read_work() -> str:
+    """Return a human-readable kanban overview (board metadata only).
 
-    When *active_only* is provided only that task's full content is included;
-    others are listed by name only to reduce token cost.
+    Task file contents and comments are intentionally excluded so that
+    agents stay focused.  Agents should use the ``share/get_task.py``
+    tool to fetch a task's full details and conversation on demand.
     """
     mgr = _get_manager()
-    parts: list[str] = []
+    board = mgr.read_board()
 
-    board_path = mgr.board_path
-    if board_path.exists():
-        parts.append(f"### board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
+    task_lines: list[str] = []
+    for t in board.tasks:
+        task_lines.append(f"  - name: {t.name}")
+        if t.status is not None:
+            task_lines.append(f"    status: {t.status}")
+        if t.assigned_to is not None:
+            task_lines.append(f"    assigned_to: {t.assigned_to}")
 
-    for task_file in mgr.list_task_files():
-        if active_only and task_file.name != active_only:
-            parts.append(f"### {task_file.name} _(summary only)_")
-        else:
-            parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
-
-    return "\n\n".join(parts) if parts else "_No active work._"
+    tasks_block = "\n".join(task_lines) if task_lines else "  []"
+    body = f"counter: {board.counter}\ntasks:\n{tasks_block}"
+    return f"### board.yaml\n\n```yaml\n{body}\n```"
 
 
 def create_task(title: str, vision: str, body: TaskBody) -> tuple[str, Path]:

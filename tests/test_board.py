@@ -109,14 +109,34 @@ class TestBoardCoverage:
 
     def test_read_work_ignores_readme(self, tmp_path):
         """_read_work must not include README.md as a work item."""
-        work_dir = _work_dir(tmp_path)
         _board_file(tmp_path).write_text("counter: 1\ntasks:\n  - name: 0001-task.md\n")
+        work_dir = _work_dir(tmp_path)
         (work_dir / "README.md").write_text("# This is the kanban README")
         (work_dir / "0001-task.md").write_text("# Task 1")
         result = _board._read_work()
         assert "README.md" not in result
         assert "This is the kanban README" not in result
         assert "0001-task.md" in result
+
+    def test_read_work_excludes_task_content(self, tmp_path):
+        """_read_work must not include task file content."""
+        _board_file(tmp_path).write_text("counter: 1\ntasks:\n  - name: 0001-task.md\n")
+        work_dir = _work_dir(tmp_path)
+        (work_dir / "0001-task.md").write_text("SECRET task body")
+        result = _board._read_work()
+        assert "SECRET task body" not in result
+
+    def test_read_work_excludes_comments(self, tmp_path):
+        """_read_work must not include task comments in context."""
+        _board_file(tmp_path).write_text(
+            "counter: 1\ntasks:\n"
+            "  - name: 0001-task.md\n    status: in-progress\n"
+            "    comments:\n"
+            "      - from: qa-1\n        text: fix the tests\n        ts: '2024-01-01T00:00:00Z'\n"
+        )
+        result = _board._read_work()
+        assert "fix the tests" not in result
+        assert "comments" not in result
 
     def test_set_task_status(self, tmp_path):
         """set_task_status updates the status field."""

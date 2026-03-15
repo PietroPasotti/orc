@@ -80,22 +80,29 @@ class BoardStateManager:
         self._mgr.delete_task_file(task_name)
 
     @_locked
-    def read_work_summary(self, active_only: str | None = None) -> str:
-        """Return a human-readable summary of the board and open task files.
+    def read_work_summary(self) -> str:
+        """Return a human-readable kanban overview (board metadata only).
 
-        When *active_only* is provided, only that task's full content is
-        included; others are listed by name only to reduce token cost.
+        Task file contents and comments are intentionally excluded so that
+        agents stay focused.  Agents should use the ``share/get_task.py``
+        tool to fetch a task's full details and conversation on demand.
         """
-        parts: list[str] = []
-        board_path = self._mgr.board_path
-        if board_path.exists():
-            parts.append(f"### board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
-        for task_file in self._mgr.list_task_files():
-            if active_only and task_file.name != active_only:
-                parts.append(f"### {task_file.name} _(summary only)_")
-            else:
-                parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
-        return "\n\n".join(parts) if parts else "_No active work._"
+        board = self._mgr.read_board()
+        if not board.tasks and self._mgr.board_path.exists() is False:
+            return "_No active work._"
+
+        # Render only name / status / assigned_to — no comments, no task files.
+        task_lines: list[str] = []
+        for t in board.tasks:
+            task_lines.append(f"  - name: {t.name}")
+            if t.status is not None:
+                task_lines.append(f"    status: {t.status}")
+            if t.assigned_to is not None:
+                task_lines.append(f"    assigned_to: {t.assigned_to}")
+
+        tasks_block = "\n".join(task_lines) if task_lines else "  []"
+        body = f"counter: {board.counter}\ntasks:\n{tasks_block}"
+        return f"### board.yaml\n\n```yaml\n{body}\n```"
 
     def read_task_content(self, task_name: str) -> str:
         """Return the raw markdown content of *task_name*'s task file.

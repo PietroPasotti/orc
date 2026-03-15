@@ -19,6 +19,7 @@ Read the following documents in order:
 3. `docs/adr/` – all ADRs (understand the current architecture)
 4. The vision documents shown in your shared context under "Pending visions" — these are the source of truth for what to build.
 5. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand the current state.
-6. The **Board** section in your shared context — the kanban board (backlog state, counter, done list, task statuses and comments).
-7. The **Code TODOs and FIXMEs** section in your shared context — these are inline
+6. The **Board** section in your shared context — the kanban board (backlog state, counter, task names and statuses).
+7. If any blocked tasks are listed in the **Blocked tasks** section, run `.orc/agent_tools/share/get_task.py <task-filename>` for each one to read the full task details and the conversation (comments) explaining why it is blocked.
+8. The **Code TODOs and FIXMEs** section in your shared context — these are inline
    code comments from the codebase that represent known gaps, bugs, or improvements.

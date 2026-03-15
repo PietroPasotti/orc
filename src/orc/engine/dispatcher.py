@@ -62,6 +62,7 @@ import structlog.contextvars as contextvars
 import typer
 
 import orc.config as _cfg
+from orc.coordination.board import TaskStatus
 from orc.engine.pool import AgentPool, AgentProcess
 from orc.engine.services import (
     AgentService,
@@ -340,7 +341,10 @@ class Dispatcher:
             or self.board.get_blocked_tasks()
         )
 
-        if not open_tasks:
+        # Blocked tasks need planner attention, not coder/QA.
+        assignable_tasks = [t for t in open_tasks if t.status != TaskStatus.BLOCKED]
+
+        if not assignable_tasks:
             if not has_planner_work:
                 return dispatched
             if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
@@ -353,14 +357,14 @@ class Dispatcher:
             # task to finish before a new planner run creates more work.
             if (
                 _role_allowed(AgentRole.PLANNER)
-                and len(open_tasks) < self.squad.count(AgentRole.CODER)
+                and len(assignable_tasks) < self.squad.count(AgentRole.CODER)
                 and has_planner_work
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
                 dispatched += _spawn(lambda: self._spawn_planner())
 
-        # Dispatch coder/QA for each unassigned task up to squad capacity.
-        for task in open_tasks:
+        # Dispatch coder/QA for each unassigned non-blocked task up to squad capacity.
+        for task in assignable_tasks:
             task_name = task.name
             assigned_to = task.assigned_to
 
