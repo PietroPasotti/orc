@@ -2,20 +2,20 @@
 
 | State | When to use |
 |-------|-------------|
-| `approve` | No Critical or Major issues found; work can proceed |
-| `reject` | One or more Critical or Major issues found; coder must fix before proceeding |
+| `done` | No Critical or Major issues found; work can proceed |
+| `in-progress` | One or more Critical or Major issues found; coder must fix before proceeding |
 | `blocked` | You cannot complete the review without human input |
 
-### Signalling `approve` or `reject`
+### Signalling `done` or `in-progress`
 
 When the review is complete, run:
 
 ```bash
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
 ```
 
-- **approved**: sets the board status to `approved` and commits on the feature branch.
-- **rejected**: sets the board status to `rejected`, adds a comment with the rejection
+- **done**: sets the board status to `done` and commits on the feature branch.
+- **in-progress**: sets the board status to `in-progress`, adds a comment with the rejection
   reason, and commits.  Do **not** craft the commit message by hand.
 
 ### Signalling `blocked`

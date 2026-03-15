@@ -24,10 +24,10 @@ no commit-message parsing — the board is the single source of truth.
 | Status | Set by | Meaning |
 |---|---|---|
 | `planned` | `create_task.py` | Planner created task, awaiting coder |
-| `coding` | orchestrator | Coder actively working |
-| `review` | `close_task.py` | Coder done, awaiting QA |
-| `approved` | `review_task.py approved` | QA passed, ready to merge |
-| `rejected` | `review_task.py rejected` | QA failed, back to coder |
+| `in-progress` | orchestrator | Coder actively working |
+| `in-review` | `close_task.py` | Coder done, awaiting QA |
+| `done` | `review_task.py done` | QA passed, ready to merge |
+| `in-progress` | `review_task.py in-progress` | QA rejected, back to coder |
 | `blocked` | — | Hard block, needs human help |
 
 ## Available tools
@@ -65,7 +65,7 @@ no commit-message parsing — the board is the single source of truth.
 # Example:
 .orc/agent_tools/coder/get_task.py 0003-add-user-auth.md
 
-# Signal implementation done — sets board status to "review"
+# Signal implementation done — sets board status to "in-review"
 .orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
 # Example:
 .orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
@@ -74,16 +74,16 @@ no commit-message parsing — the board is the single source of truth.
 ### QA
 
 ```bash
-# Review a task — sets board status to "approved" or "rejected"
-# (rejected also posts the message as a comment for the coder)
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
+# Review a task — sets board status to "done" or "in-progress"
+# (in-progress/rejected also posts the message as a comment for the coder)
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
 # Examples:
-.orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no critical issues"
-.orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths; see task file"
+.orc/agent_tools/qa/review_task.py qa-1 0002 done "all tests green; no critical issues"
+.orc/agent_tools/qa/review_task.py qa-2 0003 in-progress "missing tests for error paths; see task file"
 ```
 
 ## Task comments
 
 Each board task has a `comments` list.  QA rejection feedback is written there
-automatically by `review_task.py` when the outcome is `rejected`.  You can also
+automatically by `review_task.py` when the outcome is `in-progress`.  You can also
 add comments manually to communicate context to the next agent in the pipeline.
