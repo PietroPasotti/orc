@@ -65,3 +65,11 @@
 **Task:** 0022-planner-tui-status-details.md
 
 **Merge commit:** 8321631
+
+## 0024-remove-git-tree-tab-from-status-tui (merged 2026-03-15T21:28:10Z)
+
+**Branch:** feat/0024-remove-git-tree-tab-from-status-tui
+
+**Task:** 0024-remove-git-tree-tab-from-status-tui.md
+
+**Merge commit:** 76573e4

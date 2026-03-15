@@ -9,12 +9,12 @@ description: |
 permissions:
   mode: confined
   deny_tools:
-    - "shell(just release:*)"  # release is maintainers-only
+    - "shell(just release:*)"  # release is maintainers-only in this project
 
 composition:
   - role: planner
     count: 1
-    model: claude-sonnet-4.6
+    model: claude-opus-4.6
     # No shell tools needed — planners only write task and ADR files.
 
   - role: coder
