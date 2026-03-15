@@ -35,9 +35,9 @@ class LastCommit(Enum):
 
     NONE = "none"  # branch has no commits, or no readable message
     CODER_WORK = "coder_work"  # ordinary coder commit (feat/fix/refactor/…)
-    CODER_DONE = "coder_done"  # board status: review (coder finished, awaiting QA)
-    QA_PASSED = "qa_passed"  # board status: approved (QA signed off)
-    QA_OTHER = "qa_other"  # board status: rejected (QA failed, back to coder)
+    CODER_DONE = "coder_done"  # board status: in-review (coder finished, awaiting QA)
+    QA_PASSED = "qa_passed"  # board status: done (QA signed off, ready to merge)
+    QA_OTHER = "qa_other"  # board status: in-progress (QA rejected, back to coder)
 
 
 class BlockState(Enum):
@@ -60,7 +60,7 @@ class WorldState:
 
     # --- board ----------------------------------------------------------------
     has_open_task: bool
-    """Board has at least one entry in ``open``."""
+    """Board has at least one active task (status: planned, in-progress, or in-review)."""
 
     has_pending_vision: bool = False
     """There are vision docs not yet distilled into a board task."""

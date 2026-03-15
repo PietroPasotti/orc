@@ -30,9 +30,9 @@ The canonical implementation of this function is:
 dispatcher._dispatch()
   └─ workflow.determine_next_agent(messages)
        ├─ workflow._has_unresolved_block(messages)   # Telegram scan
-       └─ git._derive_task_state(task)               # board status + git queries
+       └─ workflow._derive_task_state(task)          # board status + git queries
             ├─ board._active_task_name()             # board YAML (project cache)
-            └─ board status field                    # planned/coding/review/approved/rejected
+            └─ board status field                    # planned/in-progress/in-review/done/blocked
 ```
 
 A **formal model** (`state_machine.py`) mirrors this logic in pure Python and
@@ -46,12 +46,12 @@ is tested exhaustively for deadlock-freedom via BFS.
 
 | Input | Source | Notes |
 |-------|--------|-------|
-| `has_open_task` | board YAML `open:[]` | first open entry |
+| `has_open_task` | board YAML `tasks:[]` | any task present in the list |
 | `has_pending_vision` | board YAML `visions:[]` | any un-planned vision |
 | `branch_exists` | `git branch --list <feat/NNNN-*>` | feature branch present |
 | `commits_ahead` | `git rev-list <branch> ^main` | any commits not in main |
 | `merged_into_dev` | `git merge-base --is-ancestor <branch> dev` | only checked when branch exists and has no commits ahead |
-| `last_commit` | board `status` field via `_STATUS_TO_LAST_COMMIT` map | `review`→CODER_DONE, `approved`→QA_PASSED, `rejected`→QA_OTHER |
+| `last_commit` | board `status` field via `_STATUS_TO_LAST_COMMIT` map | `in-review`→CODER_DONE, `done`→QA_PASSED, `in-progress`→QA_OTHER |
 | `block` | newest non-boot Telegram message | `HARD`, `SOFT`, or `NONE` |
 
 ### State diagram
@@ -172,35 +172,12 @@ need to re-plan across tasks).
 
 ## System-Level Model
 
-The system model extends the per-task model to N concurrent tasks.
-
-### SystemState
-
-```python
-@dataclass(frozen=True)
-class SystemState:
-    tasks: frozenset[TaskState]   # open tasks (structurally distinct)
-    pending_visions: int          # capped at 2 to keep state space finite
-    block: BlockState             # system-wide block
-```
-
-`TaskState` captures the per-task git fields (`branch_exists`, `commits_ahead`,
-`merged_into_dev`, `last_commit`).  Because the model uses a `frozenset`, two
-tasks with identical git state are treated as one (structural equivalence).
-This keeps the state space finite without losing soundness properties.
-
-### Interleaving semantics
-
-`system_successors()` applies **one agent's outcome at a time**.  This avoids
-the Cartesian product explosion (which would be O(outcomes^N)) while still
-exploring every feasible execution order.
-
-```
-system_route(s) → { task₁: "coder", task₂: "qa", … }   # all eligible
-
-system_successors(s) → one new state per (task, outcome) pair
-                        (not one state per all-task combination)
-```
+> **Note**: The multi-task system-level model (`SystemState`, `TaskState`, `system_route`,
+> `system_successors`) described in earlier revisions of this ADR was removed during
+> the refactor that unified the board into a single `tasks:` list.  The dispatcher
+> now iterates tasks individually, calling `route()` per task via
+> `workflow._derive_task_state()`.  The single-task `WorldState` model and its
+> deadlock proofs remain in force.
 
 ### State space size
 
@@ -229,13 +206,10 @@ Algorithm:
 3. BFS backward from `COMPLETE` terminal states.
 4. Assert every non-hard-blocked state is in the backward-reachable set.
 
-### System-level: `test_system_no_deadlocks[N-tasks]`
+### System-level deadlock proofs
 
-Same algorithm over `SystemState`, parametrised by representative starting
-configurations with 1–4 tasks in mixed git states.
-
-**Proven**: No non-hard-blocked system state is a deadlock.  Every reachable
-state can eventually reach `SystemState(tasks=∅, pending_visions=0)`.
+> **Note**: The `test_system_no_deadlocks` tests and `TestSystemCrossChecks`
+> were removed along with `SystemState`.  Only the per-task proof remains.
 
 ---
 
@@ -243,12 +217,13 @@ state can eventually reach `SystemState(tasks=∅, pending_visions=0)`.
 
 `TestRouteMatchesImplementation` in `tests/test_state_machine.py` runs
 parametrised tests that:
-1. Monkeypatch the git query functions in `orc.git` with known return values.
-2. Call `git._derive_task_state()` (the real implementation).
+1. Monkeypatch the git query functions in `orc.engine.workflow` with known return values.
+2. Call `workflow._derive_task_state()` (the real implementation).
 3. Construct the corresponding `WorldState` and call `route()` (the model).
 4. Assert both return the same action.
 
-`TestSystemCrossChecks` does the same for `system_route()` vs. `route()`.
+`TestSentinelAlignment` cross-checks that the sentinel constants in the
+dispatcher match the values expected by the formal model.
 
 ---
 
@@ -260,7 +235,7 @@ parametrised tests that:
 | 2 | Soft-block pauses all task dispatch (not just the blocked task) | Medium | By design — planner may need to re-plan globally |
 | 3 | Board read-modify-write uses `filelock.FileLock` (30 s timeout); agent tool scripts acquire the same lock | Low | Fixed — `FileBoardManager` and agent tool scripts share `.board.lock` |
 | 4 | Simultaneous blocks: only newest detected | Low | Acceptable — hard-block suppresses all dispatch so co-occurrence is rare |
-| 5 | `frozenset[TaskState]` deduplicates structurally identical tasks | Model limitation | Acceptable — structural equivalence is sufficient for liveness proofs |
+| 5 | Per-task model only; no system-level (N-task) formal proof | Model limitation | Acceptable — dispatcher runs tasks independently; per-task proof covers each |
 
 ---
 
@@ -268,9 +243,9 @@ parametrised tests that:
 
 | File | Role |
 |------|------|
-| `src/orc/engine/state_machine.py` | Formal model (`TaskState`, `WorldState`, `route`, `successors`, `SystemState`, `system_route`, `system_successors`) + coarse enum (`WorkflowState`, `WorkflowStateMachine`) |
-| `src/orc/git/core.py` | Imperative implementation (`_derive_task_state` — reads board status via `_STATUS_TO_LAST_COMMIT`) |
-| `src/orc/engine/workflow.py` | Top-level routing (`determine_next_agent`, `_has_unresolved_block`) |
+| `src/orc/engine/state_machine.py` | Formal model (`WorldState`, `route`, `LastCommit`, `BlockState`) |
+| `src/orc/git.py` | Git operations (`Git` class, low-level subprocess wrapper) |
+| `src/orc/engine/workflow.py` | Imperative implementation (`_derive_task_state` — reads board status via `_STATUS_TO_LAST_COMMIT`) |
 | `src/orc/engine/dispatcher.py` | Parallel scheduler (`_dispatch`, sentinel handling) |
-| `src/orc/board.py` / `src/orc/board_manager.py` | Board YAML CRUD; `FileBoardManager` with `filelock.FileLock` |
+| `src/orc/coordination/board/_board.py` / `_manager.py` | Board YAML CRUD; `FileBoardManager` with `filelock.FileLock`; `TaskStatus` enum |
 | `tests/test_state_machine.py` | Deadlock proofs + cross-checks |

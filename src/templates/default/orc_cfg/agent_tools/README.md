@@ -45,10 +45,10 @@ echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0
 ### QA
 
 ```bash
-# Signal review outcome (approved or rejected)
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
+# Signal review outcome (done or in-progress/rejected)
+.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
 # Examples:
-.orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no critical issues"
-.orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths; see task file"
+.orc/agent_tools/qa/review_task.py qa-1 0002 done "all tests green; no critical issues"
+.orc/agent_tools/qa/review_task.py qa-2 0003 in-progress "missing tests for error paths; see task file"
 ```
 
