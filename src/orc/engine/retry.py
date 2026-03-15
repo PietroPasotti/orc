@@ -16,7 +16,7 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-F = TypeVar("F", bound=Callable)
+F = TypeVar("F", bound=Callable[..., object])
 
 
 def retry(
@@ -53,7 +53,7 @@ def retry(
 
     def decorator(fn: F) -> F:
         @wraps(fn)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: object, **kwargs: object) -> object:
             delay = initial_delay
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -76,6 +76,7 @@ def retry(
                     )
                     time.sleep(delay)
                     delay *= backoff_factor
+            return None  # unreachable; loop always returns or raises
 
         return wrapper  # type: ignore[return-value]
 

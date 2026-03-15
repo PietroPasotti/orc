@@ -8,7 +8,9 @@ from orc.coordination.models import (
     AddCommentRequest,
     CreateTaskRequest,
     CreateTaskResponse,
+    OkResponse,
     SetStatusRequest,
+    TaskContent,
     TaskEntry,
 )
 from orc.coordination.state import BoardStateManager
@@ -28,7 +30,7 @@ def get_tasks(
         alias="status",
         description="Filter tasks by status (e.g. planned, in-progress, in-review, done, blocked).",
     ),
-) -> list[dict]:
+) -> list[TaskEntry]:
     """Return tasks from board.yaml.
 
     - No filter (default) — all active tasks.
@@ -36,22 +38,22 @@ def get_tasks(
     """
     tasks = state.get_tasks()
     if status_filter is not None:
-        tasks = [t for t in tasks if t.get("status") == status_filter]
+        tasks = [t for t in tasks if t.status == status_filter]
     return tasks
 
 
-@router.get("/tasks/{task_name:path}/content")
-def get_task_content(task_name: str, state: BoardStateManager = Depends(_get_state)) -> dict:
+@router.get("/tasks/{task_name:path}/content", response_model=TaskContent)
+def get_task_content(task_name: str, state: BoardStateManager = Depends(_get_state)) -> TaskContent:
     """Return the raw markdown content of a task file by exact filename."""
     try:
         content = state.read_task_content(task_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Task file not found: {task_name}")
-    return {"name": task_name, "content": content}
+    return TaskContent(name=task_name, content=content)
 
 
 @router.get("/tasks/{task_name:path}", response_model=TaskEntry)
-def get_task(task_name: str, state: BoardStateManager = Depends(_get_state)) -> dict:
+def get_task(task_name: str, state: BoardStateManager = Depends(_get_state)) -> TaskEntry:
     """Return a single task entry by exact filename."""
     task = state.get_task(task_name)
     if task is None:
@@ -60,10 +62,12 @@ def get_task(task_name: str, state: BoardStateManager = Depends(_get_state)) -> 
 
 
 @router.post("/tasks", response_model=CreateTaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(body: CreateTaskRequest, state: BoardStateManager = Depends(_get_state)) -> dict:
+def create_task(
+    body: CreateTaskRequest, state: BoardStateManager = Depends(_get_state)
+) -> CreateTaskResponse:
     """Create a new task file and board entry."""
-    filename, path = state.create_task(body.title, body.vision, body.body.model_dump())
-    return {"filename": filename, "path": str(path)}
+    filename, path = state.create_task(body.title, body.vision, body.body)
+    return CreateTaskResponse(filename=filename, path=str(path))
 
 
 @router.put("/tasks/{task_name:path}/status", status_code=status.HTTP_204_NO_CONTENT)
@@ -78,13 +82,14 @@ def set_status(
 
 @router.post(
     "/tasks/{task_name:path}/comments",
+    response_model=OkResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def add_comment(
     task_name: str,
     body: AddCommentRequest,
     state: BoardStateManager = Depends(_get_state),
-) -> dict:
+) -> OkResponse:
     """Append a comment to a task's comments list."""
     state.add_task_comment(task_name, body.author, body.text)
-    return {"ok": True}
+    return OkResponse()

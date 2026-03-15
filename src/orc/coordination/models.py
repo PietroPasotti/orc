@@ -2,7 +2,47 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+# ---------------------------------------------------------------------------
+# Board domain types
+# ---------------------------------------------------------------------------
+
+
+class TaskComment(BaseModel):
+    """A comment attached to a board task entry."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    """Agent or user that added this comment."""
+    text: str
+    """Comment body."""
+    ts: str = ""
+    """ISO-8601 timestamp."""
+
+
+class TaskEntry(BaseModel):
+    """A single task entry on the kanban board."""
+
+    name: str
+    status: str | None = None
+    assigned_to: str | None = None
+    comments: list[TaskComment] = []
+    commit_tag: str | None = None
+    timestamp: str | None = None
+
+
+class Board(BaseModel):
+    """Top-level board.yaml structure."""
+
+    counter: int = 0
+    tasks: list[TaskEntry] = []
+
+
+# ---------------------------------------------------------------------------
+# Task-file body (used in create-task requests and board manager)
+# ---------------------------------------------------------------------------
 
 
 class TaskBody(BaseModel):
@@ -18,6 +58,11 @@ class TaskBody(BaseModel):
     """Ordered implementation steps."""
     notes: str = ""
     """Optional free-form notes: blockers, design decisions, tips for the coder."""
+
+
+# ---------------------------------------------------------------------------
+# HTTP request / response models
+# ---------------------------------------------------------------------------
 
 
 class CreateTaskRequest(BaseModel):
@@ -65,15 +110,28 @@ class CloseVisionRequest(BaseModel):
     """Optional list of task filenames that implemented this vision."""
 
 
-class TaskEntry(BaseModel):
-    """A single task entry on the kanban board."""
+class TaskContent(BaseModel):
+    """Response from ``GET /board/tasks/{name}/content``."""
 
     name: str
-    status: str | None = None
-    assigned_to: str | None = None
-    comments: list[dict] = []
-    commit_tag: str | None = None
-    timestamp: str | None = None
+    """Task filename."""
+    content: str
+    """Raw markdown content of the task file."""
+
+
+class VisionContent(BaseModel):
+    """Response from ``GET /visions/{name}``."""
+
+    name: str
+    """Vision filename."""
+    content: str
+    """Raw markdown content of the vision file."""
+
+
+class OkResponse(BaseModel):
+    """Generic success acknowledgement."""
+
+    ok: bool = True
 
 
 class HealthResponse(BaseModel):

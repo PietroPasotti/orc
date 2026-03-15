@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from result import Result
+    from orc.fn.results import Result
 
 
 class CombineUsing2[E, A, B]:
@@ -76,7 +76,7 @@ class ResultCombinators:
     def zip[E, A, B](
         r1: Result[Sequence[E], A], r2: Result[Sequence[E], B]
     ) -> Result[Sequence[E], tuple[A, B]]:
-        from result import Err, Ok  # lazy import to avoid circular dependency
+        from orc.fn.results import Err, Ok  # lazy import to avoid circular dependency
 
         # a shame we can't have exhaustive pattern matching on abstract classes...
         return r1.fold(

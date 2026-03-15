@@ -54,7 +54,8 @@ class TestStateManagerBoardQueries:
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text("tasks:\n  - 0001-foo.md\n")
         result = _state(orc).get_tasks()
-        assert result == [{"name": "0001-foo.md"}]
+        assert len(result) == 1
+        assert result[0].name == "0001-foo.md"
 
     def test_get_open_tasks_returns_dicts(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -62,8 +63,8 @@ class TestStateManagerBoardQueries:
             "tasks:\n  - name: 0001-foo.md\n    status: in-progress\n"
         )
         result = _state(orc).get_tasks()
-        assert result[0]["name"] == "0001-foo.md"
-        assert result[0]["status"] == "in-progress"
+        assert result[0].name == "0001-foo.md"
+        assert result[0].status == "in-progress"
 
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -72,7 +73,7 @@ class TestStateManagerBoardQueries:
         )
         t = _state(orc).get_task("0001-foo.md")
         assert t is not None
-        assert t["name"] == "0001-foo.md"
+        assert t.name == "0001-foo.md"
 
     def test_get_task_not_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -95,10 +96,12 @@ class TestStateManagerBoardMutations:
     def test_create_task_creates_file_and_board_entry(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
+        from orc.coordination.models import TaskBody
+
         filename, path = s.create_task(
             "add-user-auth",
             "0001-feat.md",
-            {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []},
+            TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[]),
         )
         assert filename == "0000-add-user-auth.md"
         assert path.exists()
@@ -110,7 +113,9 @@ class TestStateManagerBoardMutations:
     def test_create_task_increments_counter(self, tmp_path):
         orc = _orc_dir(tmp_path)
         s = _state(orc)
-        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        from orc.coordination.models import TaskBody
+
+        _body = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
         f1, _ = s.create_task("first", "0001-feat.md", _body)
         f2, _ = s.create_task("second", "0001-feat.md", _body)
         assert f1.startswith("0000-")
@@ -311,7 +316,7 @@ class TestBoardRoutes:
             "  - name: 0002-done.md\n    status: done\n"
         )
         result = get_tasks(state=_get_state(req), status_filter=None)
-        names = [t["name"] for t in result]
+        names = [t.name for t in result]
         assert "0001-open.md" in names
         assert "0002-done.md" in names
 
@@ -326,7 +331,7 @@ class TestBoardRoutes:
             "  - name: 0002-done.md\n    status: done\n"
         )
         result = get_tasks(state=_get_state(req), status_filter="planned")
-        names = [t["name"] for t in result]
+        names = [t.name for t in result]
         assert names == ["0001-open.md"]
 
     def test_get_tasks_status_filter_done(self, tmp_path):
@@ -340,7 +345,7 @@ class TestBoardRoutes:
             "  - name: 0002-done.md\n    status: done\n"
         )
         result = get_tasks(state=_get_state(req), status_filter="done")
-        names = [t["name"] for t in result]
+        names = [t.name for t in result]
         assert names == ["0002-done.md"]
 
     def test_get_tasks_status_all_returns_all(self, tmp_path):
@@ -354,7 +359,7 @@ class TestBoardRoutes:
             "  - name: 0002-done.md\n    status: done\n"
         )
         result = get_tasks(state=_get_state(req), status_filter=None)
-        names = [t["name"] for t in result]
+        names = [t.name for t in result]
         assert "0001-open.md" in names
         assert "0002-done.md" in names
         assert len(result) == 2
@@ -370,8 +375,8 @@ class TestBoardRoutes:
             body=TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[]),
         )
         result = create_task(body=body, state=_get_state(req))
-        assert result["filename"].endswith(".md")
-        assert "add-auth" in result["filename"]
+        assert result.filename.endswith(".md")
+        assert "add-auth" in result.filename
 
     def _make_task_req(self, title: str):
         from orc.coordination.models import CreateTaskRequest, TaskBody
@@ -387,8 +392,8 @@ class TestBoardRoutes:
 
         req = self._req(tmp_path)
         created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
-        result = get_task(task_name=created["filename"], state=_get_state(req))
-        assert result["name"] == created["filename"]
+        result = get_task(task_name=created.filename, state=_get_state(req))
+        assert result.name == created.filename
 
     def test_get_task_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException
@@ -406,10 +411,10 @@ class TestBoardRoutes:
 
         req = self._req(tmp_path)
         created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
-        name = created["filename"]
+        name = created.filename
         set_status(task_name=name, body=SetStatusRequest(status="in-review"), state=_get_state(req))
         task = get_task(task_name=name, state=_get_state(req))
-        assert task["status"] == "in-review"
+        assert task.status == "in-review"
 
     def test_add_comment(self, tmp_path):
         from orc.coordination.models import AddCommentRequest
@@ -417,25 +422,25 @@ class TestBoardRoutes:
 
         req = self._req(tmp_path)
         created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
-        name = created["filename"]
+        name = created.filename
         result = add_comment(
             task_name=name,
             body=AddCommentRequest(author="qa-1", text="See line 42"),
             state=_get_state(req),
         )
-        assert result == {"ok": True}
+        assert result.ok is True
         task = get_task(task_name=name, state=_get_state(req))
-        assert task["comments"][0]["text"] == "See line 42"
+        assert task.comments[0].text == "See line 42"
 
     def test_get_task_content_found(self, tmp_path):
         from orc.coordination.routes.board import _get_state, create_task, get_task_content
 
         req = self._req(tmp_path)
         created = create_task(body=self._make_task_req("my-task"), state=_get_state(req))
-        name = created["filename"]
+        name = created.filename
         result = get_task_content(task_name=name, state=_get_state(req))
-        assert result["name"] == name
-        assert isinstance(result["content"], str)
+        assert result.name == name
+        assert isinstance(result.content, str)
 
     def test_get_task_content_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException
@@ -481,8 +486,8 @@ class TestVisionRoutes:
         (orc / "vision" / "ready" / "0001-feat.md").write_text("# Vision content")
         req = self._req(tmp_path)
         result = get_vision(name="0001-feat.md", state=_get_state(req))
-        assert result["content"] == "# Vision content"
-        assert result["name"] == "0001-feat.md"
+        assert result.content == "# Vision content"
+        assert result.name == "0001-feat.md"
 
     def test_get_vision_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException
@@ -540,8 +545,8 @@ class TestWorkRoutes:
 
         req = self._req(tmp_path)
         result = health(state=_get_state(req))
-        assert result["status"] == "ok"
-        assert isinstance(result["pid"], int)
+        assert result.status == "ok"
+        assert isinstance(result.pid, int)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -748,14 +753,18 @@ class TestFileBoardManagerCreateTask:
 
     def test_create_task_returns_filename_and_path(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        from orc.coordination.models import TaskBody
+
+        _body = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
         filename, path = mgr.create_task("add-auth", "0001-feat.md", _body)
         assert filename == "0000-add-auth.md"
         assert path.exists()
 
     def test_create_task_increments_counter(self, tmp_path):
         mgr = self._mgr(tmp_path)
-        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        from orc.coordination.models import TaskBody
+
+        _body = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
         mgr.create_task("first", "0001-feat.md", _body)
         f2, _ = mgr.create_task("second", "0001-feat.md", _body)
         assert f2.startswith("0001-")
@@ -763,7 +772,9 @@ class TestFileBoardManagerCreateTask:
     def test_create_task_adds_planned_entry_to_board(self, tmp_path):
         orc = tmp_path / ".orc"
         mgr = self._mgr(tmp_path)
-        _body = {"overview": "x", "in_scope": [], "out_of_scope": [], "steps": []}
+        from orc.coordination.models import TaskBody
+
+        _body = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
         mgr.create_task("my-task", "0001-feat.md", _body)
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
         assert board["tasks"][0]["status"] == "planned"
@@ -859,7 +870,7 @@ class TestGetBoardSnapshot:
         result = get_board_snapshot()
         assert isinstance(result, BoardSnapshot)
         assert result.visions == ["0007-vision.md"]
-        assert result.tasks[0]["name"] == "0001-task.md"
+        assert result.tasks[0].name == "0001-task.md"
 
     def test_returns_none_when_json_parse_fails(self, monkeypatch):
         import orc.coordination.client as _client_mod

@@ -12,6 +12,7 @@ import typer
 
 import orc.config as _cfg
 import orc.coordination.board as _board
+import orc.coordination.board._board as _board_impl
 import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
 from orc.cli import app
@@ -48,10 +49,8 @@ def _pending_visions() -> list[str]:
     ready_dir = _cfg.get().vision_dir / "ready"
     if not ready_dir.is_dir():
         return []
-    board = _board._read_board()
-    all_task_stems = {
-        (t["name"] if isinstance(t, dict) else str(t)) for t in board.get("tasks", [])
-    }
+    board = _board_impl._read_board()
+    all_task_stems = {t.name for t in board.tasks}
     result = []
     for f in sorted(ready_dir.glob("*.md")):
         if f.name.lower().startswith("."):
@@ -95,8 +94,8 @@ def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
     """
     result = []
     for task in _board.get_tasks():
-        if task.get("status") == TaskStatus.IN_REVIEW:
-            branch = _cfg.get().feature_branch(task["name"])
+        if task.status == TaskStatus.IN_REVIEW:
+            branch = _cfg.get().feature_branch(task.name)
             if branches is None or branch in branches:
                 result.append(branch)
     return result
@@ -109,8 +108,8 @@ def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
     """
     result = []
     for task in _board.get_tasks():
-        if task.get("status") == "done":
-            branch = _cfg.get().feature_branch(task["name"])
+        if task.status == "done":
+            branch = _cfg.get().feature_branch(task.name)
             if branches is None or branch in branches:
                 result.append(branch)
     return result
@@ -134,7 +133,7 @@ def _status(squad: str = "default") -> None:
     open_visions = _pending_visions()
     open_todos_and_fixmes = _ctx._scan_todos(_cfg.get().repo_root)
     open_PRs = _pending_reviews()
-    blocked_task = next((t["name"] for t in open_tasks if t.get("status") == "blocked"), None)
+    blocked_task = next((t.name for t in open_tasks if t.status == "blocked"), None)
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
@@ -172,7 +171,7 @@ def _status(squad: str = "default") -> None:
         qa_tasks: list[tuple[str, str]] = []
         merge_pending: list[str] = []
         for task in open_tasks:
-            name = task["name"]
+            name = task.name
             token, reason = _wf._derive_task_state(name, task)
             if token == AgentRole.CODER:
                 coder_tasks.append((name, reason))
@@ -237,12 +236,8 @@ def _status(squad: str = "default") -> None:
     if open_tasks:
         _echo_wrapped("\nPending tasks:")
         for task in open_tasks:
-            name = task["name"] if isinstance(task, dict) else str(task)
-            status = (
-                task.get("status", TaskStatus.IN_PROGRESS)
-                if isinstance(task, dict)
-                else TaskStatus.IN_PROGRESS
-            )
+            name = task.name
+            status = task.status or TaskStatus.IN_PROGRESS
             branch = _cfg.get().feature_branch(name)
             if _wf._feature_branch_exists(branch):
                 _echo_wrapped(f"  • {name}  ({branch})  status: {status}")
@@ -262,10 +257,10 @@ def _status(squad: str = "default") -> None:
         total_t = len(open_todos_and_fixmes)
         _echo_wrapped(f"\nTODOs / FIXMEs ({len(shown_t)} of {total_t}):")
         for item in shown_t:
-            tag = item.get("tag", "TODO")
-            path = item.get("file", "?")
-            lineno = item.get("line", "?")
-            text = item.get("text", "").strip()
+            tag = item.tag
+            path = item.file
+            lineno = item.line
+            text = item.text.strip()
             _echo_wrapped(f"  [{tag}] {path}:{lineno}  {text}")
 
     # --- Branches awaiting QA review -----------------------------------------

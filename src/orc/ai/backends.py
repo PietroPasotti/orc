@@ -50,7 +50,7 @@ class SpawnResult:
     the :class:`subprocess.Popen` object.
     """
 
-    process: subprocess.Popen
+    process: subprocess.Popen[bytes]
     """The spawned subprocess handle."""
 
     log_fh: IO[str] | None
@@ -115,6 +115,8 @@ class BaseAIBackend(ABC):
         cmd = self._build_command(tmp_path, model)
 
         log_fh: IO[str] | None = None
+        stdout: IO[str] | int
+        stderr: IO[str] | int
         if log_path:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_fh = open(log_path, "w", encoding="utf-8", buffering=1)  # noqa: SIM115
@@ -160,7 +162,7 @@ class CopilotBackend(BaseAIBackend):
             try:
                 data = json.loads(self.APPS_JSON.read_text())
                 entry = next(iter(data.values()))
-                t = entry.get("oauth_token", "")
+                t = str(entry.get("oauth_token", ""))
                 if t:
                     return t
             except Exception:

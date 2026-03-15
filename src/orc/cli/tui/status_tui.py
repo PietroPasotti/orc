@@ -82,7 +82,7 @@ class CommitInfo:
 def _main_branch() -> str:
     """Return the main branch name from config or auto-detect via git."""
     cfg_data = _cfg.load_orc_config(_cfg.get().orc_dir)
-    configured = cfg_data.get("orc-main-branch", "").strip()
+    configured = (cfg_data.orc_main_branch or "").strip()
     if configured:
         return configured
     from orc.git import Git as _Git
@@ -238,26 +238,27 @@ def _render_board() -> RenderableType:
     # -- build per-column entry lists ----------------------------------
     to_refine = snap.visions
 
-    planned = [t["name"] for t in snap.tasks if t.get("status") == TaskStatus.PLANNED]
+    planned = [t.name for t in snap.tasks if t.status == TaskStatus.PLANNED]
 
     _IN_PROGRESS_STATUSES = {TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
     in_progress_entries = []
     for t in snap.tasks:
-        if t.get("status") in _IN_PROGRESS_STATUSES:
-            label = t["name"]
-            if t.get("assigned_to"):
-                label = f"{label} ({t['assigned_to']})"
+        if t.status in _IN_PROGRESS_STATUSES:
+            label = t.name
+            if t.assigned_to:
+                label = f"{label} ({t.assigned_to})"
             in_progress_entries.append(label)
 
     review_entries = []
     for t in snap.tasks:
-        if t.get("status") == TaskStatus.IN_REVIEW:
-            label = t["name"]
-            if t.get("branch"):
-                label = f"{label} ({t['branch']})"
+        if t.status == TaskStatus.IN_REVIEW:
+            label = t.name
+            branch = getattr(t, "branch", None)
+            if branch:
+                label = f"{label} ({branch})"
             review_entries.append(label)
 
-    done_entries = [t["name"] for t in snap.tasks if t.get("status") == TaskStatus.DONE]
+    done_entries = [t.name for t in snap.tasks if t.status == TaskStatus.DONE]
 
     def _cell(entries: list[str]) -> str:
         return "\n".join(entries) if entries else "(empty)"

@@ -12,13 +12,16 @@ import typer
 
 import orc.config as _cfg
 import orc.engine.context as _ctx
+from orc.ai.backends import SpawnResult
 from orc.coordination.board import TaskStatus
+from orc.coordination.models import TaskEntry
 from orc.coordination.state import BoardStateManager
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
 from orc.git import Git, MergeConflictError, RebaseConflictError
 from orc.messaging import telegram as tg
+from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
@@ -65,7 +68,7 @@ class ConflictResolver:
         Current Telegram message history; passed as context to the agent.
     """
 
-    def __init__(self, squad_cfg: SquadConfig, messages: list[dict]) -> None:
+    def __init__(self, squad_cfg: SquadConfig, messages: list[ChatMessage]) -> None:
         self.squad_cfg = squad_cfg
         self.messages = messages
 
@@ -261,7 +264,7 @@ def _merge_feature_into_dev(task_name: str) -> None:
     git_root.branch_delete(branch, force=True)
 
 
-def rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> None:
+def rebase_dev_on_main(messages: list[ChatMessage], squad_cfg: SquadConfig | None = None) -> None:
     """Rebase dev on top of main so each session starts with the latest code.
 
     If the rebase produces conflicts a coder agent is invoked to resolve them
@@ -284,7 +287,7 @@ def rebase_dev_on_main(messages: list, squad_cfg: SquadConfig | None = None) -> 
                     return _ctx._DEFAULT_MODEL
 
             _squad = _DefaultModel()  # type: ignore[assignment]
-        resolver = ConflictResolver(squad_cfg=_squad, messages=messages)
+        resolver = ConflictResolver(squad_cfg=_squad, messages=messages)  # type: ignore[arg-type]
         try:
             resolver.resolve_rebase_conflict(cfg.dev_worktree, exc.status_output)
         except ConflictResolutionFailed as e:
@@ -323,7 +326,7 @@ class WorktreeManager:
 # ---------------------------------------------------------------------------
 
 
-def _derive_task_state(task_name: str, task_data: dict | None = None) -> tuple[str, str]:
+def _derive_task_state(task_name: str, task_data: TaskEntry | None = None) -> tuple[str, str]:
     """Inspect the git tree and *task_data* for *task_name* and return ``(token, reason)``.
 
     Git branch checks determine whether work has started and completed.
@@ -353,7 +356,7 @@ def _derive_task_state(task_name: str, task_data: dict | None = None) -> tuple[s
             return _CLOSE_BOARD, f"branch {branch!r} already merged into dev but board not updated"
         return AgentRole.CODER, f"feature branch {branch!r} has no commits ahead of main"
 
-    status = (task_data or {}).get("status") or TaskStatus.IN_PROGRESS
+    status = (task_data.status if task_data else None) or TaskStatus.IN_PROGRESS
     last_commit = _STATUS_TO_LAST_COMMIT.get(status, LastCommit.CODER_WORK)
     logger.debug(
         "derive_task_state: board status", task=task_name, status=status, last_commit=last_commit
@@ -368,7 +371,12 @@ def _derive_task_state(task_name: str, task_data: dict | None = None) -> tuple[s
         TaskStatus.IN_REVIEW: f"coder finished {branch!r}, awaiting QA",
         TaskStatus.DONE: f"qa approved {branch!r} — ready to merge",
     }
-    reason = _REASONS.get(status, f"{branch!r} status={status!r}")
+    try:
+        ts = TaskStatus(status) if status else None
+    except ValueError:
+        ts = None
+    fallback = f"{branch!r} status={status!r}"
+    reason = _REASONS.get(ts, fallback) if ts else fallback
     return action, reason  # type: ignore[return-value]
 
 
@@ -380,13 +388,13 @@ def _derive_task_state(task_name: str, task_data: dict | None = None) -> tuple[s
 def _make_context_builder(
     squad_cfg: SquadConfig,
     board: BoardStateManager,
-) -> Callable[[str, str, list[dict], Path | None], tuple[str, str]]:
+) -> Callable[[str, str, list[ChatMessage], Path | None], tuple[str, str]]:
     """Return a ``build_context`` callback that sources models from *squad_cfg*."""
 
     def _build(
         role: str,
         agent_id: str,
-        messages: list[dict],
+        messages: list[ChatMessage],
         worktree: Path | None,
     ) -> tuple[str, str]:
         return _ctx.build_agent_context(
@@ -424,7 +432,9 @@ class WorkflowSvc:
     def __init__(self, squad_cfg: SquadConfig) -> None:
         self._merge = _make_merge_feature_fn(squad_cfg)
 
-    def derive_task_state(self, task_name: str, task_data: dict | None = None) -> tuple[str, str]:
+    def derive_task_state(
+        self, task_name: str, task_data: TaskEntry | None = None
+    ) -> tuple[str, str]:
         return _derive_task_state(task_name, task_data)
 
     def merge_feature(self, task_name: str) -> None:
@@ -442,12 +452,14 @@ class AgentSvc:
         self,
         role: str,
         agent_id: str,
-        messages: list[dict],
+        messages: list[ChatMessage],
         worktree: Path | None,
     ) -> tuple[str, str]:
         return self._build(role, agent_id, messages, worktree)
 
-    def spawn(self, context: str, cwd: Path, model: str | None, log_path: Path | None) -> object:
+    def spawn(
+        self, context: str, cwd: Path, model: str | None, log_path: Path | None
+    ) -> SpawnResult:
         from orc.ai import invoke as inv
 
         return inv.spawn(context, cwd, model, log_path)

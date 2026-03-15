@@ -68,16 +68,16 @@ class TestBoardRoutes:
         req = self._req(tmp_path)
         body = _make_create_request("add-auth")
         result = create_task(body=body, state=_get_state(req))
-        assert result["filename"].endswith(".md")
-        assert "add-auth" in result["filename"]
+        assert result.filename.endswith(".md")
+        assert "add-auth" in result.filename
 
     def test_get_task_found(self, tmp_path):
         from orc.coordination.routes.board import _get_state, create_task, get_task
 
         req = self._req(tmp_path)
         created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
-        result = get_task(task_name=created["filename"], state=_get_state(req))
-        assert result["name"] == created["filename"]
+        result = get_task(task_name=created.filename, state=_get_state(req))
+        assert result.name == created.filename
 
     def test_get_task_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException
@@ -95,10 +95,10 @@ class TestBoardRoutes:
 
         req = self._req(tmp_path)
         created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
-        name = created["filename"]
+        name = created.filename
         set_status(task_name=name, body=SetStatusRequest(status="in-review"), state=_get_state(req))
         task = get_task(task_name=name, state=_get_state(req))
-        assert task["status"] == "in-review"
+        assert task.status == "in-review"
 
     def test_add_comment(self, tmp_path):
         from orc.coordination.models import AddCommentRequest
@@ -106,15 +106,15 @@ class TestBoardRoutes:
 
         req = self._req(tmp_path)
         created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
-        name = created["filename"]
+        name = created.filename
         result = add_comment(
             task_name=name,
             body=AddCommentRequest(author="qa-1", text="See line 42"),
             state=_get_state(req),
         )
-        assert result == {"ok": True}
+        assert result.ok is True
         task = get_task(task_name=name, state=_get_state(req))
-        assert task["comments"][0]["text"] == "See line 42"
+        assert task.comments[0].text == "See line 42"
 
 
 class TestVisionRoutes:
@@ -150,8 +150,8 @@ class TestVisionRoutes:
         (orc / "vision" / "ready" / "0001-feat.md").write_text("# Vision content")
         req = self._req(tmp_path)
         result = get_vision(name="0001-feat.md", state=_get_state(req))
-        assert result["content"] == "# Vision content"
-        assert result["name"] == "0001-feat.md"
+        assert result.content == "# Vision content"
+        assert result.name == "0001-feat.md"
 
     def test_get_vision_not_found_raises_404(self, tmp_path):
         from fastapi import HTTPException
@@ -209,8 +209,8 @@ class TestWorkRoutes:
 
         req = self._req(tmp_path)
         result = health(state=_get_state(req))
-        assert result["status"] == "ok"
-        assert isinstance(result["pid"], int)
+        assert result.status == "ok"
+        assert isinstance(result.pid, int)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

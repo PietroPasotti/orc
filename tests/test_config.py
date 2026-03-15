@@ -186,18 +186,24 @@ class TestConfigCoverage:
 
 class TestLoadOrcConfig:
     def test_returns_empty_dict_when_no_config_file(self, tmp_path):
+        from orc.config import OrcConfig
+
         result = _cfg.load_orc_config(tmp_path)
-        assert result == {}
+        assert result == OrcConfig()
 
     def test_reads_orc_dev_branch(self, tmp_path):
         (tmp_path / "config.yaml").write_text("orc-dev-branch: staging\n")
         result = _cfg.load_orc_config(tmp_path)
-        assert result == {"orc-dev-branch": "staging"}
+        from orc.config import OrcConfig
+
+        assert result == OrcConfig(orc_dev_branch="staging")
 
     def test_returns_empty_dict_on_malformed_yaml(self, tmp_path):
+        from orc.config import OrcConfig
+
         (tmp_path / "config.yaml").write_text(": [\ninvalid yaml{{{")
         result = _cfg.load_orc_config(tmp_path)
-        assert result == {}
+        assert result == OrcConfig()
 
     def test_init_sets_work_dev_branch_from_config(self, tmp_path, monkeypatch, _init_config):
         orc_dir = tmp_path / ".orc"

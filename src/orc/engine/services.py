@@ -9,16 +9,6 @@ Having named protocols rather than a single callbacks dataclass improves:
 * **Discoverability** — each service has a clear, documented responsibility.
 * **Extensibility** — new backends / boards / messaging providers can be plugged in
   without changing the dispatcher.
-
-Usage example::
-
-    class MyBoardService:
-        def get_tasks(self) -> list[dict]:
-            return []
-        # ... other methods ...
-
-    # Type-check that MyBoardService satisfies the protocol:
-    assert isinstance(MyBoardService(), BoardService)
 """
 
 from __future__ import annotations
@@ -26,13 +16,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from orc.ai.backends import SpawnResult
+from orc.coordination.models import TaskEntry
+from orc.engine.context import TodoItem
+from orc.messaging.messages import ChatMessage
+
 
 @runtime_checkable
 class BoardService(Protocol):
     """Read/write access to the kanban board and pending-work queries."""
 
-    def get_tasks(self) -> list[dict]:
-        """Return the list of open task dicts from board.yaml."""
+    def get_tasks(self) -> list[TaskEntry]:
+        """Return the list of open task entries from board.yaml."""
         ...
 
     def assign_task(self, task_name: str, agent_id: str) -> None:
@@ -55,8 +50,8 @@ class BoardService(Protocol):
         """Return task names with blocked status."""
         ...
 
-    def scan_todos(self) -> list[dict]:
-        """Return TO-DO/FIX-ME comment dicts from the repository source."""
+    def scan_todos(self) -> list[TodoItem]:
+        """Return TO-DO/FIX-ME comment items from the repository source."""
         ...
 
     def is_empty(self) -> bool:
@@ -89,7 +84,7 @@ class WorktreeService(Protocol):
 class MessagingService(Protocol):
     """Telegram messaging (write-only for agents — send status updates to user)."""
 
-    def get_messages(self) -> list[dict]:
+    def get_messages(self) -> list[ChatMessage]:
         """Fetch the latest Telegram message history."""
         ...
 
@@ -97,18 +92,17 @@ class MessagingService(Protocol):
         """Format and send a ``[{agent_id}](boot) …`` message to Telegram."""
         ...
 
-    # TODO: incoming Telegram replies from the user should be appended to the
-    #       relevant Task's comments list on the board, not consumed here.
-
 
 @runtime_checkable
 class WorkflowService(Protocol):
     """Workflow-level operations: task-state routing, merging, and crash-recovery."""
 
-    def derive_task_state(self, task_name: str, task_data: dict | None = None) -> tuple[str, str]:
+    def derive_task_state(
+        self, task_name: str, task_data: TaskEntry | None = None
+    ) -> tuple[str, str]:
         """Return ``(token, reason)`` for *task_name*.
 
-        *task_data* is the task's board entry dict (avoids a redundant board
+        *task_data* is the task's board entry (avoids a redundant board
         read when the caller already has it).  *token* is a role name or one
         of the sentinels ``QA_PASSED`` / ``CLOSE_BOARD`` defined in
         :mod:`orc.engine.dispatcher`.
@@ -128,7 +122,7 @@ class AgentService(Protocol):
         self,
         role: str,
         agent_id: str,
-        messages: list[dict],
+        messages: list[ChatMessage],
         worktree: Path | None,
     ) -> tuple[str, str]:
         """Return ``(model, context_prompt)`` for an agent."""
@@ -140,7 +134,7 @@ class AgentService(Protocol):
         cwd: Path,
         model: str | None,
         log_path: Path | None,
-    ) -> object:
+    ) -> SpawnResult:
         """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
         ...
 

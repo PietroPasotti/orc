@@ -13,15 +13,17 @@ This is the only module that should read/write board.yaml and task/vision .md fi
 from __future__ import annotations
 
 import abc
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 import structlog
 import yaml
 from filelock import FileLock
+
+from orc.coordination.models import Board, TaskBody, TaskComment, TaskEntry
 
 logger = structlog.get_logger(__name__)
 
@@ -43,12 +45,51 @@ TASK_STATUSES: frozenset[str] = frozenset(TaskStatus)
 
 # Represent TaskStatus as a plain YAML string so round-trips work with both
 # yaml.dump (default Dumper) and yaml.safe_dump (SafeDumper).
-def _represent_task_status(dumper: yaml.Dumper, val: TaskStatus) -> yaml.ScalarNode:  # type: ignore[type-arg]
+def _represent_task_status(dumper: yaml.Dumper, val: TaskStatus) -> yaml.ScalarNode:
     return dumper.represent_str(str(val))
 
 
 yaml.add_representer(TaskStatus, _represent_task_status)
-yaml.add_representer(TaskStatus, _represent_task_status, Dumper=yaml.SafeDumper)  # type: ignore[call-arg]
+yaml.add_representer(TaskStatus, _represent_task_status, Dumper=yaml.SafeDumper)  # type: ignore[arg-type]
+
+
+# ── YAML serialisation helpers ────────────────────────────────────────────
+
+
+def _board_to_dict(board: Board) -> dict[str, object]:
+    """Convert a :class:`Board` to a plain dict suitable for ``yaml.safe_dump``."""
+    tasks: list[dict[str, object]] = []
+    for entry in board.tasks:
+        task_dict: dict[str, object] = {"name": entry.name}
+        if entry.status is not None:
+            task_dict["status"] = entry.status
+        if entry.assigned_to is not None:
+            task_dict["assigned_to"] = entry.assigned_to
+        if entry.comments:
+            task_dict["comments"] = [
+                {"from": c.from_, "text": c.text, "ts": c.ts} for c in entry.comments
+            ]
+        if entry.commit_tag is not None:
+            task_dict["commit_tag"] = entry.commit_tag
+        if entry.timestamp is not None:
+            task_dict["timestamp"] = entry.timestamp
+        tasks.append(task_dict)
+    return {"counter": board.counter, "tasks": tasks}
+
+
+def _board_from_dict(raw: dict[str, object]) -> Board:
+    """Parse raw YAML dict to a :class:`Board`, coercing legacy string entries."""
+    counter = int(raw.get("counter") or 0)  # type: ignore[call-overload]
+    raw_tasks = raw.get("tasks") or []
+    if not isinstance(raw_tasks, list):
+        raw_tasks = []
+    tasks: list[TaskEntry] = []
+    for t in raw_tasks:
+        if isinstance(t, dict):
+            tasks.append(TaskEntry.model_validate(t))
+        else:
+            tasks.append(TaskEntry(name=str(t)))
+    return Board(counter=counter, tasks=tasks)
 
 
 # ── Abstract base class ───────────────────────────────────────────────────
@@ -60,22 +101,21 @@ class BoardManager(abc.ABC):
     # ── Board YAML CRUD ──────────────────────────────────────────────────
 
     @abc.abstractmethod
-    def read_board(self) -> dict:
+    def read_board(self) -> Board:
         """Parse board.yaml and return its full structure.
 
-        Returns a default ``{"counter": 0, "tasks": []}`` on any
-        read/parse error rather than raising.
+        Returns a default :class:`Board` on any read/parse error rather than raising.
         """
 
     @abc.abstractmethod
-    def write_board(self, board: dict) -> None:
+    def write_board(self, board: Board) -> None:
         """Persist *board* atomically (temp file + rename)."""
 
     # ── Task status + comments (read-modify-write helpers) ───────────────
 
     @abc.abstractmethod
-    def get_task(self, task_name: str) -> dict | None:
-        """Return the board entry dict for *task_name*, or ``None`` if absent."""
+    def get_task(self, task_name: str) -> TaskEntry | None:
+        """Return the board entry for *task_name*, or ``None`` if absent."""
 
     @abc.abstractmethod
     def set_task_status(self, task_name: str, status: str) -> None:
@@ -88,19 +128,19 @@ class BoardManager(abc.ABC):
     def add_task_comment(self, task_name: str, author: str, text: str) -> None:
         """Append a comment to the *task_name* entry's ``comments`` list.
 
-        The comment dict has the shape::
+        The comment has the shape::
 
-            {"from": author, "text": text, "ts": "<ISO-8601>"}
+            TaskComment(from_=author, text=text, ts="<ISO-8601>")
         """
 
     # ── Task file CRUD ───────────────────────────────────────────────────
 
     @abc.abstractmethod
-    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
+    def create_task(self, title: str, vision: str, body: TaskBody) -> tuple[str, Path]:
         """Create a task .md file and add a *planned* entry to the board.
 
         *vision* is the filename of the vision this task was refined from.
-        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
+        *body* contains the structured task content.
 
         Returns ``(filename, absolute_path)`` of the created file.
         The counter in board.yaml is atomically incremented.
@@ -166,9 +206,8 @@ class FileBoardManager(BoardManager):
     def vision_dir(self) -> Path:
         return self._vision_dir
 
-    # TODO: use this as a @locked decorator on the methods that need it
     @contextmanager
-    def _board_lock(self):
+    def _board_lock(self) -> Generator[None]:
         """Acquire an exclusive file lock for the duration of a board operation."""
         self._work_dir.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self._lock_path), timeout=_LOCK_TIMEOUT):
@@ -176,24 +215,26 @@ class FileBoardManager(BoardManager):
 
     # ── Board YAML CRUD ──────────────────────────────────────────────────
 
-    def _read_board_unlocked(self) -> dict:
+    def _read_board_raw(self) -> dict[str, object]:
         """Read board.yaml without acquiring the lock (caller must hold it)."""
         path = self.board_path
         if not path.exists():
             return {"counter": 0, "tasks": []}
         try:
-            data: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+            data: dict[str, object] = yaml.safe_load(path.read_text()) or {}
             data.setdefault("tasks", [])
             return data
         except Exception:
             logger.debug("read_board: failed to parse board file", path=str(path), exc_info=True)
             return {"counter": 0, "tasks": []}
 
-    def _write_board_unlocked(self, board: dict) -> None:
+    def _write_board_raw(self, board: Board) -> None:
         """Write board.yaml atomically without acquiring the lock (caller must hold it)."""
         path = self.board_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        content = yaml.safe_dump(board, default_flow_style=False, allow_unicode=True)
+        content = yaml.safe_dump(
+            _board_to_dict(board), default_flow_style=False, allow_unicode=True
+        )
         tmp = path.with_suffix(".yaml.tmp")
         try:
             tmp.write_text(content)
@@ -202,122 +243,108 @@ class FileBoardManager(BoardManager):
             tmp.unlink(missing_ok=True)
             raise
 
-    def read_board(self) -> dict:
+    def read_board(self) -> Board:
         with self._board_lock():
-            return self._read_board_unlocked()
+            return _board_from_dict(self._read_board_raw())
 
-    # TODO: pydantic validation for board
-    def write_board(self, board: dict) -> None:
+    def write_board(self, board: Board) -> None:
         with self._board_lock():
-            self._write_board_unlocked(board)
+            self._write_board_raw(board)
 
     # ── Task status + comments ───────────────────────────────────────────
 
-    def get_task(self, task_name: str) -> dict | None:
+    def get_task(self, task_name: str) -> TaskEntry | None:
         with self._board_lock():
-            board = self._read_board_unlocked()
-        for entry in board.get("tasks", []):
-            t = entry if isinstance(entry, dict) else {"name": str(entry)}
-            if t.get("name") == task_name:
-                return t
+            raw = self._read_board_raw()
+        board = _board_from_dict(raw)
+        for entry in board.tasks:
+            if entry.name == task_name:
+                return entry
         return None
 
     def set_task_status(self, task_name: str, status: str) -> None:
         if status not in TASK_STATUSES:
             logger.warning("set_task_status: unknown status", status=status, task=task_name)
         with self._board_lock():
-            board = self._read_board_unlocked()
+            raw = self._read_board_raw()
+            board = _board_from_dict(raw)
             changed = False
-            for i, entry in enumerate(board.get("tasks", [])):
-                t = entry if isinstance(entry, dict) else {"name": str(entry)}
-                if t.get("name") == task_name:
-                    t["status"] = status
-                    board["tasks"][i] = t
+            for entry in board.tasks:
+                if entry.name == task_name:
+                    entry.status = status
                     changed = True
                     break
             if changed:
-                self._write_board_unlocked(board)
+                self._write_board_raw(board)
                 logger.debug("task status updated", task=task_name, status=status)
             else:
                 logger.warning("set_task_status: task not found", task=task_name)
 
     def add_task_comment(self, task_name: str, author: str, text: str) -> None:
         with self._board_lock():
-            board = self._read_board_unlocked()
+            raw = self._read_board_raw()
+            board = _board_from_dict(raw)
             changed = False
-            for i, entry in enumerate(board.get("tasks", [])):
-                t = entry if isinstance(entry, dict) else {"name": str(entry)}
-                if t.get("name") == task_name:
-                    comments: list[dict] = t.setdefault("comments", [])
-                    comments.append(
-                        {
-                            "from": author,
-                            "text": text,
-                            "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        }
+            for entry in board.tasks:
+                if entry.name == task_name:
+                    entry.comments.append(
+                        TaskComment(
+                            **{
+                                "from": author,
+                                "text": text,
+                                "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            }
+                        )
                     )
-                    t["comments"] = comments
-                    board["tasks"][i] = t
                     changed = True
                     break
             if changed:
-                self._write_board_unlocked(board)
+                self._write_board_raw(board)
                 logger.debug("task comment added", task=task_name, author=author)
             else:
                 logger.warning("add_task_comment: task not found", task=task_name)
 
     # ── Task file CRUD ───────────────────────────────────────────────────
 
-    # TODO: pydantic validation for body
     @staticmethod
-    def _render_task(task_id: str, title: str, vision: str, body: dict) -> str:
+    def _render_task(task_id: str, title: str, vision: str, body: TaskBody) -> str:
         """Assemble a task markdown file from structured *body* content."""
-        in_scope = body.get("in_scope", [])
-        out_of_scope = body.get("out_of_scope", [])
-        steps = body.get("steps", [])
-        notes = body.get("notes", "")
-
-        in_scope_lines = "\n".join(f"- {item}" for item in in_scope) if in_scope else "-"
+        in_scope_lines = "\n".join(f"- {item}" for item in body.in_scope) if body.in_scope else "-"
         out_of_scope_lines = (
-            "\n".join(f"- {item}" for item in out_of_scope) if out_of_scope else "-"
+            "\n".join(f"- {item}" for item in body.out_of_scope) if body.out_of_scope else "-"
         )
         steps_lines = (
-            "\n".join(f"- [ ] {i + 1}. {step}" for i, step in enumerate(steps))
-            if steps
+            "\n".join(f"- [ ] {i + 1}. {step}" for i, step in enumerate(body.steps))
+            if body.steps
             else "- [ ]"
         )
-
         return (
             f"# {task_id}-{title}\n\n"
             f"**Vision:** {vision}\n\n"
-            f"## Overview\n\n{body.get('overview', '')}\n\n"
+            f"## Overview\n\n{body.overview}\n\n"
             f"## Scope\n\n"
             f"**In scope:**\n{in_scope_lines}\n\n"
             f"**Out of scope:**\n{out_of_scope_lines}\n\n"
             f"## Steps\n\n{steps_lines}\n\n"
-            f"## Notes\n\n{notes}\n"
+            f"## Notes\n\n{body.notes}\n"
         )
 
-    # TODO: pydantic validation for body
-    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
+    def create_task(self, title: str, vision: str, body: TaskBody) -> tuple[str, Path]:
         """Create a task .md file and add a *planned* entry to the board.
-
-        *vision* is the filename of the vision this task was refined from.
-        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
 
         The counter increment, file creation, and board write are performed
         atomically under the board lock.  Returns ``(filename, absolute_path)``.
         """
         with self._board_lock():
-            board = self._read_board_unlocked()
-            counter: int = board.get("counter", 0)
-            task_id = f"{counter:04d}"
+            raw = self._read_board_raw()
+            board = _board_from_dict(raw)
+            task_id = f"{board.counter:04d}"
             task_filename = f"{task_id}-{title}.md"
             task_file = self._work_dir / task_filename
             task_file.write_text(self._render_task(task_id, title, vision, body))
-            board["tasks"].append({"name": task_filename, "status": TaskStatus.PLANNED})
-            board["counter"] = counter + 1
-            self._write_board_unlocked(board)
+            board.tasks.append(TaskEntry(name=task_filename, status=TaskStatus.PLANNED))
+            board.counter += 1
+            self._write_board_raw(board)
         return task_filename, task_file
 
     def list_task_files(self) -> list[Path]:

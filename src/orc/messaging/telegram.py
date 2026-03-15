@@ -34,6 +34,8 @@ defaulting to ``.orc/logs/``).  ``get_messages`` merges both sources
 so the state machine always sees the full history.
 """
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import UTC, datetime
@@ -52,6 +54,7 @@ from orc.messaging.messages import (  # noqa: F401
     _MSG_RE,
     INFORMATIONAL_STATES,
     KNOWN_ROLES,
+    ChatMessage,
     format_agent_message,
     is_agent_message,
     make_agent_id,
@@ -122,22 +125,38 @@ def _append_to_log(text: str) -> None:
         fh.write(json.dumps(entry) + "\n")
 
 
-def _read_log() -> list[dict]:
+def _parse_chat_message(raw: dict[str, object]) -> ChatMessage:
+    """Convert a raw dict (from local log or Telegram API) to a :class:`ChatMessage`."""
+    sender = raw.get("from") or {}
+    if not isinstance(sender, dict):
+        sender = {}
+    name: str = (
+        str(sender.get("username") or "") or str(sender.get("first_name") or "") or "unknown"
+    )
+    return ChatMessage(
+        text=str(raw.get("text") or ""),
+        date=int(raw.get("date") or 0),  # type: ignore[call-overload]
+        sender_name=name,
+    )
+
+
+def _read_log() -> list[ChatMessage]:
     """Return all entries from the local chat.log."""
     log_file = _get_log_file()
-    msgs = []
+    msgs: list[ChatMessage] = []
     for line in log_file.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            msgs.append(json.loads(line))
+            raw: dict[str, object] = json.loads(line)
+            msgs.append(_parse_chat_message(raw))
         except json.JSONDecodeError:
             logger.debug("telegram: skipping malformed JSONL line", line=line, exc_info=True)
     return msgs
 
 
-def _get_telegram_updates(limit: int = 100) -> list[dict]:
+def _get_telegram_updates(limit: int = 100) -> list[ChatMessage]:
     """Fetch incoming messages via getUpdates (human/external messages only)."""
     _require_config()
     with httpx.Client(timeout=15, verify=_CA_BUNDLE) as client:
@@ -146,8 +165,17 @@ def _get_telegram_updates(limit: int = 100) -> list[dict]:
             params={"limit": limit, "allowed_updates": ["message"]},
         )
         resp.raise_for_status()
-        data = resp.json()
-        return [u["message"] for u in data.get("result", []) if "message" in u]
+        data: dict[str, object] = resp.json()
+        result = data.get("result") or []
+        if not isinstance(result, list):
+            return []
+        messages: list[ChatMessage] = []
+        for update in result:
+            if isinstance(update, dict):
+                msg = update.get("message")
+                if isinstance(msg, dict):
+                    messages.append(_parse_chat_message(msg))
+        return messages
 
 
 # ---------------------------------------------------------------------------
@@ -155,33 +183,31 @@ def _get_telegram_updates(limit: int = 100) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def send_message(text: str) -> dict:
+def send_message(text: str) -> None:
     """Post *text* to the Telegram chat and record it in the local log.
 
     The local log write always happens so the local state machine has the
     message even when Telegram is not configured or the API call fails.
-    When Telegram is not configured the function returns an empty dict.
     Raises ``httpx.HTTPStatusError`` on Telegram API errors.
     """
     _append_to_log(text)
     if not is_configured():
-        return {}
+        return
     with httpx.Client(timeout=15, verify=_CA_BUNDLE) as client:
         resp = client.post(
             f"{_API_BASE}/sendMessage",
             json={"chat_id": _CHAT_ID, "text": text},
         )
         resp.raise_for_status()
-        return resp.json()
 
 
-def get_messages(limit: int = 100) -> list[dict]:
+def get_messages(limit: int = 100) -> list[ChatMessage]:
     """Return the merged message history from the local log and Telegram updates.
 
     The local log contains all bot-sent messages (agent exit states).
     Telegram updates contain incoming messages from humans or other bots.
-    The merged list is sorted by timestamp so ``parse_last_agent_message``
-    always sees events in the correct order.
+    The merged list is sorted by timestamp so the state machine always sees
+    events in the correct order.
     """
     local = _read_log()
     if not is_configured():
@@ -192,13 +218,14 @@ def get_messages(limit: int = 100) -> list[dict]:
         logger.debug("get_messages: failed to fetch Telegram updates", exc_info=True)
         remote = []
 
-    seen_texts = {m["text"] for m in local}
+    seen_texts = {m.text for m in local}
+    merged: list[ChatMessage] = list(local)
     for msg in remote:
-        if msg.get("text") not in seen_texts:
-            local.append(msg)
+        if msg.text not in seen_texts:
+            merged.append(msg)
 
-    local.sort(key=lambda m: m.get("date", 0))
-    return local
+    merged.sort(key=lambda m: m.date)
+    return merged
 
 
 # FIXME: this class should be the only public member of this module and should
@@ -208,7 +235,7 @@ def get_messages(limit: int = 100) -> list[dict]:
 class TelegramMessagingService:
     """Implements :class:`~orc.engine.services.MessagingService` via Telegram."""
 
-    def get_messages(self) -> list[dict]:
+    def get_messages(self) -> list[ChatMessage]:
         return get_messages()
 
     def post_boot_message(self, agent_id: str, body: str) -> None:

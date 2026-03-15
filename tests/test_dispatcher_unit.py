@@ -19,6 +19,7 @@ from conftest import (
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
 from orc.ai.backends import SpawnResult
+from orc.coordination.models import TaskEntry
 from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED
 from orc.squad import SquadConfig
 
@@ -118,7 +119,7 @@ class TestDispatcherCoverage:
         """Task already assigned → skipped."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md", "assigned_to": "coder-1"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", assigned_to="coder-1")],
             derive_task_state=lambda t, td=None: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -131,7 +132,7 @@ class TestDispatcherCoverage:
         deleted = []
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: (CLOSE_BOARD, "close"),
         )
         svcs.board.delete_task = lambda t: deleted.append(t)
@@ -144,7 +145,7 @@ class TestDispatcherCoverage:
         """delete_task() failure is logged and does not propagate."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: (CLOSE_BOARD, "close"),
         )
 
@@ -167,7 +168,7 @@ class TestDispatcherCoverage:
         """Unknown token → task skipped, dispatch returns 0."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("unknown_token", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -178,7 +179,7 @@ class TestDispatcherCoverage:
         """Coder at capacity → skip."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -235,7 +236,7 @@ class TestDispatcherCoverage:
         """QA_PASSED token → task skipped; merge is handled by _drain_merge_queue."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
@@ -311,7 +312,7 @@ class TestDispatcherInternalCoverage:
         merged = []
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md", "status": "done"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             get_pending_visions=lambda: [],
         )
         svcs.workflow.merge_feature = lambda t: merged.append(t)
@@ -324,7 +325,7 @@ class TestDispatcherInternalCoverage:
         merged = []
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md", "status": "in-progress"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="in-progress")],
         )
         svcs.workflow.merge_feature = lambda t: merged.append(t)
         d = make_dispatcher(minimal_squad(), svcs)
@@ -337,7 +338,7 @@ class TestDispatcherInternalCoverage:
         merged = []
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md", "status": "done"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             get_pending_visions=lambda: [],
         )
         svcs.workflow.merge_feature = lambda t: merged.append(t)
@@ -499,7 +500,7 @@ class TestProactivePlanner:
         svcs = make_services(
             tmp_path,
             # 1 open task, squad has 2 coders → pipeline has room → spawn planner
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
             spawn_fn=_spawn,
@@ -520,7 +521,7 @@ class TestProactivePlanner:
         """No proactive planner when open_tasks >= coder count."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md"), TaskEntry(name="0002-bar.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
@@ -537,7 +538,7 @@ class TestProactivePlanner:
         """No proactive planner when there are no pending vision docs to plan."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: [],  # nothing to plan
         )
@@ -553,7 +554,7 @@ class TestProactivePlanner:
         """No second planner spawned when one is already in the pool."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [{"name": "0001-foo.md"}],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
@@ -593,8 +594,8 @@ class TestDispatchBudgetExhaustion:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [
-                {"name": "0001-foo.md"},
-                {"name": "0002-bar.md"},
+                TaskEntry(name="0001-foo.md"),
+                TaskEntry(name="0002-bar.md"),
             ],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
         )
@@ -647,7 +648,7 @@ class TestOnlyRoleFiltering:
 
     def test_only_coder_dispatches_coder_skips_qa(self, tmp_path):
         """With only_role='coder', coder tasks are dispatched but QA tasks are skipped."""
-        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,
@@ -665,7 +666,7 @@ class TestOnlyRoleFiltering:
 
     def test_only_qa_dispatches_qa_skips_coder(self, tmp_path):
         """With only_role='qa', QA tasks are dispatched but coder tasks are skipped."""
-        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,
@@ -683,7 +684,7 @@ class TestOnlyRoleFiltering:
 
     def test_no_filter_dispatches_all_roles(self, tmp_path):
         """Without only_role, both coder and QA tasks are dispatched."""
-        tasks = [{"name": "0001-code.md"}, {"name": "0002-review.md"}]
+        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
             tmp_path,

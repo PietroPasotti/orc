@@ -68,7 +68,7 @@ class Result[E, A](ABC, ResultCombinators):
         results: list[B1] = []
         for a in values:
             f(a).fold(errors.extend, results.append)
-        return Err(errors) if errors else Ok(results)
+        return Err(errors) if errors else Ok(results)  # type: ignore[return-value]
 
     @staticmethod
     def safe[E1, A1](run: Callable[[], A1], on_error: Callable[[Exception], E1]) -> Result[E1, A1]:

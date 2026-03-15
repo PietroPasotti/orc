@@ -19,9 +19,11 @@ from orc.cli import _check_env_or_exit, app
 from orc.cli import tui as _tui
 from orc.coordination import BoardStateManager, CoordinationServer
 from orc.engine import dispatcher as _disp
+from orc.engine.context import TodoItem
 from orc.engine.pool import AgentProcess
 from orc.engine.services import BoardService
 from orc.messaging import telegram as tg
+from orc.messaging.messages import ChatMessage
 from orc.squad import load_squad
 
 _MAXCALLS_UNLIMITED = sys.maxsize
@@ -42,7 +44,7 @@ class _BoardSvc(BoardStateManager, BoardService):
     def get_pending_reviews(self) -> list[str]:
         return _status_mod._pending_reviews()
 
-    def scan_todos(self) -> list[dict]:
+    def scan_todos(self) -> list[TodoItem]:
         return _ctx._scan_todos(_cfg.get().repo_root)
 
     def is_empty(self) -> bool:
@@ -166,7 +168,7 @@ def _run(
             # fresh; the Textual app reads from state on its own timer.
             _orig_get_messages = messaging_svc.get_messages
 
-            def _updating_get_messages() -> list[dict]:
+            def _updating_get_messages() -> list[ChatMessage]:
                 assert state is not None
                 now = time.monotonic()
                 if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:

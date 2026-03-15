@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import structlog
 
@@ -56,8 +56,8 @@ def setup(
     so callers can inject a config-derived path without overriding env vars.
     """
     resolved_level: str = log_level or os.environ.get("ORC_LOG_LEVEL", _DEFAULT_LEVEL)
-    resolved_format: _Format = (  # type: ignore[assignment]
-        log_format or os.environ.get("ORC_LOG_FORMAT", _DEFAULT_FORMAT)
+    resolved_format: _Format = cast(
+        _Format, log_format or os.environ.get("ORC_LOG_FORMAT", _DEFAULT_FORMAT)
     )
 
     # Resolve log file:
@@ -94,7 +94,9 @@ def setup(
     if resolved_log_file is not None:
         # Route through stdlib so a single FileHandler captures all records.
         resolved_log_file.parent.mkdir(parents=True, exist_ok=True)
-        logger_factory: structlog.types.BaseLoggerFactory = structlog.stdlib.LoggerFactory()
+        logger_factory: structlog.stdlib.LoggerFactory | structlog.PrintLoggerFactory = (
+            structlog.stdlib.LoggerFactory()
+        )
         handler: logging.Handler = logging.FileHandler(resolved_log_file, encoding="utf-8")
     else:
         logger_factory = structlog.PrintLoggerFactory()

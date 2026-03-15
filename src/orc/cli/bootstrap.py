@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Annotated
 
@@ -37,7 +38,7 @@ def _copy_file(src: Path, dst: Path, created: list[str], skipped: list[str]) -> 
         created.append(str(dst))
 
 
-def _tree(dir_path: Path, prefix: str = ""):
+def _tree(dir_path: Path, prefix: str = "") -> Generator[str]:
     """Yield visual tree lines for *dir_path*."""
     contents = list(dir_path.iterdir())
     pointers = [_TEE] * (len(contents) - 1) + [_LAST]
@@ -53,7 +54,7 @@ def _copy_tree(
     dst_root: Path,
     created: list[str],
     skipped: list[str],
-    copy_fn: ...,
+    copy_fn: Callable[[Path, Path, list[str], list[str]], None],
     *,
     special: dict[str, Path] | None = None,
 ) -> None:
@@ -83,7 +84,11 @@ def _bootstrap(force: bool = False) -> None:
     created: list[str] = []
     skipped: list[str] = []
 
-    _copy = (lambda s, d, c, sk: (shutil.copy2(s, d), c.append(str(d)))) if force else _copy_file  # type: ignore[assignment]
+    def _copy_force(s: Path, d: Path, c: list[str], sk: list[str]) -> None:
+        shutil.copy2(s, d)
+        c.append(str(d))
+
+    _copy: Callable[[Path, Path, list[str], list[str]], None] = _copy_force if force else _copy_file
 
     # ── .orc/ content (config, roles, agent_tools, work/, vision/, …) ────────
     _copy_tree(
@@ -167,7 +172,8 @@ def _upgrade(*, yes: bool = False) -> None:
         shutil.copy2(src, dst)
         updated.append(str(dst))
 
-    rel_path = lambda p: Path(p).relative_to(project_root)  # noqa: E731
+    def rel_path(p: str) -> Path:
+        return Path(p).relative_to(project_root)
 
     if updated:
         typer.echo("\nUpgraded:")

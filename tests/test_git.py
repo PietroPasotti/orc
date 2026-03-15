@@ -9,6 +9,7 @@ import yaml
 
 import orc.config as _cfg
 import orc.engine.workflow as _wf
+from orc.coordination.models import TaskEntry
 from orc.engine.workflow import (
     WorktreeManager,
     _derive_task_state,
@@ -37,7 +38,7 @@ class TestDeriveStateFromGit:
             "orc.engine.workflow._feature_has_commits_ahead_of_main", lambda b: has_commits
         )
         monkeypatch.setattr("orc.engine.workflow._feature_merged_into_dev", lambda b: is_merged)
-        self._task_data = {"name": active_task, "status": board_status} if board_status else None
+        self._task_data = TaskEntry(name=active_task, status=board_status) if board_status else None
 
     @pytest.mark.parametrize(
         "branch_exists,has_commits,is_merged,board_status,expected_agent,expected_reason_substr",
@@ -85,7 +86,7 @@ class TestDeriveStateFromGit:
             has_commits=True,
             board_status="coding",
         )
-        task_data = {"name": "0003-resource-type-enum.md", "status": "coding"}
+        task_data = TaskEntry(name="0003-resource-type-enum.md", status="coding")
         _, reason = _derive_task_state("0003-resource-type-enum.md", task_data)
         assert "feat/0003-resource-type-enum" in reason
 
@@ -717,7 +718,7 @@ class TestDeriveTaskStateBoardStatus:
 
     def test_review_status_routes_to_qa(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-review")
-        task_data = {"name": "0002-foo.md", "status": "in-review"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-review")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "qa"
         assert "awaiting QA" in reason
@@ -726,20 +727,20 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.dispatcher import QA_PASSED
 
         self._patch(monkeypatch, board_status="done")
-        task_data = {"name": "0002-foo.md", "status": "done"}
+        task_data = TaskEntry(name="0002-foo.md", status="done")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == QA_PASSED
         assert "ready to merge" in reason
 
     def test_rejected_status_routes_to_coder(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-progress")
-        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-progress")
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
     def test_coding_status_routes_to_coder(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-progress")
-        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        task_data = TaskEntry(name="0002-foo.md", status="in-progress")
         agent, _ = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 

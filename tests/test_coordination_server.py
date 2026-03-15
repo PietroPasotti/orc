@@ -196,7 +196,9 @@ class TestFileBoardManagerCreateTask:
         return FileBoardManager(orc)
 
     def _body(self, **overrides):
-        base = {
+        from orc.coordination.models import TaskBody
+
+        base: dict[str, object] = {
             "overview": "Implement the feature.",
             "in_scope": ["core logic"],
             "out_of_scope": ["UI changes"],
@@ -204,7 +206,7 @@ class TestFileBoardManagerCreateTask:
             "notes": "Check the ADR first.",
         }
         base.update(overrides)
-        return base
+        return TaskBody.model_validate(base)
 
     _VISION = "0001-test-vision.md"
 

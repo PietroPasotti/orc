@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from orc.coordination.models import TaskEntry
+
 
 @dataclass
 class BoardSnapshot:
@@ -32,7 +34,7 @@ class BoardSnapshot:
     visions: list[str] = field(default_factory=list)
     """Vision filenames pending refinement (``GET /visions``)."""
 
-    tasks: list[dict] = field(default_factory=list)
+    tasks: list[TaskEntry] = field(default_factory=list)
     """Active task entries from ``GET /board/tasks``."""
 
 
@@ -56,7 +58,8 @@ def get_board_snapshot() -> BoardSnapshot | None:
 
     try:
         visions: list[str] = visions_resp.json()
-        tasks: list[dict] = tasks_resp.json()
+        tasks_raw: list[object] = tasks_resp.json()
+        tasks = [TaskEntry.model_validate(t) for t in tasks_raw if isinstance(t, dict)]
     except Exception:
         return None
 

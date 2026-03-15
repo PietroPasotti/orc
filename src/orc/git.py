@@ -102,7 +102,7 @@ class Git:
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def _run_subprocess(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    def _run_subprocess(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         cmd = ["git", *args]
         logger.debug("git", cmd=cmd, cwd=str(self.root))
         result = subprocess.run(cmd, cwd=self.root, capture_output=True, text=True, check=check)
@@ -118,9 +118,9 @@ class Git:
         )
         if result.returncode == 0:
             # "origin/main" -> "main"
-            return result.stdout.strip().split("/", 1)[-1]
+            return str(result.stdout.strip().split("/", 1)[-1])
         # Fallback for repos without a configured remote HEAD
-        return self._run_subprocess("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        return str(self._run_subprocess("rev-parse", "--abbrev-ref", "HEAD").stdout.strip())
 
     def _git_dir(self) -> Path:
         result = self._run_subprocess("rev-parse", "--git-dir")
@@ -142,11 +142,11 @@ class Git:
 
     def status_short(self) -> str:
         """Return the output of ``git status --short``."""
-        return self._run_subprocess("status", "--short").stdout.strip()
+        return str(self._run_subprocess("status", "--short").stdout.strip())
 
     def rev_parse_short(self, ref: str = "HEAD") -> str:
         """Return the abbreviated SHA of *ref*."""
-        return self._run_subprocess("rev-parse", "--short", ref).stdout.strip()
+        return str(self._run_subprocess("rev-parse", "--short", ref).stdout.strip())
 
     # ── Branch operations ─────────────────────────────────────────────────
 
@@ -180,7 +180,7 @@ class Git:
         result = self._run_subprocess("log", "--merges", "--oneline", range_, check=False)
         if result.returncode != 0:
             return []
-        return result.stdout.splitlines()
+        return list(result.stdout.splitlines())
 
     # ── Worktree operations ───────────────────────────────────────────────
 

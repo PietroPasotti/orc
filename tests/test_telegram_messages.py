@@ -7,6 +7,7 @@ import pytest
 from orc.messaging.messages import (
     INFORMATIONAL_STATES,
     KNOWN_ROLES,
+    ChatMessage,
     format_agent_message,
     is_agent_message,
     make_agent_id,
@@ -87,8 +88,8 @@ class TestFormatAgentMessage:
 class TestMessagesToText:
     def test_formats_messages(self):
         msgs = [
-            {"text": "hello", "date": 1700000000, "from": {"username": "alice"}},
-            {"text": "world", "date": 1700000060, "from": {"username": "bob"}},
+            ChatMessage(text="hello", date=1700000000, sender_name="alice"),
+            ChatMessage(text="world", date=1700000060, sender_name="bob"),
         ]
         text = messages_to_text(msgs)
         assert "alice" in text
@@ -102,8 +103,8 @@ class TestMessagesToText:
     @pytest.mark.parametrize(
         "msg,expected_name",
         [
-            ({"text": "hi", "date": 0, "from": {"first_name": "Eve"}}, "Eve"),
-            ({"text": "hi", "date": 0, "from": {}}, "unknown"),
+            (ChatMessage(text="hi", date=0, sender_name="Eve"), "Eve"),
+            (ChatMessage(text="hi", date=0, sender_name="unknown"), "unknown"),
         ],
     )
     def test_name_fallbacks(self, msg, expected_name):

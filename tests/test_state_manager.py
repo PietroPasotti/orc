@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from orc.coordination.models import TaskBody
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -29,9 +31,9 @@ def _state(orc_dir: Path):
 _VISION = "0001-test-vision.md"
 
 
-def _task_body(**overrides) -> dict:
-    """Return a minimal valid task body dict, with optional overrides."""
-    base = {
+def _task_body(**overrides) -> TaskBody:
+    """Return a minimal valid TaskBody, with optional overrides."""
+    base: dict[str, object] = {
         "overview": "Implement the feature.",
         "in_scope": ["core logic"],
         "out_of_scope": ["UI changes"],
@@ -39,7 +41,7 @@ def _task_body(**overrides) -> dict:
         "notes": "",
     }
     base.update(overrides)
-    return base
+    return TaskBody.model_validate(base)
 
 
 class TestStateManagerBoardQueries:
@@ -51,7 +53,8 @@ class TestStateManagerBoardQueries:
         orc = _orc_dir(tmp_path)
         (orc / "work" / "board.yaml").write_text("tasks:\n  - 0001-foo.md\n")
         result = _state(orc).get_tasks()
-        assert result == [{"name": "0001-foo.md"}]
+        assert len(result) == 1
+        assert result[0].name == "0001-foo.md"
 
     def test_get_open_tasks_returns_dicts(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -59,8 +62,8 @@ class TestStateManagerBoardQueries:
             "tasks:\n  - name: 0001-foo.md\n    status: in-progress\n"
         )
         result = _state(orc).get_tasks()
-        assert result[0]["name"] == "0001-foo.md"
-        assert result[0]["status"] == "in-progress"
+        assert result[0].name == "0001-foo.md"
+        assert result[0].status == "in-progress"
 
     def test_get_task_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
@@ -69,7 +72,7 @@ class TestStateManagerBoardQueries:
         )
         t = _state(orc).get_task("0001-foo.md")
         assert t is not None
-        assert t["name"] == "0001-foo.md"
+        assert t.name == "0001-foo.md"
 
     def test_get_task_not_found(self, tmp_path):
         orc = _orc_dir(tmp_path)

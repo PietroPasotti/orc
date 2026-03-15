@@ -17,6 +17,7 @@ test:
 # Lint only (no changes)
 lint:
     uv run ruff check src/ tests/
+    uv run mypy src/
 
 # Auto-fix lint and format
 fmt:

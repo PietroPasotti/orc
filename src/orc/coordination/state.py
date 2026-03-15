@@ -13,43 +13,27 @@ from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
 
-import pydantic
 import structlog
 
-from orc.coordination.board import FileBoardManager, TaskStatus
+from orc.coordination.board._manager import FileBoardManager, TaskStatus
+from orc.coordination.models import Board, TaskBody, TaskEntry
 
 logger = structlog.get_logger(__name__)
 
+_P_args = tuple[object, ...]
+_P_kwargs = dict[str, object]
 
-def _locked[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+
+def _locked[R](method: Callable[..., R]) -> Callable[..., R]:
     """Acquire ``self._lock`` around *method* and return its result."""
 
     @wraps(method)
-    def _wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+    def _wrapper(*args: object, **kwargs: object) -> R:
         self = args[0]
         with self._lock:  # type: ignore[attr-defined]
             return method(*args, **kwargs)
 
-    return _wrapper  # type: ignore[return-value]
-
-
-class CommentAuthor(pydantic.BaseModel):
-    # could be agent-1 but also 'pietro' or 'jeff'
-    name: str
-
-
-class Comment(pydantic.BaseModel):
-    body: str
-    author: CommentAuthor
-
-
-class Task(pydantic.BaseModel):
-    name: str
-    status: str
-    branch: str | None = None
-    worktree: Path | None = None
-    assigned_to: str | None = None
-    comments: tuple[Comment] = ()
+    return _wrapper
 
 
 class BoardStateManager:
@@ -70,19 +54,13 @@ class BoardStateManager:
     # ── Board: queries ────────────────────────────────────────────────────
 
     @_locked
-    def get_tasks(self) -> list[Task]:
+    def get_tasks(self) -> list[TaskEntry]:
         """Return all tasks from board.yaml."""
-        board = self._mgr.read_board()
-        result = []
-        for t in board.get("tasks", []):
-            result.append(t if isinstance(t, dict) else {"name": str(t)})
-        return result
+        return list(self._mgr.read_board().tasks)
 
     def query_tasks(self, status: str) -> list[str]:
         """Return names of tasks whose ``status`` field matches *status*."""
-        return [
-            t["name"] for t in self.get_tasks() if isinstance(t, dict) and t.get("status") == status
-        ]
+        return [t.name for t in self.get_tasks() if t.status == status]
 
     def get_blocked_tasks(self) -> list[str]:
         """Return names of tasks with ``status == "blocked"``."""
@@ -91,20 +69,13 @@ class BoardStateManager:
     def active_task_name(self) -> str | None:
         """Return the name of the first task on the board, or ``None`` if empty."""
         tasks = self.get_tasks()
-        if not tasks:
-            return None
-        first = tasks[0]
-        return first["name"] if isinstance(first, dict) else str(first)
+        return tasks[0].name if tasks else None
 
     @_locked
     def delete_task(self, task_name: str) -> None:
         """Remove *task_name* from board.yaml and delete its task file."""
         board = self._mgr.read_board()
-        board["tasks"] = [
-            t
-            for t in board.get("tasks", [])
-            if (t["name"] if isinstance(t, dict) else str(t)) != task_name
-        ]
+        board.tasks = [t for t in board.tasks if t.name != task_name]
         self._mgr.write_board(board)
         self._mgr.delete_task_file(task_name)
 
@@ -137,16 +108,15 @@ class BoardStateManager:
         return task_path.read_text()
 
     @_locked
-    def get_task(self, task_name: str) -> dict | None:
+    def get_task(self, task_name: str) -> TaskEntry | None:
         """Return the board entry for *task_name*, or ``None`` if absent."""
         return self._mgr.get_task(task_name)
 
     @_locked
-    def create_task(self, title: str, vision: str, body: dict) -> tuple[str, Path]:
+    def create_task(self, title: str, vision: str, body: TaskBody) -> tuple[str, Path]:
         """Create a task file and add a *planned* entry to board.yaml.
 
         *vision* is the filename of the vision this task was refined from.
-        *body* is a dict with keys: overview, in_scope, out_of_scope, steps, notes.
 
         Returns ``(filename, absolute_path)`` of the created task file.
         """
@@ -161,11 +131,11 @@ class BoardStateManager:
     def assign_task(self, task_name: str, agent_id: str) -> None:
         """Write ``assigned_to: {agent_id}`` for *task_name* in board.yaml."""
         board = self._mgr.read_board()
-        for t in board.get("tasks", []):
-            if isinstance(t, dict) and t.get("name") == task_name:
-                t["assigned_to"] = agent_id
-                if t.get("status") in (None, "", TaskStatus.PLANNED):
-                    t["status"] = TaskStatus.IN_PROGRESS
+        for entry in board.tasks:
+            if entry.name == task_name:
+                entry.assigned_to = agent_id
+                if entry.status in (None, "", TaskStatus.PLANNED):
+                    entry.status = TaskStatus.IN_PROGRESS
                 self._mgr.write_board(board)
                 return
         logger.warning("assign_task: task not found", task=task_name)
@@ -175,9 +145,9 @@ class BoardStateManager:
         """Clear the ``assigned_to`` field for *task_name* in board.yaml."""
         board = self._mgr.read_board()
         changed = False
-        for t in board.get("tasks", []):
-            if isinstance(t, dict) and t.get("name") == task_name:
-                t.pop("assigned_to", None)
+        for entry in board.tasks:
+            if entry.name == task_name:
+                entry.assigned_to = None
                 changed = True
                 break
         if changed:
@@ -188,8 +158,9 @@ class BoardStateManager:
         """Clear all ``assigned_to`` fields — called on startup for crash recovery."""
         board = self._mgr.read_board()
         changed = False
-        for t in board.get("tasks", []):
-            if isinstance(t, dict) and t.pop("assigned_to", None) is not None:
+        for entry in board.tasks:
+            if entry.assigned_to is not None:
+                entry.assigned_to = None
                 changed = True
         if changed:
             self._mgr.write_board(board)
@@ -209,9 +180,7 @@ class BoardStateManager:
         if not ready_dir.is_dir():
             return []
         board = self._mgr.read_board()
-        all_task_stems = {
-            (t["name"] if isinstance(t, dict) else str(t)) for t in board.get("tasks", [])
-        }
+        all_task_stems = {t.name for t in board.tasks}
         result = []
         for f in sorted(ready_dir.glob("*.md")):
             if f.name.lower().startswith(".") or f.name.lower() == "readme.md":
@@ -249,3 +218,7 @@ class BoardStateManager:
         vision_path.rename(done_dir / name)
 
         logger.info("closed vision", name=name)
+
+    def _read_board(self) -> Board:
+        """Return the raw board (used internally by tests and legacy callers)."""
+        return self._mgr.read_board()

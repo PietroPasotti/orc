@@ -15,6 +15,7 @@ from pathlib import Path
 
 import structlog
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -23,6 +24,30 @@ _PACKAGE_DIR = Path(__file__).parent
 _PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _ORC_CFG_TEMPLATE = _TEMPLATES_DIR / "default" / "orc_cfg"
+
+
+# ── Orc config YAML model ─────────────────────────────────────────────────
+
+
+class OrcConfig(BaseModel):
+    """Validated representation of ``config.yaml`` keys."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    orc_dev_branch: str = Field(default="dev", alias="orc-dev-branch")
+    """Integration branch name."""
+    orc_main_branch: str = Field(default="", alias="orc-main-branch")
+    """Main/stable branch name (auto-detected from git if empty)."""
+    orc_branch_prefix: str = Field(default="", alias="orc-branch-prefix")
+    """Optional prefix for all orc-owned branches."""
+    orc_worktree_base: str | None = Field(default=None, alias="orc-worktree-base")
+    """Base directory for git worktrees."""
+    orc_log_dir: str | None = Field(default=None, alias="orc-log-dir")
+    """Override the log directory."""
+    orc_todo_scan_exclude: list[str] | str = Field(
+        default_factory=lambda: [".orc"], alias="orc-todo-scan-exclude"
+    )
+    """Path patterns excluded from ``#TODO`` / ``#FIXME`` scans."""
 
 
 # ── Immutable config object ───────────────────────────────────────────────
@@ -88,13 +113,15 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
     global _config
 
     orc_yaml = load_orc_config(orc_dir)
-    work_dev_branch = orc_yaml.get("orc-dev-branch", "dev")
-    branch_prefix = orc_yaml.get("orc-branch-prefix", "")
-    raw_base = orc_yaml.get("orc-worktree-base", str(orc_dir / "worktrees"))
+
+    work_dev_branch = orc_yaml.orc_dev_branch
+    branch_prefix = orc_yaml.orc_branch_prefix
+    raw_base = orc_yaml.orc_worktree_base or str(orc_dir / "worktrees")
     worktree_base = Path(raw_base).expanduser().resolve()
-    raw_log_dir = orc_yaml.get("orc-log-dir", str(orc_dir / "logs"))
+    raw_log_dir = orc_yaml.orc_log_dir or str(orc_dir / "logs")
     log_dir = Path(raw_log_dir).expanduser().resolve()
-    raw_exclude = orc_yaml.get("orc-todo-scan-exclude", [".orc"])
+
+    raw_exclude = orc_yaml.orc_todo_scan_exclude
     todo_scan_exclude = tuple(raw_exclude) if isinstance(raw_exclude, list) else (raw_exclude,)
 
     work_dir = orc_dir / "work"
@@ -157,19 +184,21 @@ def find_config_dir(base: Path | None = None) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def load_orc_config(orc_dir: Path) -> dict:
-    """Load ``config.yaml`` from *orc_dir*.
+def load_orc_config(orc_dir: Path) -> OrcConfig:
+    """Load and validate ``config.yaml`` from *orc_dir*.
 
-    Returns an empty dict if the file is absent or unreadable.
+    Returns an :class:`OrcConfig` with all defaults applied if the file is
+    absent or unreadable.
     """
     config_file = orc_dir / "config.yaml"
     if not config_file.exists():
-        return {}
+        return OrcConfig()
     try:
-        return yaml.safe_load(config_file.read_text()) or {}
+        raw: dict[str, object] = yaml.safe_load(config_file.read_text()) or {}
+        return OrcConfig.model_validate(raw)
     except Exception:
         logger.warning("failed to parse orc config.yaml", path=str(config_file))
-        return {}
+        return OrcConfig()
 
 
 @lru_cache(maxsize=1)
