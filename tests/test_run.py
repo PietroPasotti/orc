@@ -238,7 +238,7 @@ class TestTuiPath:
         hooks.on_agent_done(fake_agent, 0)
 
         # _on_orc_status
-        hooks.on_orc_status("running", "checking pending work")
+        hooks.on_orc_status("checking pending work")
 
         # _updating_get_messages (the wrapped get_messages)
         result = messaging_svc.get_messages()

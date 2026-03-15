@@ -449,17 +449,15 @@ class TestDispatchCallbacksOptional:
         d._handle_completion(agent, 0)  # must not raise
 
     def test_on_orc_status_called(self, tmp_path):
-        """on_orc_status receives the status and task strings."""
-        updates: list[tuple[str, str | None]] = []
+        """on_orc_status receives the task string."""
+        updates: list[str] = []
 
         svcs = make_services(tmp_path)
-        hooks = _disp.DispatchHooks(
-            on_orc_status=lambda status, task: updates.append((status, task))
-        )
+        hooks = _disp.DispatchHooks(on_orc_status=lambda task: updates.append(task))
 
         d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
-        d._set_orc_status("running", "merging task 0001-foo.md")
-        assert updates == [("running", "merging task 0001-foo.md")]
+        d._set_orc_task("merging task 0001-foo.md")
+        assert updates == ["merging task 0001-foo.md"]
 
     def test_on_orc_status_none_is_safe(self, tmp_path):
         """on_orc_status=None (default) does not crash."""
@@ -467,7 +465,7 @@ class TestDispatchCallbacksOptional:
 
         d = make_dispatcher(minimal_squad(), svcs)
         assert d.hooks.on_orc_status is None
-        d._set_orc_status("running", "checking pending work")  # must not raise
+        d._set_orc_task("checking pending work")  # must not raise
 
     def test_echo_routes_to_logger_when_tui_active(self, tmp_path):
         """_echo logs via structlog instead of typer when TUI hook is active."""

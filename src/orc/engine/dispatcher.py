@@ -268,12 +268,11 @@ class DispatchHooks:
     on_agent_done: Callable[[AgentProcess, int], None] | None = None
     """Called immediately after a completed agent is removed from the pool."""
 
-    on_orc_status: Callable[[str, str | None], None] | None = None
-    """Called whenever the orchestrator's status changes.
-    Signature: ``(status, task)`` where *status* is e.g. ``"running"`` or
-    ``"shutting down"`` and *task* is a human-readable description of the
-    current decision point (e.g. ``"merging task 0042-foo.md"``), or
-    ``None`` when the orchestrator is idle."""
+    on_orc_status: Callable[[str], None] | None = None
+    """Called when the orchestrator's current task description changes.
+    Signature: ``(task)`` where *task* is a human-readable description of
+    the current phase (e.g. ``"dispatching"``), or ``"idle"`` when the
+    orchestrator is between phases."""
 
 
 # ---------------------------------------------------------------------------
@@ -353,10 +352,10 @@ class Dispatcher:
             return True
         return bool(self.board.get_pending_visions() or self.board.scan_todos())
 
-    def _set_orc_status(self, status: str, task: str | None = None) -> None:
+    def _set_orc_task(self, task: str) -> None:
         """Update the orchestrator card via the optional callback."""
         if self.hooks.on_orc_status is not None:
-            self.hooks.on_orc_status(status, task)
+            self.hooks.on_orc_status(task)
 
     def _echo(self, msg: str, final: bool = False) -> None:
         """Write *msg* to stdout only when the TUI is not active.
@@ -397,24 +396,19 @@ class Dispatcher:
 
     def _poll_completed_agents(self) -> None:
         """Poll completed agents."""
-        pool = self.pool
-
-        if not pool.is_empty():
-            self._set_orc_status("running", "polling completed agents")
-            for agent, rc in pool.poll():
+        if not self.pool.is_empty():
+            for agent, rc in self.pool.poll():
                 self._handle_completion(agent, rc)
 
     def _kill_timed_out_agents(self) -> None:
         """Kill stuck agents."""
         timeout_sec = self.squad.timeout_minutes * 60.0
         for agent in self.pool.check_watchdog(timeout_sec):
-            self._set_orc_status("running", f"killing timed-out {agent.agent_id}")
             self._handle_watchdog(agent)
 
     def _drain_merge_queue(self) -> None:
         """Merge tasks that have been QA-approved (board status ``done``)."""
         for task_name in self.board.query_tasks(status="done"):
-            self._set_orc_status("running", f"merging {task_name}")
             self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
@@ -431,21 +425,28 @@ class Dispatcher:
             loop_count += 1
             contextvars.clear_contextvars()
             contextvars.bind_contextvars(cycle=loop_count)
-            self._set_orc_status("running", "cycle {loop_count}")
 
+            self._set_orc_task("polling agents")
             self._poll_completed_agents()
+
+            self._set_orc_task("merging done tasks")
             self._drain_merge_queue()
+
+            self._set_orc_task("checking watchdog")
             self._kill_timed_out_agents()
 
             # Dispatch new agents (skip when the call limit is already reached).
+            self._set_orc_task("dispatching")
             dispatched_count = self._dispatch_agents(maxcalls - spawn_count)
-            # subtract number of dispatched agents from the allowed budget
             spawn_count += dispatched_count
 
             # Check termination.
             if self.dry_run:
                 logger.info("dry-run mode: printed one cycle, stopping")
                 break
+
+            self._set_orc_task("idle")
+
             # When the call limit is reached, keep polling until all running
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
@@ -455,11 +456,6 @@ class Dispatcher:
                     break
 
                 if not dispatched_count:
-                    # Check idle-complete: nothing running, nothing to dispatch.
-                    self._set_orc_status("running", "checking pending work")
-                    # When only_role is set, we can't rely on any_work()
-                    # because it checks all roles.  If nothing was dispatched for
-                    # the filtered role, the workflow is done for that role.
                     if self.only_role is not None or not self._any_work():
                         if self.only_role is not None:
                             self._echo(
@@ -600,7 +596,6 @@ class Dispatcher:
         self.pool.add(agent)
         if self.hooks.on_agent_start is not None:
             self.hooks.on_agent_start(agent)
-        self._set_orc_status("running", f"dispatching {agent_id}")
 
         if task_name:
             self.board.assign_task(task_name, agent_id)
@@ -630,7 +625,6 @@ class Dispatcher:
             logger.error(
                 "agent failed", agent_id=agent.agent_id, exit_code=rc, log=str(agent.log_path)
             )
-            self._set_orc_status("running", f"{agent.agent_id} failed (rc={rc})")
             self._echo(
                 f"\n✗ {agent.agent_id} exited with code {rc}. See {agent.log_path} for details."
             )
@@ -638,7 +632,6 @@ class Dispatcher:
                 self.board.unassign_task(agent.task_name)
             return
 
-        self._set_orc_status("running", f"{agent.agent_id} completed")
         self._echo(f"\n✓ {agent.agent_id} completed successfully.")
 
         if agent.task_name:
@@ -649,16 +642,13 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _do_merge(self, task_name: str) -> None:
-        self._set_orc_status("running", f"merging task {task_name}")
         self._echo(f"\n⟳ Merging {task_name} into dev…")
         try:
             self.workflow.merge_feature(task_name)
             self.board.delete_task(task_name)
-            self._set_orc_status("running", f"merged {task_name}")
             self._echo(f"✓ {task_name} merged.")
         except Exception as exc:
             logger.error("merge failed", task=task_name, error=str(exc))
-            self._set_orc_status("running", f"merge failed: {task_name}")
             self._echo(f"\n✗ Merge failed for {task_name}: {exc}")
 
     # ------------------------------------------------------------------
@@ -673,7 +663,6 @@ class Dispatcher:
             elapsed_minutes=f"{elapsed_min:.1f}",
             timeout_minutes=self.squad.timeout_minutes,
         )
-        self._set_orc_status("running", f"watchdog killed {agent.agent_id}")
         self._echo(
             f"\n⚠ {agent.agent_id} exceeded watchdog timeout "
             f"({elapsed_min:.0f} min > {self.squad.timeout_minutes} min). Killing."

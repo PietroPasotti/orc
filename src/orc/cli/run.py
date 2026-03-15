@@ -149,9 +149,9 @@ def _run(
             assert state is not None
             state.agents = [r for r in state.agents if r.agent_id != agent.agent_id]
 
-        def _on_orc_status(status: str, task: str | None) -> None:
+        def _on_orc_status(task: str) -> None:
             assert state is not None
-            state.orc = _tui.OrcData(agent_id="orc", status=status, task=task)
+            state.orc = _tui.OrcData(agent_id="orc", status="running", task=task)
 
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start,
