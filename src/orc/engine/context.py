@@ -138,27 +138,22 @@ def _role_symbol(role: str) -> str:
 
 def build_agent_context(
     role: AgentRole,
-    board: BoardStateManager | None = None,
-    agent_id: str | None = None,
+    board: BoardStateManager,
+    agent_id: str,
     task_name: str | None = None,  # this can be None only for planner
+    plain: bool = False,  # plain: return only the base context, no agent-specific instructions
 ) -> str:
-    """Return ``(model, context)`` for the given agent.
+    """Return the context string for the given agent.
 
     The context is kept intentionally compact: only live runtime data is
     injected.  Static documentation (README, CONTRIBUTING, ADRs) and full
     role instructions are *not* inlined — the agent is told where to find its
     ``_main.md`` and reads everything from disk itself.
 
-    *board* is the coordination state manager.  When omitted (e.g. from CLI
-    commands like ``orc merge`` that run outside of ``orc run``), a fresh
-    :class:`BoardStateManager` is created from the current config.
-
     *task_name* is the specific task assigned to this agent (coder/QA only).
     The dispatcher always knows which task it is dispatching; it must pass it
     explicitly rather than letting context.py guess from board state.
     """
-    if board is None:
-        board = BoardStateManager(_cfg.get().orc_dir)
 
     cfg = _cfg.get()
     dev_branch = cfg.work_dev_branch
@@ -177,9 +172,10 @@ def build_agent_context(
     Read this file before doing anything else, 
     consider it an extension of your prompt: `{role_main_prompt_path}`.
     Reading that will clarify what to do with what follows.
-    
-    # Additional Context:\n\n
     """
+    if plain:
+        return context
+    context += "# Additional Context:\n\n"
 
     feature_branch = cfg.feature_branch(task_name) if task_name else None
     feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
@@ -239,7 +235,6 @@ def build_agent_context(
             **Do NOT merge** — the orchestrator merges only if you 
             approve this work by signalling `passed`.
             """
-
         case _:
             typing.assert_never(role)
 

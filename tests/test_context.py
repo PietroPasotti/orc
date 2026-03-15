@@ -284,7 +284,8 @@ class TestContextCoverage:
         self._setup_context(monkeypatch, tmp_path)
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
+        board = BoardStateManager(_cfg.get().orc_dir)
+        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
         assert isinstance(ctx, str)
         assert ".orc/agents/planner/_main.md" in ctx
 
@@ -299,6 +300,7 @@ class TestContextCoverage:
         ctx = _ctx.build_agent_context(
             "qa",
             board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="qa-0",
             task_name="0001-task.md",
         )
         assert "feat/0001-task" in ctx
@@ -331,7 +333,8 @@ class TestContextCoverage:
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
+        board = BoardStateManager(_cfg.get().orc_dir)
+        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
         assert "external-orc/agents/planner/_main.md" in ctx
 
 
@@ -502,7 +505,8 @@ class TestBuildContextTodos:
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: fake_todos)
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
+        board = BoardStateManager(_cfg.get().orc_dir)
+        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
         assert "Code TODOs and FIXMEs" in ctx
         assert "`TODO`" in ctx
 
@@ -522,7 +526,10 @@ class TestBuildContextTodos:
         from orc.coordination.state import BoardStateManager
 
         ctx = _ctx.build_agent_context(
-            "coder", board=BoardStateManager(_cfg.get().orc_dir), task_name="0001-task.md"
+            "coder",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="coder-0",
+            task_name="0001-task.md",
         )
         assert "Code TODOs and FIXMEs" not in ctx
 

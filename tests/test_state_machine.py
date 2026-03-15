@@ -143,13 +143,9 @@ class TestRouteMatchesImplementation:
         merged_into_dev,
         board_status=None,
     ):
-        monkeypatch.setattr("orc.engine.workflow._feature_branch_exists", lambda b: branch_exists)
-        monkeypatch.setattr(
-            "orc.engine.workflow._feature_has_commits_ahead_of_main", lambda b: commits_ahead
-        )
-        monkeypatch.setattr(
-            "orc.engine.workflow._feature_merged_into_dev", lambda b: merged_into_dev
-        )
+        monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: branch_exists)
+        monkeypatch.setattr("orc.git.Git.has_commits_ahead_of", lambda self, b, ref: commits_ahead)
+        monkeypatch.setattr("orc.git.Git.is_merged_into", lambda self, b, ref: merged_into_dev)
 
     _STATUS_TO_LAST_COMMIT = {
         "planned": LastCommit.CODER_WORK,

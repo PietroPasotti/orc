@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import typing
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,6 +72,59 @@ class ConflictResolver:
     def _coder_model(self) -> str:
         return self.squad_cfg.model(AgentRole.CODER)
 
+    _MERGE_RESOLVER_CONTEXT = """
+    ## Feature merge conflict — your task\n
+    We need to merge `{source_branch}` into `{target_branch}`, but there are conflicts.  
+    Your task is to resolve the merge conflicts and complete the merge.
+    """
+    _REBASE_RESOLVER_CONTEXT = """
+    ## Startup rebase conflict — your task\n
+    A `git rebase {source_branch}` of `{target_branch}` was attempted and stopped with conflicts.
+    Your task is to resolve the rebase conflicts and complete the rebase.
+    """
+
+    def _merge_with_conflicts(
+        self,
+        branch: str,
+        target: str,
+        worktree: Path,
+        reason: typing.Literal["rebase"] | typing.Literal["merge"],
+    ) -> None:
+        board = BoardStateManager(_cfg.get().orc_dir)
+        context = _ctx.build_agent_context(AgentRole.CODER, board, "merger-0", plain=True)
+        match reason:
+            case "rebase":
+                template = self._REBASE_RESOLVER_CONTEXT
+            case "merge":
+                template = self._MERGE_RESOLVER_CONTEXT
+            case _:  # pragma: no cover
+                typing.assert_never(reason)
+        context += template.format(source_branch=branch, target_branch=target)
+        rc = _ctx.invoke_agent(AgentRole.CODER, context, self._coder_model(), worktree=worktree)
+
+        if rc != 0:
+            logger.error(f"coder agent failed to resolve {reason} conflict", exit_code=rc)
+            typer.echo(f"✗ Coder agent exited with code {rc} while resolving {reason} conflict.")
+            raise ConflictResolutionFailed(code=rc)
+        match reason:
+            case "rebase":
+                if Git(worktree).is_rebase_in_progress():
+                    logger.error("rebase still in progress after coder exited", branch=branch)
+                    typer.echo(
+                        "✗ Rebase still in progress after agent exit.  Manual intervention needed."
+                    )
+                    raise ConflictResolutionFailed(code=1)
+            case "merge":
+                if Git(worktree).is_merge_in_progress():
+                    logger.error("merge still in progress after coder exited", branch=branch)
+                    typer.echo(
+                        "✗ Merge still in progress after agent exit.  Manual intervention needed."
+                    )
+                    raise ConflictResolutionFailed(code=1)
+            case _:  # pragma: no cover
+                typing.assert_never(reason)
+        logger.info("conflict resolved by agent", branch=branch)
+
     def resolve_merge_conflict(self, branch: str, worktree: Path, status_output: str) -> None:
         """Delegate resolution of a paused ``git merge --no-ff`` to a coder agent.
 
@@ -80,33 +134,9 @@ class ConflictResolver:
             If the agent exits non-zero or the merge is still in progress
             after the agent exits.
         """
-        cfg = _cfg.get()
         typer.echo(f"⚠ Merge conflict on {branch!r}:\n{status_output}\nDelegating to coder agent…")
-        conflict_extra = (
-            f"## Feature merge conflict — your task\n\n"
-            f"A `git merge --no-ff {branch}` into `{cfg.work_dev_branch}` was attempted "
-            f"and stopped with conflicts.  The merge is currently paused in the dev "
-            f"worktree at `{worktree}`.\n\n"
-            f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
-            "**What you must do:**\n"
-            "1. Open each conflicting file, resolve the conflict markers "
-            "(`<<<<<<<`, `=======`, `>>>>>>>`).\n"
-            "2. `git add <resolved-file>` for each resolved file.\n"
-            "3. `git merge --continue` to complete the merge.\n"
-            "4. Do NOT `git merge --abort`. Finish the merge.\n"
-            "5. Exit when the merge is complete.\n"
-        )
-        context = _ctx.build_agent_context(AgentRole.CODER) + "\n\n" + conflict_extra
-        rc = _ctx.invoke_agent(AgentRole.CODER, context, self._coder_model(), worktree=worktree)
-        if rc != 0:
-            logger.error("coder agent failed to resolve merge conflict", exit_code=rc)
-            typer.echo(f"✗ Coder agent exited with code {rc} while resolving merge conflict.")
-            raise ConflictResolutionFailed(code=rc)
-        if Git(worktree).is_merge_in_progress():
-            logger.error("merge still in progress after coder exited", branch=branch)
-            typer.echo("✗ Merge still in progress after agent exit.  Manual intervention needed.")
-            raise ConflictResolutionFailed(code=1)
-        logger.info("merge conflict resolved by coder agent", branch=branch)
+        self._merge_with_conflicts(branch, _cfg.get().work_dev_branch, worktree, reason="merge")
+        logger.info(f"Merge conflict on {branch!r} resolved by coder agent.")
         typer.echo(f"✓ Merge conflict on {branch!r} resolved by coder agent.")
 
     def resolve_rebase_conflict(self, worktree: Path, status_output: str) -> None:
@@ -120,58 +150,12 @@ class ConflictResolver:
         """
         cfg = _cfg.get()
         typer.echo(f"⚠ Startup rebase conflict:\n{status_output}\nDelegating to coder agent…")
-        conflict_extra = (
-            "## Startup rebase conflict — your task\n\n"
-            f"A `git rebase {cfg.main_branch}` of the `{cfg.work_dev_branch}` "
-            "branch was attempted at session start and stopped with conflicts.  "
-            "The rebase is currently paused in the dev worktree.\n\n"
-            f"Conflicting files (from `git status --short`):\n```\n{status_output}\n```\n\n"
-            "**What you must do:**\n"
-            "1. Open each conflicting file, resolve the conflict markers (`<<<<<<<`, "
-            "`=======`, `>>>>>>>`).\n"
-            "2. `git add <resolved-file>` for each resolved file.\n"
-            "3. `git rebase --continue` (repeat steps 1–3 if git stops again).\n"
-            "4. Do NOT `git rebase --abort`. Finish the rebase.\n"
-            "5. Exit when the rebase is complete.\n"
-        )
-        coder_model = self._coder_model()
-        context = _ctx.build_agent_context(AgentRole.CODER) + "\n\n" + conflict_extra
-        rc = _ctx.invoke_agent(AgentRole.CODER, context, coder_model)
-        if rc != 0:
-            logger.error("coder agent failed to resolve startup rebase", exit_code=rc)
-            typer.echo(f"✗ Coder agent exited with code {rc} while resolving startup rebase.")
-            raise ConflictResolutionFailed(code=rc)
-        if Git(worktree).is_rebase_in_progress():
-            logger.error("rebase still in progress after coder exited")
-            typer.echo("✗ Rebase still in progress after agent exit. Manual intervention needed.")
-            raise ConflictResolutionFailed(code=1)
+        self._merge_with_conflicts(cfg.main_branch, cfg.work_dev_branch, worktree, reason="rebase")
         logger.info("dev rebased on main after conflict resolution by coder")
         typer.echo("✓ dev rebased on main (conflicts resolved by coder).")
 
 
-# ---------------------------------------------------------------------------
-# Git orchestration helpers
-# ---------------------------------------------------------------------------
-
-
-def _feature_branch_exists(branch: str) -> bool:
-    """Return True if *branch* exists locally."""
-    return Git(_cfg.get().repo_root).branch_exists(branch)
-
-
-def _feature_has_commits_ahead_of_main(branch: str) -> bool:
-    """Return True if *branch* has at least one commit not in the main branch."""
-    cfg = _cfg.get()
-    return Git(cfg.repo_root).has_commits_ahead_of(branch, cfg.main_branch)
-
-
-def _feature_merged_into_dev(branch: str) -> bool:
-    """Return True if *branch* has been merged into the dev branch."""
-    cfg = _cfg.get()
-    return Git(cfg.repo_root).is_merged_into(branch, cfg.work_dev_branch)
-
-
-def _features_in_dev_not_main() -> list[str]:
+def features_in_dev_not_main() -> list[str]:
     """Return orc feature branches merged into dev but not yet into main.
 
     Parses merge-commit subjects from ``git log --merges main..<dev>``,
@@ -189,11 +173,6 @@ def _features_in_dev_not_main() -> list[str]:
         if m:
             branches.append(m.group(1))
     return branches
-
-
-def _count_features_done() -> int:
-    """Count orc feature branches merged into dev but not yet on main."""
-    return len(_features_in_dev_not_main())
 
 
 def _append_changelog_entry(task_name: str, branch: str, merge_sha: str, orc_dir: Path) -> None:
@@ -325,7 +304,7 @@ def _derive_task_state(task_name: str, task_data: TaskEntry | None = None) -> tu
     cfg = _cfg.get()
     branch = cfg.feature_branch(task_name)
 
-    branch_exists = _feature_branch_exists(branch)
+    branch_exists = Git(_cfg.get().repo_root).branch_exists(branch)
     logger.debug(
         "derive_task_state: branch exists", task=task_name, branch=branch, exists=branch_exists
     )
@@ -333,9 +312,9 @@ def _derive_task_state(task_name: str, task_data: TaskEntry | None = None) -> tu
     if not branch_exists:
         return AgentRole.CODER, f"feature branch {branch!r} does not exist yet"
 
-    has_commits = _feature_has_commits_ahead_of_main(branch)
+    has_commits = Git(cfg.repo_root).has_commits_ahead_of(branch, cfg.main_branch)
     if not has_commits:
-        if _feature_merged_into_dev(branch):
+        if Git(cfg.repo_root).is_merged_into(branch, cfg.work_dev_branch):
             logger.info(
                 "derive_task_state: already merged into dev — closing board",
                 task=task_name,
@@ -437,8 +416,8 @@ class AgentSvc:
 
     def __init__(self, squad_cfg: SquadConfig, board: BoardStateManager) -> None:
         self._build: _ContextBuilder = _make_context_builder(squad_cfg, board)
-        self._squad_cfg = squad_cfg
         self._board = board
+        self._squad_cfg = squad_cfg
 
     def build_context(
         self,

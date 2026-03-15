@@ -116,7 +116,9 @@ class TestMergeCommand:
         monkeypatch.setattr(
             _ctx, "invoke_agent", lambda name, ctx, mdl, **kw: invocations.append(name) or 0
         )
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda role, board=None, **kw: "ctx")
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+        )
         completed: list[bool] = []
         monkeypatch.setattr(
             "orc.git.Git.merge_ff_only", lambda self, b: completed.append(True) or True
@@ -130,7 +132,7 @@ class TestMergeCommand:
     def test_conflict_agent_passes_conflict_extra_context(
         self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
     ):
-        """The coder agent receives a context section describing the conflict."""
+        """The coder agent receives a context section describing the conflict type."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(tg, "send_message", lambda t: None)
@@ -146,7 +148,9 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
         monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: False)
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda role, board=None, **kw: "ctx")
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+        )
 
         received_contexts: list[str] = []
         monkeypatch.setattr(
@@ -158,7 +162,6 @@ class TestMergeCommand:
         runner.invoke(m.app, ["merge"])
         assert len(received_contexts) == 1
         assert "rebase" in received_contexts[0].lower()
-        assert "UU src/foo.py" in received_contexts[0]
 
     def test_conflict_agent_failure_exits_nonzero(
         self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
@@ -176,7 +179,9 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda role, board=None, **kw: "ctx")
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+        )
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 2
@@ -198,7 +203,9 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: True)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda role, board=None, **kw: "ctx")
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+        )
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1

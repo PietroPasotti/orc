@@ -229,9 +229,9 @@ def get_messages(limit: int = 100) -> list[ChatMessage]:
 
 
 # FIXME: this class should be the only public member of this module and should
-# encapsulate more of it. keep the public-facing API small. It should have no
-# inputs other than the envvars (for the telegram link) and the orc config
-# (for the chat.log). (we should probably get rid of chat.log)
+#  encapsulate more of it. keep the public-facing API small. It should have no
+#  inputs other than the envvars (for the telegram link) and the orc config
+#  (for the chat.log). (we should probably get rid of chat.log)
 class TelegramMessagingService:
     """Implements :class:`~orc.engine.services.MessagingService` via Telegram."""
 

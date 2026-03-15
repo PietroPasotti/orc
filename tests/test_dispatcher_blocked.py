@@ -23,8 +23,6 @@ class TestBlockedResumption:
         """planner(done) is a normal terminal state — dispatcher routes to planner (no tasks)."""
         from dataclasses import replace as _replace
 
-        import orc.engine.workflow as _wf
-
         board_file("counter: 1\ntasks: []\n")
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc"))
 
@@ -33,9 +31,9 @@ class TestBlockedResumption:
         vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "feature-x.md").write_text("# Feature X\n")
 
-        monkeypatch.setattr(_wf, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(_wf, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(_wf, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: False)
+        monkeypatch.setattr("orc.git.Git.has_commits_ahead_of", lambda self, b, ref: False)
+        monkeypatch.setattr("orc.git.Git.is_merged_into", lambda self, b, ref: False)
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
 

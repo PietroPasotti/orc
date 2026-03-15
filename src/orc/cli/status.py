@@ -18,6 +18,7 @@ import orc.engine.workflow as _wf
 from orc.cli import app
 from orc.coordination.board import TaskStatus
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
+from orc.git import Git
 from orc.squad import AgentRole, load_squad
 
 logger = structlog.get_logger(__name__)
@@ -155,7 +156,7 @@ def _status(squad: str = "default") -> None:
         _echo_wrapped(f"\n⛔ Blocked: task {blocked_task!r} needs human intervention.")
 
     # --- dev vs main ---------------------------------------------------------
-    features_pending = _wf._features_in_dev_not_main()
+    features_pending = _wf.features_in_dev_not_main()
     if features_pending:
         n = len(features_pending)
         _echo_wrapped(f"\ndev has {n} feature{'s' if n != 1 else ''} not yet in main:")
@@ -240,7 +241,7 @@ def _status(squad: str = "default") -> None:
             name = task.name
             status = task.status or TaskStatus.IN_PROGRESS
             branch = _cfg.get().feature_branch(name)
-            if _wf._feature_branch_exists(branch):
+            if Git(_cfg.get().repo_root).branch_exists(branch):
                 _echo_wrapped(f"  • {name}  ({branch})  status: {status}")
             else:
                 _echo_wrapped(f"  • {name}  (no branch yet)")

@@ -172,13 +172,12 @@ def mock_git(monkeypatch, tmp_path):
 
     Parameterise individually if a test needs non-default behaviour, e.g.:
         def test_something(mock_git, monkeypatch):
-            monkeypatch.setattr("orc.engine.workflow._feature_branch_exists", lambda b: True)
+            monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: True)
     """
-    import orc.engine.workflow as _wf
 
-    monkeypatch.setattr(_wf, "_feature_branch_exists", lambda b: False)
-    monkeypatch.setattr(_wf, "_feature_has_commits_ahead_of_main", lambda b: False)
-    monkeypatch.setattr(_wf, "_feature_merged_into_dev", lambda b: False)
+    monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: False)
+    monkeypatch.setattr("orc.git.Git.has_commits_ahead_of", lambda self, b, ref: False)
+    monkeypatch.setattr("orc.git.Git.is_merged_into", lambda self, b, ref: False)
     monkeypatch.setattr(
         "orc.engine.workflow.WorktreeManager.ensure_feature_worktree",
         lambda self, task: tmp_path,

@@ -68,15 +68,15 @@ class TestStatusCoverage:
             if features_pending is not None
             else ([] if ahead == 0 else [f"feat/000{i}-stub" for i in range(ahead)])
         )
-        monkeypatch.setattr(_st._wf, "_features_in_dev_not_main", lambda: _features)
+        monkeypatch.setattr(_st._wf, "features_in_dev_not_main", lambda: _features)
         if derive_task_state:
             monkeypatch.setattr(_st._wf, "_derive_task_state", derive_task_state)
         if feature_branch:
             monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: feature_branch(t))
         if feature_branch_exists is not None:
-            monkeypatch.setattr(_st._wf, "_feature_branch_exists", lambda b: feature_branch_exists)
+            monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: feature_branch_exists)
         else:
-            monkeypatch.setattr(_st._wf, "_feature_branch_exists", lambda b: False)
+            monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: False)
         if last_commit:
             pass  # _last_feature_commit_message removed; board-status-based routing now
         monkeypatch.setattr(_st._ctx, "_role_symbol", lambda role: "")
@@ -312,24 +312,24 @@ class TestStatusCoverage:
         assert _st._pending_visions() == []
 
     def test_pending_reviews_returns_unmerged_branches(self, monkeypatch, tmp_path, mock_git):
-        """Lines 65-73: feat/* branches with nonzero merge-base exit → unmerged."""
+        """Lines 65-73: feat/* branches not merged into dev → unmerged."""
         from dataclasses import replace as _replace
 
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev")
         )
 
-        call_num = 0
-
         def fake_run(cmd, **kw):
-            nonlocal call_num
             r = MagicMock()
             if "--list" in cmd:
                 r.stdout = "  feat/0001-foo\n  feat/0002-bar\n"
-            else:
-                call_num += 1
-                r.returncode = 1 if call_num == 1 else 0
             return r
+
+        # feat/0001-foo is unmerged; feat/0002-bar is already merged into dev
+        monkeypatch.setattr(
+            "orc.git.Git.is_merged_into",
+            lambda self, b, ref: b == "feat/0002-bar",
+        )
 
         with patch("orc.cli.status.subprocess.run", fake_run):
             result = _st._pending_reviews()

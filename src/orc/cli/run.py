@@ -196,7 +196,7 @@ def _run(
 def _safe_features_done() -> int:
     """Return the count of feature-merge commits in dev not yet in main, or 0 on error."""
     try:
-        return _wf._count_features_done()
+        return len(_wf.features_in_dev_not_main())
     except Exception:
         logger.debug("_safe_features_done: failed to count features", exc_info=True)
         return 0

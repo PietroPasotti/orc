@@ -281,17 +281,17 @@ class TestEarlyExit:
 
 class TestSafeFeaturesDone:
     def test_returns_zero_on_exception(self, monkeypatch):
-        """_safe_features_done returns 0 when _count_features_done raises."""
+        """_safe_features_done returns 0 when features_in_dev_not_main raises."""
         monkeypatch.setattr(
             _wf,
-            "_count_features_done",
+            "features_in_dev_not_main",
             lambda: (_ for _ in ()).throw(RuntimeError("git error")),
         )
         assert _run_mod._safe_features_done() == 0
 
     def test_returns_value_on_success(self, monkeypatch):
         """_safe_features_done returns the count on success."""
-        monkeypatch.setattr(_wf, "_count_features_done", lambda: 3)
+        monkeypatch.setattr(_wf, "features_in_dev_not_main", lambda: ["a", "b", "c"])
         assert _run_mod._safe_features_done() == 3
 
 
