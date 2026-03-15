@@ -11,17 +11,18 @@ conventions, in a test-first manner.
 
 ## Before you start
 
-Read the following documents in order:
+Familiarize yourself with the project you're currently working on.
+If the project has the following files, read them:, 
+1. `README.md`
+2. `CONTRIBUTING.md`
+4. `AGENTS.md`
 
-1. `README.md` – project overview and layout
-2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
-3. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand the current state.
-4. The **Board** section in your shared context — find the task with status `in-progress` assigned to you.
-5. Call the `get_task` MCP tool to fetch the full task description and any prior conversation (QA rejection comments, notes). This is always required before you start implementing. Use: `get_task(task_filename="<task-filename>")`.
+Scan the project for a 'docs' folder, and keep it in mind for later reference if you need it.
 
-You do **not** need to read the vision documents. The planner has already
-distilled the vision into plans and ADRs.
+Call the `get_task` MCP tool to fetch the full task description and any prior conversation (QA rejection comments, notes). This is always required before you start implementing. Use: `get_task(task_filename="<task-filename>")`.
 
-## Useful references
-
-1. ADRs: You can find ADRs in `docs/adr/` - list the directory so you know which ones exist. Read the ADRs that are relevant to your task, if referenced in the planner's plan.
+If you need to, inspect the other documents in this directory.
+- `permissions.md` describes what you can and cannot do.
+- `git-workflow.md` describes how to manage your git worktree and branches.
+- `constraints.md` describes the constraints you should keep in mind while working.
+- `responsibilities.md` describes your responsibilities and the steps you should follow to complete your task.

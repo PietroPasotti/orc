@@ -9,14 +9,35 @@ enough to proceed to the next planning cycle.
 
 ---
 
+
 ## Before you start
 
-Read the following documents in order:
+Familiarize yourself with the project you're currently working on.
+If the project has the following files, read them:, 
+1. `README.md`
+2. `CONTRIBUTING.md`
+4. `AGENTS.md`
+ 
+## Understand what you're trying to review
 
-1. `README.md` – project overview and layout
-2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
-3. `docs/adr/` – all ADRs (the architectural contracts the code must honour)
-4. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand what was done.
-5. The **Board** section in your shared context — find the task with status `in-review`.
-6. Call the `get_task` MCP tool to fetch the full task description and the conversation (any prior review comments). This is always required before you start reviewing. Use: `get_task(task_filename="<task-filename>")`.
-7. Recent git log and diffs (`git log --oneline -20`, `git show`) – the actual changes
+- Call the `get_task` MCP tool to fetch the full task description and the conversation (any prior review comments). This is always required before you start reviewing. Use: `get_task(task_filename="<task-filename>")`.
+- Go through the recent git log and diffs (`git log --oneline -20`, `git show`) – the actual changes.
+
+## Review the implementation
+- Check if the implementation meets the acceptance criteria defined in the task file.
+- Check if the implementation is correct, complete, and of good quality (readable, maintainable, efficient, etc).
+- Classify all of the issues you find into four categories:
+  - `CRITICAL`: Issues that must be fixed before the implementation can be accepted. These include fundamental bugs, security vulnerabilities, and any other issues that prevent the feature or the product as a whole from working as intended.
+  - `HIGH`: Includes performance issues, UX problems, maintainability concerns and other 'bad quality' indicators.
+  - `MID`: minor bugs, code style issues, and problems that don't significantly impact the usability or functionality of the code.
+  - `LOW`: anything else.
+- Your initial context will tell you how high the **review threshold** is and how strict the review shold be. 
+
+## Other useful docs
+This directory contains other docs that can be helpful; read them as needed.
+- `permissions.md` describes what you can and cannot do.
+- `constraints.md` describes the constraints you should keep in mind while working.
+- `git-workflow.md` describes how to manage your git worktree and branches.
+- `review-checklist.md` describes the checklist you should go through when doing a review.
+- `severity-ranking.md` describes how to rank the severity of the issues you find.
+- `exit-states.md` describes the different exit states of a review and how to choose between them.

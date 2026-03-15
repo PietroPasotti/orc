@@ -28,11 +28,12 @@ import os
 from mcp.server.fastmcp import FastMCP
 
 import orc.mcp.tools as _tools
+from orc.squad import AgentRole
 
 _VALID_ROLES = frozenset({"planner", "coder", "qa"})
 
 
-def _get_role() -> str:
+def _get_role() -> AgentRole:
     """Return the agent role from ``ORC_AGENT_ROLE``.
 
     Falls back to ``"coder"`` (most restrictive) rather than failing loudly, so
@@ -41,8 +42,10 @@ def _get_role() -> str:
     """
     role = os.environ.get("ORC_AGENT_ROLE", "").strip().lower()
     if role not in _VALID_ROLES:
-        return "coder"
-    return role
+        raise ValueError(
+            f"Invalid ORC_AGENT_ROLE: {role!r}. Must be one of {', '.join(_VALID_ROLES)}."
+        )
+    return AgentRole(role)
 
 
 def _build_server() -> FastMCP:
@@ -63,14 +66,15 @@ def _build_server() -> FastMCP:
     mcp.tool()(_tools.add_comment)
 
     # Role-specific tools.
-    if role == "planner":
-        mcp.tool()(_tools.get_vision)
-        mcp.tool()(_tools.create_task)
-        mcp.tool()(_tools.close_vision)
-    elif role == "coder":
-        mcp.tool()(_tools.close_task)
-    elif role == "qa":
-        mcp.tool()(_tools.review_task)
+    match role:
+        case AgentRole.PLANNER:
+            mcp.tool()(_tools.get_vision)
+            mcp.tool()(_tools.create_task)
+            mcp.tool()(_tools.close_vision)
+        case AgentRole.CODER:
+            mcp.tool()(_tools.close_task)
+        case AgentRole.QA:
+            mcp.tool()(_tools.review_task)
 
     return mcp
 
