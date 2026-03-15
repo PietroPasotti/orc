@@ -7,8 +7,9 @@ import typer
 
 import orc.cli.status as _status
 import orc.config as _cfg
-import orc.git.core as _git
+import orc.engine.workflow as _wf
 from orc.cli import _check_env_or_exit, app
+from orc.git import Git, UntrackedMergeBlockError
 from orc.messaging import telegram as tg
 
 logger = structlog.get_logger(__name__)
@@ -17,13 +18,13 @@ logger = structlog.get_logger(__name__)
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
     messages = tg.get_messages()
-    _git._rebase_dev_on_main(messages)
-    _git._ensure_dev_worktree()
+    _wf.rebase_dev_on_main(messages)
 
     if auto:
+        cfg = _cfg.get()
         try:
-            merged = _git._complete_merge()
-        except _git.UntrackedMergeBlockError as exc:
+            merged = Git(cfg.repo_root).merge_ff_only(cfg.work_dev_branch)
+        except UntrackedMergeBlockError as exc:
             for f in exc.files:
                 typer.echo(f"✗ {f} exists as untracked in main worktree; remove it and re-run")
             raise typer.Exit(code=1)

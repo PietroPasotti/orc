@@ -9,7 +9,6 @@ from conftest import make_msg
 
 import orc.config as _cfg
 import orc.engine.context as _ctx
-import orc.git.core as _git
 import orc.messaging.telegram as tg
 
 # ---------------------------------------------------------------------------
@@ -238,7 +237,7 @@ class TestContextCoverage:
             ),
         )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
     def _setup_roles(self, monkeypatch, tmp_path):
         """Set up minimal roles configuration."""
@@ -367,8 +366,8 @@ class TestContextCoverage:
             "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
-        monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
         _, ctx = _ctx.build_agent_context(
@@ -391,8 +390,8 @@ class TestContextCoverage:
             "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
-        monkeypatch.setattr(_git, "_feature_branch", lambda t: "feature/0001-task")
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feature/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
         _, ctx = _ctx.build_agent_context(
@@ -424,7 +423,7 @@ class TestContextCoverage:
             ),
         )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: repo)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
         from orc.coordination.state import BoardStateManager
 
         _, ctx = _ctx.build_agent_context("planner", [], BoardStateManager(_cfg.get().orc_dir))
@@ -600,7 +599,7 @@ class TestBuildContextTodos:
             ),
         )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
     def test_planner_context_includes_todos_section(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
@@ -619,8 +618,8 @@ class TestBuildContextTodos:
             "_scan_todos",
             lambda root: [{"file": "x.py", "line": 1, "tag": "TODO", "text": "x"}],
         )
-        monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-x")
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-x")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         work_dir = tmp_path / ".orc" / "work"
         (work_dir / "board.yaml").write_text(
             "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"

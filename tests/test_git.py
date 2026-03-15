@@ -8,13 +8,13 @@ import pytest
 import yaml
 
 import orc.config as _cfg
-import orc.git.core as _git
-from orc.git.core import (
-    _ensure_feature_worktree,
-    _feature_branch,
-    _feature_worktree_path,
+import orc.engine.workflow as _wf
+from orc.engine.workflow import (
+    WorktreeManager,
+    _derive_task_state,
     _merge_feature_into_dev,
 )
+from orc.git import Git, MergeConflictError, RebaseConflictError, UntrackedMergeBlockError
 
 # ---------------------------------------------------------------------------
 # _derive_task_state (now in engine/workflow.py)
@@ -32,11 +32,11 @@ class TestDeriveStateFromGit:
         is_merged=False,
         board_status=None,
     ):
-        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
+        monkeypatch.setattr("orc.engine.workflow._feature_branch_exists", lambda b: branch_exists)
         monkeypatch.setattr(
-            "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
+            "orc.engine.workflow._feature_has_commits_ahead_of_main", lambda b: has_commits
         )
-        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
+        monkeypatch.setattr("orc.engine.workflow._feature_merged_into_dev", lambda b: is_merged)
         self._task_data = {"name": active_task, "status": board_status} if board_status else None
 
     @pytest.mark.parametrize(
@@ -60,7 +60,6 @@ class TestDeriveStateFromGit:
         expected_reason_substr,
     ):
         from orc.engine.dispatcher import CLOSE_BOARD
-        from orc.engine.workflow import _derive_task_state
 
         self._patch(
             monkeypatch,
@@ -79,8 +78,6 @@ class TestDeriveStateFromGit:
             assert expected_reason_substr in reason
 
     def test_reason_includes_branch_name(self, monkeypatch):
-        from orc.engine.workflow import _derive_task_state
-
         self._patch(
             monkeypatch,
             active_task="0003-resource-type-enum.md",
@@ -154,21 +151,27 @@ class TestDeleteTask:
 
 class TestFeatureWorktree:
     def test_feature_branch_naming(self):
-        assert _feature_branch("0003-resource-type-enum.md") == "feat/0003-resource-type-enum"
-        assert _feature_branch("0001-foo.md") == "feat/0001-foo"
+        assert (
+            _cfg.get().feature_branch("0003-resource-type-enum.md")
+            == "feat/0003-resource-type-enum"
+        )
+        assert _cfg.get().feature_branch("0001-foo.md") == "feat/0001-foo"
 
     def test_feature_branch_naming_with_prefix(self, monkeypatch):
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), branch_prefix="orc"))
-        assert _feature_branch("0001-foo.md") == "orc/feat/0001-foo"
-        assert _feature_branch("0003-resource-type-enum.md") == "orc/feat/0003-resource-type-enum"
+        assert _cfg.get().feature_branch("0001-foo.md") == "orc/feat/0001-foo"
+        assert (
+            _cfg.get().feature_branch("0003-resource-type-enum.md")
+            == "orc/feat/0003-resource-type-enum"
+        )
 
     def test_feature_branch_naming_empty_prefix_has_no_prefix(self, monkeypatch):
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), branch_prefix=""))
-        assert _feature_branch("0001-foo.md") == "feat/0001-foo"
+        assert _cfg.get().feature_branch("0001-foo.md") == "feat/0001-foo"
 
     def test_feature_worktree_path_under_worktree_base(self, monkeypatch, tmp_path):
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), worktree_base=tmp_path / "wt"))
-        wt = _feature_worktree_path("0003-resource-type-enum.md")
+        wt = _cfg.get().feature_worktree_path("0003-resource-type-enum.md")
         assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
     def test_active_task_name_returns_first_open(self, tmp_path):
@@ -202,9 +205,9 @@ class TestFeatureWorktree:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path))
         absent_wt = tmp_path / "feat-0001-foo"
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: absent_wt)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: absent_wt)
 
-        _ensure_feature_worktree("0001-foo.md")
+        WorktreeManager().ensure_feature_worktree("0001-foo.md")
 
         cmds = [" ".join(c) for c in runs]
         assert any("branch" in c and "feat/0001-foo" in c for c in cmds), cmds
@@ -221,14 +224,14 @@ class TestFeatureWorktree:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
         monkeypatch.setattr(
             _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, orc_dir=tmp_path / ".orc")
         )
 
         fake_wt = tmp_path / "colony-feat-0001-foo"
         fake_wt.mkdir(exist_ok=True)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: fake_wt)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: fake_wt)
 
         _merge_feature_into_dev("0001-foo.md")
 
@@ -256,8 +259,8 @@ class TestGitCoverage:
             r.returncode = 0
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._ensure_dev_worktree()
+        with patch("orc.git.subprocess.run", fake_run):
+            WorktreeManager().ensure_dev_worktree()
         assert any("worktree" in " ".join(c) for c in runs)
 
     def test_rebase_in_progress_false(self, tmp_path):
@@ -268,8 +271,8 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._rebase_in_progress(tmp_path)
+        with patch("orc.git.subprocess.run", fake_run):
+            result = Git(tmp_path).is_rebase_in_progress()
         assert result is False
 
     def test_complete_merge_calls_git(self, tmp_path, monkeypatch):
@@ -288,8 +291,8 @@ class TestGitCoverage:
             r.stdout = "Updating abc..def\nFast-forward\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._complete_merge()
+        with patch("orc.git.subprocess.run", fake_run):
+            result = Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
         cmds = [" ".join(c) for c, _ in runs]
         cwds = [cwd for _, cwd in runs]
         assert any("merge" in c for c in cmds)
@@ -309,8 +312,8 @@ class TestGitCoverage:
             r.stdout = "Already up to date.\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._complete_merge()
+        with patch("orc.git.subprocess.run", fake_run):
+            result = Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
         assert result is False
 
     def test_complete_merge_raises_on_untracked_files(self, tmp_path, monkeypatch):
@@ -332,11 +335,11 @@ class TestGitCoverage:
             )
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
+        with patch("orc.git.subprocess.run", fake_run):
             import pytest
 
-            with pytest.raises(_git.UntrackedMergeBlockError) as exc_info:
-                _git._complete_merge()
+            with pytest.raises(UntrackedMergeBlockError) as exc_info:
+                Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
         assert "board.yaml" in exc_info.value.files
 
     def test_complete_merge_raises_subprocess_error_on_other_failure(self, tmp_path, monkeypatch):
@@ -355,11 +358,11 @@ class TestGitCoverage:
             r.check_returncode = lambda: (_ for _ in ()).throw(_sp.CalledProcessError(128, cmd))
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
+        with patch("orc.git.subprocess.run", fake_run):
             import pytest
 
             with pytest.raises(_sp.CalledProcessError):
-                _git._complete_merge()
+                Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
 
     def test_conflict_status_returns_output(self, tmp_path):
         """Lines 256-262: _conflict_status returns git status output."""
@@ -369,8 +372,8 @@ class TestGitCoverage:
             r.stdout = "UU src/conflict.py"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._conflict_status(tmp_path)
+        with patch("orc.git.subprocess.run", fake_run):
+            result = Git(tmp_path).status_short()
         assert "conflict" in result
 
     def test_count_features_done_counts_feat_merges(self, tmp_path, monkeypatch):
@@ -390,8 +393,8 @@ class TestGitCoverage:
             r.stdout = log_output
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._count_features_done()
+        with patch("orc.git.subprocess.run", fake_run):
+            result = _wf._count_features_done()
         assert result == 2
 
     def test_count_features_done_returns_zero_on_git_error(self, tmp_path, monkeypatch):
@@ -406,14 +409,14 @@ class TestGitCoverage:
             r.stdout = ""
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            result = _git._count_features_done()
+        with patch("orc.git.subprocess.run", fake_run):
+            result = _wf._count_features_done()
         assert result == 0
 
     def test_merge_feature_updates_board(self, tmp_path, monkeypatch):
         """_merge_feature_into_dev is a pure git operation; board deletion is done by dispatcher."""
         import orc.config as _cfg
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         orc_dir = tmp_path / ".orc"
         work_dir = orc_dir / "work"
@@ -429,10 +432,16 @@ class TestGitCoverage:
         monkeypatch.setattr(
             _cfg,
             "_config",
-            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
+            _replace(
+                _cfg.get(),
+                orc_dir=orc_dir,
+                repo_root=tmp_path,
+                work_dev_branch="dev",
+                dev_worktree=dev_wt,
+            ),
         )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
 
         runs = []
 
@@ -443,8 +452,8 @@ class TestGitCoverage:
             r.stdout = "abc1234\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._merge_feature_into_dev("0001-task.md")
+        with patch("orc.git.subprocess.run", fake_run):
+            _wf._merge_feature_into_dev("0001-task.md")
 
         # Git operations: merge, worktree remove, branch delete
         cmds_str = [" ".join(c) for c in runs]
@@ -465,7 +474,7 @@ class TestGitCoverage:
     def test_merge_feature_raises_merge_conflict_error_on_conflict(self, tmp_path, monkeypatch):
         """When git merge fails, MergeConflictError is raised (no --abort) so coder can resolve."""
         import orc.config as _cfg
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir(exist_ok=True)
@@ -476,11 +485,15 @@ class TestGitCoverage:
             _cfg,
             "_config",
             _replace(
-                _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
+                _cfg.get(),
+                orc_dir=dev_wt / ".orc",
+                repo_root=tmp_path,
+                work_dev_branch="dev",
+                dev_worktree=dev_wt,
             ),
         )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
 
         runs = []
 
@@ -494,9 +507,9 @@ class TestGitCoverage:
 
         import pytest
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            with pytest.raises(_git.MergeConflictError) as exc_info:
-                _git._merge_feature_into_dev("0001-task.md")
+        with patch("orc.git.subprocess.run", fake_run):
+            with pytest.raises(MergeConflictError) as exc_info:
+                _wf._merge_feature_into_dev("0001-task.md")
 
         assert exc_info.value.branch == "feat/0001-task"
         assert exc_info.value.worktree == dev_wt
@@ -508,7 +521,7 @@ class TestGitCoverage:
     def test_merge_feature_resets_dirty_dev_before_merge(self, tmp_path, monkeypatch):
         """When dev worktree is dirty, git reset --hard HEAD is called before the merge."""
         import orc.config as _cfg
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir(exist_ok=True)
@@ -523,9 +536,9 @@ class TestGitCoverage:
                 _cfg.get(), orc_dir=dev_wt / ".orc", repo_root=tmp_path, work_dev_branch="dev"
             ),
         )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
-        monkeypatch.setattr(_git, "_is_worktree_dirty", lambda p: True)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
+        monkeypatch.setattr("orc.git.Git.is_dirty", lambda self: True)
 
         runs = []
 
@@ -536,8 +549,8 @@ class TestGitCoverage:
             r.stdout = "abc1234\n" if "--short" in cmd else ""
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._merge_feature_into_dev("0001-task.md")
+        with patch("orc.git.subprocess.run", fake_run):
+            _wf._merge_feature_into_dev("0001-task.md")
 
         cmds_str = [" ".join(c) for c in runs]
         assert any("reset" in c and "--hard" in c and "HEAD" in c for c in cmds_str), (
@@ -547,7 +560,7 @@ class TestGitCoverage:
     def test_merge_feature_writes_changelog(self, tmp_path, monkeypatch):
         """_merge_feature_into_dev appends an entry to orc-CHANGELOG.md after a successful merge."""
         import orc.config as _cfg
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         orc_dir = tmp_path / ".orc"
         work_dir = orc_dir / "work"
@@ -563,10 +576,16 @@ class TestGitCoverage:
         monkeypatch.setattr(
             _cfg,
             "_config",
-            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
+            _replace(
+                _cfg.get(),
+                orc_dir=orc_dir,
+                repo_root=tmp_path,
+                work_dev_branch="dev",
+                dev_worktree=dev_wt,
+            ),
         )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -574,8 +593,8 @@ class TestGitCoverage:
             r.stdout = "abc1234\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._merge_feature_into_dev("0001-task.md")
+        with patch("orc.git.subprocess.run", fake_run):
+            _wf._merge_feature_into_dev("0001-task.md")
 
         changelog = orc_dir / "orc-CHANGELOG.md"
         assert changelog.exists(), "orc-CHANGELOG.md should be created after merge"
@@ -587,7 +606,7 @@ class TestGitCoverage:
     def test_merge_feature_appends_to_existing_changelog(self, tmp_path, monkeypatch):
         """_merge_feature_into_dev appends without overwriting an existing changelog."""
         import orc.config as _cfg
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         orc_dir = tmp_path / ".orc"
         work_dir = orc_dir / "work"
@@ -604,10 +623,16 @@ class TestGitCoverage:
         monkeypatch.setattr(
             _cfg,
             "_config",
-            _replace(_cfg.get(), orc_dir=orc_dir, repo_root=tmp_path, work_dev_branch="dev"),
+            _replace(
+                _cfg.get(),
+                orc_dir=orc_dir,
+                repo_root=tmp_path,
+                work_dev_branch="dev",
+                dev_worktree=dev_wt,
+            ),
         )
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: dev_wt)
-        monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: feat_wt)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -615,8 +640,8 @@ class TestGitCoverage:
             r.stdout = "def5678\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            _git._merge_feature_into_dev("0002-bar.md")
+        with patch("orc.git.subprocess.run", fake_run):
+            _wf._merge_feature_into_dev("0002-bar.md")
 
         text = (orc_dir / "orc-CHANGELOG.md").read_text()
         assert "prior entry" in text, "existing content should be preserved"
@@ -629,8 +654,8 @@ class TestGitCoverage:
             r.stdout = " M src/foo.py\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            assert _git._is_worktree_dirty(tmp_path) is True
+        with patch("orc.git.subprocess.run", fake_run):
+            assert Git(tmp_path).is_dirty() is True
 
     def test_is_worktree_dirty_false(self, tmp_path):
         def fake_run(cmd, **kw):
@@ -638,8 +663,8 @@ class TestGitCoverage:
             r.stdout = ""
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            assert _git._is_worktree_dirty(tmp_path) is False
+        with patch("orc.git.subprocess.run", fake_run):
+            assert Git(tmp_path).is_dirty() is False
 
     def test_merge_in_progress_true(self, tmp_path):
         git_dir = tmp_path / ".git"
@@ -651,8 +676,8 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            assert _git._merge_in_progress(tmp_path) is True
+        with patch("orc.git.subprocess.run", fake_run):
+            assert Git(tmp_path).is_merge_in_progress() is True
 
     def test_merge_in_progress_false(self, tmp_path):
         git_dir = tmp_path / ".git"
@@ -663,16 +688,16 @@ class TestGitCoverage:
             r.stdout = ".git\n"
             return r
 
-        with patch("orc.git.core.subprocess.run", fake_run):
-            assert _git._merge_in_progress(tmp_path) is False
+        with patch("orc.git.subprocess.run", fake_run):
+            assert Git(tmp_path).is_merge_in_progress() is False
 
     def test_feature_merged_into_dev_returns_true(self, monkeypatch):
-        with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=0)):
-            assert _git._feature_merged_into_dev("feat/0001-foo") is True
+        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=0)):
+            assert _wf._feature_merged_into_dev("feat/0001-foo") is True
 
     def test_feature_merged_into_dev_returns_false(self, monkeypatch):
-        with patch("orc.git.core.subprocess.run", return_value=MagicMock(returncode=1)):
-            assert _git._feature_merged_into_dev("feat/0001-foo") is False
+        with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=1)):
+            assert _wf._feature_merged_into_dev("feat/0001-foo") is False
 
 
 # ---------------------------------------------------------------------------
@@ -684,13 +709,13 @@ class TestDeriveTaskStateBoardStatus:
     """Tests for board-status-based routing in _derive_task_state (engine/workflow.py)."""
 
     def _patch(self, monkeypatch, *, board_status):
-        monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
-        monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
-        monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr("orc.engine.workflow._feature_branch_exists", lambda b: True)
+        monkeypatch.setattr(
+            "orc.engine.workflow._feature_has_commits_ahead_of_main", lambda b: True
+        )
+        monkeypatch.setattr("orc.engine.workflow._feature_merged_into_dev", lambda b: False)
 
     def test_review_status_routes_to_qa(self, monkeypatch):
-        from orc.engine.workflow import _derive_task_state
-
         self._patch(monkeypatch, board_status="in-review")
         task_data = {"name": "0002-foo.md", "status": "in-review"}
         agent, reason = _derive_task_state("0002-foo.md", task_data)
@@ -699,7 +724,6 @@ class TestDeriveTaskStateBoardStatus:
 
     def test_approved_status_routes_to_qa_passed(self, monkeypatch):
         from orc.engine.dispatcher import QA_PASSED
-        from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="done")
         task_data = {"name": "0002-foo.md", "status": "done"}
@@ -708,16 +732,12 @@ class TestDeriveTaskStateBoardStatus:
         assert "ready to merge" in reason
 
     def test_rejected_status_routes_to_coder(self, monkeypatch):
-        from orc.engine.workflow import _derive_task_state
-
         self._patch(monkeypatch, board_status="in-progress")
         task_data = {"name": "0002-foo.md", "status": "in-progress"}
         agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
     def test_coding_status_routes_to_coder(self, monkeypatch):
-        from orc.engine.workflow import _derive_task_state
-
         self._patch(monkeypatch, board_status="in-progress")
         task_data = {"name": "0002-foo.md", "status": "in-progress"}
         agent, _ = _derive_task_state("0002-foo.md", task_data)
@@ -725,18 +745,16 @@ class TestDeriveTaskStateBoardStatus:
 
 
 class TestRebaseOnMain:
-    """Tests for _rebase_on_main (extracted from merge.py)."""
+    """Tests for Git.rebase()."""
 
-    def test_rebase_on_main_success(self, monkeypatch):
-        """Returns (True, '') when git rebase exits 0."""
-        with patch("orc.git.core.subprocess.run") as mock_run:
+    def test_rebase_success(self, tmp_path):
+        """Git.rebase() returns normally when git rebase exits 0."""
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            ok, conflict = _git._rebase_on_main(MagicMock())
-        assert ok is True
-        assert conflict == ""
+            Git(tmp_path).rebase("main")  # should not raise
 
-    def test_rebase_on_main_conflict(self, monkeypatch, tmp_path):
-        """Returns (False, conflict_status) when git rebase exits non-zero."""
+    def test_rebase_conflict(self, tmp_path):
+        """Git.rebase() raises RebaseConflictError when git rebase exits non-zero."""
         call_count = 0
 
         def fake_run(cmd, **kwargs):
@@ -748,10 +766,10 @@ class TestRebaseOnMain:
             r.stdout = "" if call_count == 1 else "UU src/conflict.py"
             return r
 
-        with patch("orc.git.core.subprocess.run", side_effect=fake_run):
-            ok, conflict = _git._rebase_on_main(tmp_path)
-        assert ok is False
-        assert "UU" in conflict
+        with patch("orc.git.subprocess.run", side_effect=fake_run):
+            with pytest.raises(RebaseConflictError) as exc_info:
+                Git(tmp_path).rebase("main")
+        assert "UU" in exc_info.value.status_output
 
 
 class TestCountFeaturesDone:
@@ -759,9 +777,9 @@ class TestCountFeaturesDone:
 
     def test_count_features_done_empty(self, monkeypatch):
         """Returns 0 when git log returns no output."""
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="")
-            assert _git._count_features_done() == 0
+            assert _wf._count_features_done() == 0
 
     def test_count_features_done_three(self, monkeypatch):
         """Returns 3 when git log returns 3 merge commits."""
@@ -770,15 +788,15 @@ class TestCountFeaturesDone:
             "def5678 Merge feat/0002-bar into dev\n"
             "ghi9012 Merge feat/0003-baz into dev\n"
         )
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
-            assert _git._count_features_done() == 3
+            assert _wf._count_features_done() == 3
 
     def test_count_features_done_git_error(self, monkeypatch):
         """Returns 0 when git returns non-zero exit code."""
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=128, stdout="")
-            assert _git._count_features_done() == 0
+            assert _wf._count_features_done() == 0
 
 
 class TestFeaturesInDevNotMain:
@@ -786,15 +804,15 @@ class TestFeaturesInDevNotMain:
 
     def test_returns_empty_when_no_merges(self):
         """Returns [] when git log produces no output."""
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="")
-            assert _git._features_in_dev_not_main() == []
+            assert _wf._features_in_dev_not_main() == []
 
     def test_returns_empty_on_git_error(self):
         """Returns [] when git exits non-zero."""
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=128, stdout="")
-            assert _git._features_in_dev_not_main() == []
+            assert _wf._features_in_dev_not_main() == []
 
     def test_extracts_branch_names_no_prefix(self, monkeypatch):
         """Extracts branch names from merge commit subjects (no branch prefix)."""
@@ -803,9 +821,9 @@ class TestFeaturesInDevNotMain:
             "def5678 Merge feat/0002-bar into dev\n"
             "ghi9012 Merge feat/0003-baz into dev\n"
         )
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
-            result = _git._features_in_dev_not_main()
+            result = _wf._features_in_dev_not_main()
         assert result == ["feat/0001-foo", "feat/0002-bar", "feat/0003-baz"]
 
     def test_extracts_branch_names_with_prefix(self, monkeypatch, tmp_path):
@@ -822,9 +840,9 @@ class TestFeaturesInDevNotMain:
         log_output = (
             "abc1234 Merge orc/feat/0001-foo into dev\ndef5678 Merge orc/feat/0002-bar into dev\n"
         )
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
-            result = _git._features_in_dev_not_main()
+            result = _wf._features_in_dev_not_main()
         assert result == ["orc/feat/0001-foo", "orc/feat/0002-bar"]
 
     def test_ignores_non_feat_merge_commits(self):
@@ -834,14 +852,14 @@ class TestFeaturesInDevNotMain:
             "xyz9999 Merge refactor/phase2-dedup: Phase 2\n"
             "def5678 chore: merge dev into main\n"
         )
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
-            result = _git._features_in_dev_not_main()
+            result = _wf._features_in_dev_not_main()
         assert result == ["feat/0001-foo"]
 
     def test_count_features_done_delegates(self):
         """_count_features_done returns len(_features_in_dev_not_main())."""
         log_output = "abc1234 Merge feat/0001-foo into dev\ndef5678 Merge feat/0002-bar into dev\n"
-        with patch("orc.git.core.subprocess.run") as mock_run:
+        with patch("orc.git.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=log_output)
-            assert _git._count_features_done() == 2
+            assert _wf._count_features_done() == 2

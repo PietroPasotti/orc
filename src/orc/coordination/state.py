@@ -237,7 +237,7 @@ class BoardStateManager:
 
         Note: ``summary`` and ``task_files`` are accepted for API compatibility but
         are no longer used here.  Changelog entries are written when task branches
-        are merged into dev (see :func:`orc.git.core._merge_feature_into_dev`).
+        are merged into dev (see :func:`orc.engine.workflow._merge_feature_into_dev`).
         """
         with self._lock:
             vision_path = self._mgr.vision_dir / "ready" / name

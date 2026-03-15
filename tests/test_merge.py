@@ -9,9 +9,9 @@ from typer.testing import CliRunner
 import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.engine.context as _ctx
-import orc.git.core as _git
 import orc.main as m
 import orc.messaging.telegram as tg
+from orc.git import Git, UntrackedMergeBlockError
 
 runner = CliRunner()
 
@@ -43,7 +43,7 @@ class TestMergeCommand:
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
         monkeypatch.setattr(subprocess, "run", _fake_run_success)
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True))
+        monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: completed.append(True))
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 0
@@ -70,7 +70,9 @@ class TestMergeCommand:
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(subprocess, "run", _fake_run_success)
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
+        monkeypatch.setattr(
+            "orc.git.Git.merge_ff_only", lambda self, b: completed.append(True) or True
+        )
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -83,7 +85,7 @@ class TestMergeCommand:
         """With --auto: prints 'Already up to date.' when nothing to merge."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         monkeypatch.setattr(subprocess, "run", _fake_run_success)
-        monkeypatch.setattr(_git, "_complete_merge", lambda: False)
+        monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: False)
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -108,8 +110,7 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/conflict.py")
-        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
+        monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
 
         invocations: list[str] = []
         monkeypatch.setattr(
@@ -119,7 +120,9 @@ class TestMergeCommand:
             _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
         )
         completed: list[bool] = []
-        monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
+        monkeypatch.setattr(
+            "orc.git.Git.merge_ff_only", lambda self, b: completed.append(True) or True
+        )
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
@@ -137,14 +140,15 @@ class TestMergeCommand:
         def fake_run(cmd, **kw):
             r = MagicMock()
             r.returncode = 1 if cmd == ["git", "rebase", "--autostash", "main"] else 0
-            r.stdout = ""
+            r.stdout = "UU src/foo.py\n" if "status" in cmd else ""
+            r.args = cmd
+            r.stderr = ""
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
-        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: False)
+        monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(_git, "_complete_merge", lambda: False)
+        monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: False)
 
         received_extra: list[str] = []
 
@@ -174,7 +178,6 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
         monkeypatch.setattr(
             _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
@@ -198,8 +201,7 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
-        monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: True)
+        monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: True)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
         monkeypatch.setattr(
             _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
@@ -216,9 +218,10 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", _fake_run_success)
 
         monkeypatch.setattr(
-            _git,
-            "_complete_merge",
-            lambda: (_ for _ in ()).throw(_git.UntrackedMergeBlockError([".orc/work/board.yaml"])),
+            "orc.git.Git.merge_ff_only",
+            lambda self, b: (_ for _ in ()).throw(
+                UntrackedMergeBlockError([".orc/work/board.yaml"])
+            ),
         )
 
         result = runner.invoke(m.app, ["merge", "--auto"])
@@ -251,8 +254,8 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        with pytest.raises(_git.UntrackedMergeBlockError) as exc_info:
-            _git._complete_merge()
+        with pytest.raises(UntrackedMergeBlockError) as exc_info:
+            Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
 
         assert ".orc/work/board.yaml" in exc_info.value.files
 
@@ -276,7 +279,7 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         with pytest.raises(subprocess.CalledProcessError):
-            _git._complete_merge()
+            Git(_cfg.get().repo_root).merge_ff_only(_cfg.get().work_dev_branch)
 
     def test_manual_instructions_use_repo_root_not_dev_worktree(
         self, monkeypatch, tmp_path, board_file, mock_validate_env, mock_git
@@ -284,7 +287,7 @@ class TestMergeCommand:
         """Without --auto: the printed git instructions use repo_root, not dev worktree."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
         # Override mock_git's default to return a different worktree
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path / "dev_wt")
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
         monkeypatch.setattr(_status_mod, "_dev_ahead_of_main", lambda: 3)
         monkeypatch.setattr(subprocess, "run", _fake_run_success)
 

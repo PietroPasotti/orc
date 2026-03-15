@@ -172,19 +172,24 @@ class FakeAgent:
 
 @pytest.fixture()
 def mock_git(monkeypatch, tmp_path):
-    """Patch the five most-mocked git helpers to no-ops.
+    """Patch the most-mocked git/workflow helpers to no-ops.
 
     Parameterise individually if a test needs non-default behaviour, e.g.:
         def test_something(mock_git, monkeypatch):
-            monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: True)
+            monkeypatch.setattr("orc.engine.workflow._feature_branch_exists", lambda b: True)
     """
-    import orc.git.core as _git
+    import orc.engine.workflow as _wf
 
-    monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
-    monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
-    monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-    monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
-    monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+    monkeypatch.setattr(_wf, "_feature_branch_exists", lambda b: False)
+    monkeypatch.setattr(_wf, "_feature_has_commits_ahead_of_main", lambda b: False)
+    monkeypatch.setattr(_wf, "_feature_merged_into_dev", lambda b: False)
+    monkeypatch.setattr(
+        "orc.engine.workflow.WorktreeManager.ensure_feature_worktree",
+        lambda self, task: tmp_path,
+    )
+    monkeypatch.setattr(
+        "orc.engine.workflow.WorktreeManager.ensure_dev_worktree", lambda self: tmp_path
+    )
     return tmp_path
 
 
@@ -241,10 +246,10 @@ def mock_validate_env(monkeypatch):
 
 @pytest.fixture()
 def mock_rebase(monkeypatch):
-    """Suppress _rebase_dev_on_main so tests don't hit subprocess."""
-    import orc.git.core as _git_mod
+    """Suppress rebase_dev_on_main so tests don't hit subprocess."""
+    import orc.engine.workflow as _wf_mod
 
-    monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
+    monkeypatch.setattr(_wf_mod, "rebase_dev_on_main", lambda *_: None)
 
 
 # ---------------------------------------------------------------------------

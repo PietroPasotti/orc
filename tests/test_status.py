@@ -58,13 +58,15 @@ class TestStatusCoverage:
             if features_pending is not None
             else ([] if ahead == 0 else [f"feat/000{i}-stub" for i in range(ahead)])
         )
-        monkeypatch.setattr(_st._git, "_features_in_dev_not_main", lambda: _features)
+        monkeypatch.setattr(_st._wf, "_features_in_dev_not_main", lambda: _features)
         if derive_task_state:
             monkeypatch.setattr(_st._wf, "_derive_task_state", derive_task_state)
         if feature_branch:
-            monkeypatch.setattr(_st._git, "_feature_branch", feature_branch)
+            monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: feature_branch(t))
         if feature_branch_exists is not None:
-            monkeypatch.setattr(_st._git, "_feature_branch_exists", lambda b: feature_branch_exists)
+            monkeypatch.setattr(_st._wf, "_feature_branch_exists", lambda b: feature_branch_exists)
+        else:
+            monkeypatch.setattr(_st._wf, "_feature_branch_exists", lambda b: False)
         if last_commit:
             pass  # _last_feature_commit_message removed; board-status-based routing now
         monkeypatch.setattr(_st._ctx, "_role_symbol", lambda role: "")
@@ -375,11 +377,7 @@ class TestStatusCoverage:
             "get_tasks",
             lambda: [{"name": "0001-foo.md", "status": "in-review"}],
         )
-        monkeypatch.setattr(
-            _st._git,
-            "_feature_branch",
-            lambda name: "feat/0001-foo",
-        )
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, name: "feat/0001-foo")
         assert _st._get_wip_branches() == ["feat/0001-foo"]
 
     def test_get_approved_branches_filters_qa_passed(self, monkeypatch, tmp_path):
@@ -389,11 +387,7 @@ class TestStatusCoverage:
             "get_tasks",
             lambda: [{"name": "0001-foo.md", "status": "done"}],
         )
-        monkeypatch.setattr(
-            _st._git,
-            "_feature_branch",
-            lambda name: "feat/0001-foo",
-        )
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, name: "feat/0001-foo")
         assert _st._get_approved_branches() == ["feat/0001-foo"]
 
     def test_status_tui_launched_when_isatty(self, monkeypatch):
