@@ -681,6 +681,8 @@ class Dispatcher:
         self.pool.kill(agent.agent_id)
         self.pool.remove(agent.agent_id)
         _cleanup_agent_temps(agent)
+        if self.hooks.on_agent_done is not None:
+            self.hooks.on_agent_done(agent, -1)
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
 

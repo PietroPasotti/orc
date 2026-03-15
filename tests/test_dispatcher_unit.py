@@ -68,6 +68,20 @@ class TestDispatcherCoverage:
         d._handle_watchdog(agent)
         assert "0001-foo.md" in unassigned
 
+    def test_handle_watchdog_calls_on_agent_done(self, tmp_path, monkeypatch):
+        """_handle_watchdog fires on_agent_done so the TUI removes the stale card."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        done: list[tuple[str, int]] = []
+        svcs = make_services(tmp_path, get_tasks=lambda: [])
+        hooks = _disp.DispatchHooks(
+            on_agent_done=lambda agent, rc: done.append((agent.agent_id, rc))
+        )
+        d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
+        agent = make_agent(tmp_path, role="qa")
+        d.pool.add(agent)
+        d._handle_watchdog(agent)
+        assert done == [("qa-1", -1)]
+
     def test_spawn_agent_raises_for_non_planner_without_task(self, tmp_path):
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
