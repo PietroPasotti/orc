@@ -29,7 +29,6 @@ from textual.containers import VerticalScroll
 from textual.widgets import ContentSwitcher, Static
 
 import orc.config as _cfg
-import orc.git.core as _git
 from orc.coordination.board import TaskStatus
 from orc.coordination.client import BoardSnapshot, get_board_snapshot
 
@@ -86,7 +85,9 @@ def _main_branch() -> str:
     configured = cfg_data.get("orc-main-branch", "").strip()
     if configured:
         return configured
-    return _git._default_branch()
+    from orc.git import Git as _Git
+
+    return _Git(_cfg.get().repo_root).default_branch()
 
 
 def _git_log(branch: str, exclude: list[str]) -> list[tuple[str, str, str, int]]:

@@ -9,7 +9,7 @@ This module provides the formal routing model for the orc state machine:
     without any I/O.
 
 ``route()`` is the **authoritative** routing function.
-:func:`orc.git.core._derive_task_state` delegates to ``route()`` after
+:func:`orc.engine.workflow._derive_task_state` delegates to ``route()`` after
 collecting live git state, ensuring there is a single source of truth.
 Cross-check tests in ``tests/test_state_machine.py`` verify consistency.
 """
@@ -97,7 +97,7 @@ def route(state: WorldState) -> str | None:
         The workflow is terminal — either complete (nothing left to do) or
         hard-blocked (waiting for a human).
 
-    :func:`orc.git.core._derive_task_state` delegates its routing decision to
+    :func:`orc.engine.workflow._derive_task_state` delegates its routing decision to
     this function, so ``route()`` is the single source of truth.
     """
     # Hard block: stop entirely, wait for human.

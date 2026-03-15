@@ -52,6 +52,19 @@ class Config:
     main_branch: str = "main"
     """Name of the main branch in the repository, used as the default target for dev merges."""
 
+    def feature_branch(self, task_name: str) -> str:
+        """Return the feature branch name for *task_name*.
+
+        When ``orc-branch-prefix`` is set the branch is prefixed, e.g.
+        ``"orc/feat/0001-foo"``; without a prefix: ``"feat/0001-foo"``.
+        """
+        branch = f"feat/{Path(task_name).stem}"
+        return f"{self.branch_prefix}/{branch}" if self.branch_prefix else branch
+
+    def feature_worktree_path(self, task_name: str) -> Path:
+        """Return the expected filesystem path of the feature worktree."""
+        return self.worktree_base / Path(task_name).stem
+
 
 _config: Config | None = None
 

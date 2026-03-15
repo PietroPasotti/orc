@@ -14,7 +14,6 @@ import orc.config as _cfg
 import orc.coordination.board as _board
 import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
-import orc.git.core as _git
 from orc.cli import app
 from orc.coordination.board import TaskStatus
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
@@ -71,10 +70,7 @@ def _unmerged_feature_branches() -> list[str]:
     branches are listed as ``{prefix}/feat/*``; otherwise ``feat/*``.
     """
     cfg = _cfg.get()
-    if cfg.branch_prefix:
-        pattern = f"{cfg.branch_prefix}/feat/*"
-    else:
-        pattern = "feat/*"
+    pattern = f"{cfg.branch_prefix}/feat/*" if cfg.branch_prefix else "feat/*"
     result = subprocess.run(
         ["git", "branch", "--list", pattern],
         cwd=cfg.repo_root,
@@ -82,15 +78,10 @@ def _unmerged_feature_branches() -> list[str]:
         text=True,
     )
     branches = [line.strip().lstrip("+* ") for line in result.stdout.splitlines() if line.strip()]
-    unmerged = []
-    for branch in branches:
-        merged = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", branch, cfg.work_dev_branch],
-            cwd=cfg.repo_root,
-        )
-        if merged.returncode != 0:
-            unmerged.append(branch)
-    return unmerged
+    from orc.git import Git
+
+    git = Git(cfg.repo_root)
+    return [b for b in branches if not git.is_merged_into(b, cfg.work_dev_branch)]
 
 
 # Backward-compatible alias used by dispatcher callbacks.
@@ -105,7 +96,7 @@ def _get_wip_branches(branches: list[str] | None = None) -> list[str]:
     result = []
     for task in _board.get_tasks():
         if task.get("status") == TaskStatus.IN_REVIEW:
-            branch = _git._feature_branch(task["name"])
+            branch = _cfg.get().feature_branch(task["name"])
             if branches is None or branch in branches:
                 result.append(branch)
     return result
@@ -119,7 +110,7 @@ def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
     result = []
     for task in _board.get_tasks():
         if task.get("status") == "done":
-            branch = _git._feature_branch(task["name"])
+            branch = _cfg.get().feature_branch(task["name"])
             if branches is None or branch in branches:
                 result.append(branch)
     return result
@@ -165,7 +156,7 @@ def _status(squad: str = "default") -> None:
         _echo_wrapped(f"\n⛔ Blocked: task {blocked_task!r} needs human intervention.")
 
     # --- dev vs main ---------------------------------------------------------
-    features_pending = _git._features_in_dev_not_main()
+    features_pending = _wf._features_in_dev_not_main()
     if features_pending:
         n = len(features_pending)
         _echo_wrapped(f"\ndev has {n} feature{'s' if n != 1 else ''} not yet in main:")
@@ -186,7 +177,7 @@ def _status(squad: str = "default") -> None:
             if token == AgentRole.CODER:
                 coder_tasks.append((name, reason))
             elif token == AgentRole.QA:
-                qa_tasks.append((name, _git._feature_branch(name)))
+                qa_tasks.append((name, _cfg.get().feature_branch(name)))
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
@@ -252,8 +243,8 @@ def _status(squad: str = "default") -> None:
                 if isinstance(task, dict)
                 else TaskStatus.IN_PROGRESS
             )
-            branch = _git._feature_branch(name)
-            if _git._feature_branch_exists(branch):
+            branch = _cfg.get().feature_branch(name)
+            if _wf._feature_branch_exists(branch):
                 _echo_wrapped(f"  • {name}  ({branch})  status: {status}")
             else:
                 _echo_wrapped(f"  • {name}  (no branch yet)")

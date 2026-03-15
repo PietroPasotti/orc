@@ -191,7 +191,7 @@ class TestGatherGitTree:
             "_config",
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
-        monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
         monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
@@ -218,7 +218,7 @@ class TestGatherGitTree:
             "_config",
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
-        monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
         monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
@@ -241,7 +241,7 @@ class TestGatherGitTree:
             "_config",
             _replace(_cfg.get(), repo_root=tmp_path, work_dev_branch="dev", branch_prefix=""),
         )
-        monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
         monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
 
         with patch("orc.cli.tui.status_tui.subprocess.run", fake_run):
@@ -319,14 +319,14 @@ class TestMainBranch:
 
     def test_falls_back_to_default_branch(self, monkeypatch):
         monkeypatch.setattr("orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {})
-        monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "master")
+        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "master")
         assert _main_branch() == "master"
 
     def test_ignores_empty_string_config(self, monkeypatch):
         monkeypatch.setattr(
             "orc.cli.tui.status_tui._cfg.load_orc_config", lambda *a, **kw: {"orc-main-branch": ""}
         )
-        monkeypatch.setattr("orc.cli.tui.status_tui._git._default_branch", lambda: "main")
+        monkeypatch.setattr("orc.git.Git.default_branch", lambda self: "main")
         assert _main_branch() == "main"
 
 

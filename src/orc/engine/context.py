@@ -11,9 +11,9 @@ import structlog
 import yaml
 
 import orc.config as _cfg
-import orc.git.core as _git
 from orc.ai import invoke as inv
 from orc.coordination.state import BoardStateManager
+from orc.git import Git as _Git
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole
 
@@ -364,8 +364,9 @@ def build_agent_context(
     resolved_model = model or _DEFAULT_MODEL
     role = _parse_role_file(agent_name)
 
-    dev_worktree = _git._ensure_dev_worktree()
     cfg = _cfg.get()
+    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)
+    dev_worktree = cfg.dev_worktree
     try:
         agents_rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
@@ -393,8 +394,8 @@ def build_agent_context(
     else:
         plans = board.read_work_summary()
 
-    feature_branch = _git._feature_branch(active_task) if active_task else None
-    feature_wt = _git._feature_worktree_path(active_task) if active_task else None
+    feature_branch = cfg.feature_branch(active_task) if active_task else None
+    feature_wt = cfg.feature_worktree_path(active_task) if active_task else None
 
     id_line = (
         f"\n**Your agent ID**: `{agent_id}` — use this ID in all Telegram messages.\n"
@@ -529,5 +530,7 @@ def invoke_agent(
     agent_name: str, context: str, model: str, worktree: Path | None = None
 ) -> int:  # pragma: no cover
     """Invoke the configured AI CLI with the agent's full context prompt."""
-    cwd = worktree or _git._ensure_dev_worktree()
+    cfg = _cfg.get()
+    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)
+    cwd = worktree or cfg.dev_worktree
     return inv.invoke(context, cwd=cwd, model=model)

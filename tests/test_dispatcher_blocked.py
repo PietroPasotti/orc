@@ -9,7 +9,7 @@ import orc.ai.invoke as inv
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.engine.dispatcher as _disp
-import orc.git.core as _git_mod
+import orc.engine.workflow as _git_mod
 import orc.main as m
 from orc.ai.backends import SpawnResult
 
@@ -23,7 +23,7 @@ class TestBlockedResumption:
         """planner(done) is a normal terminal state — dispatcher routes to planner (no tasks)."""
         from dataclasses import replace as _replace
 
-        import orc.git.core as _git
+        import orc.engine.workflow as _wf
 
         board_file("counter: 1\ntasks: []\n")
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc"))
@@ -33,18 +33,18 @@ class TestBlockedResumption:
         vision_dir.mkdir(parents=True, exist_ok=True)
         (vision_dir / "feature-x.md").write_text("# Feature X\n")
 
-        monkeypatch.setattr(_git, "_feature_branch_exists", lambda b: False)
-        monkeypatch.setattr(_git, "_feature_has_commits_ahead_of_main", lambda b: False)
-        monkeypatch.setattr(_git, "_feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(_git, "_ensure_feature_worktree", lambda task: tmp_path)
-        monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: tmp_path)
+        monkeypatch.setattr(_wf, "_feature_branch_exists", lambda b: False)
+        monkeypatch.setattr(_wf, "_feature_has_commits_ahead_of_main", lambda b: False)
+        monkeypatch.setattr(_wf, "_feature_merged_into_dev", lambda b: False)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
 
         import orc.messaging.telegram as tg
 
         done_msgs = [make_msg("[planner-1](done) 2026-03-09T10:00:00Z: All done.", ts=1000)]
         monkeypatch.setattr(tg, "get_messages", lambda: done_msgs)
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
-        monkeypatch.setattr(_git_mod, "_rebase_dev_on_main", lambda *_: None)
+        monkeypatch.setattr(_git_mod, "rebase_dev_on_main", lambda *_: None)
         monkeypatch.setattr(tg, "send_message", lambda t: None)
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 

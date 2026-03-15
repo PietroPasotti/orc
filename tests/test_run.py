@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 import orc.cli.run as _run_mod
 import orc.config as _cfg
 import orc.engine.dispatcher as _disp
-import orc.git.core as _git
+import orc.engine.workflow as _wf
 import orc.squad as _sq
 from orc.squad import SquadConfig
 
@@ -283,7 +283,7 @@ class TestSafeFeaturesDone:
     def test_returns_zero_on_exception(self, monkeypatch):
         """_safe_features_done returns 0 when _count_features_done raises."""
         monkeypatch.setattr(
-            _git,
+            _wf,
             "_count_features_done",
             lambda: (_ for _ in ()).throw(RuntimeError("git error")),
         )
@@ -291,7 +291,7 @@ class TestSafeFeaturesDone:
 
     def test_returns_value_on_success(self, monkeypatch):
         """_safe_features_done returns the count on success."""
-        monkeypatch.setattr(_git, "_count_features_done", lambda: 3)
+        monkeypatch.setattr(_wf, "_count_features_done", lambda: 3)
         assert _run_mod._safe_features_done() == 3
 
 

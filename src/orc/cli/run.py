@@ -15,7 +15,6 @@ import orc.cli.status as _status_mod
 import orc.config as _cfg
 import orc.engine.context as _ctx
 import orc.engine.workflow as _wf
-import orc.git.core as _git
 from orc.cli import _check_env_or_exit, app
 from orc.cli import tui as _tui
 from orc.coordination import BoardStateManager, CoordinationServer
@@ -95,7 +94,7 @@ def _run(
 
     typer.echo("⟳ Syncing dev on main…")
     messages = tg.get_messages()
-    _git._rebase_dev_on_main(messages, squad_cfg)
+    _wf.rebase_dev_on_main(messages, squad_cfg)
 
     # Start the coordination API server so agent tools in worktrees always
     # write to the correct (main) .orc/ directory.
@@ -112,7 +111,7 @@ def _run(
     messaging_svc = tg.TelegramMessagingService()
     workflow_svc = _wf.WorkflowSvc(squad_cfg)
     agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
-    worktree_svc = _git.WorktreeManager()
+    worktree_svc = _wf.WorktreeManager()
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:
@@ -196,7 +195,7 @@ def _run(
 def _safe_features_done() -> int:
     """Return the count of feature-merge commits in dev not yet in main, or 0 on error."""
     try:
-        return _git._count_features_done()
+        return _wf._count_features_done()
     except Exception:
         logger.debug("_safe_features_done: failed to count features", exc_info=True)
         return 0

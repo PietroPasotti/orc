@@ -1,4 +1,4 @@
-"""Tests for orc/conflict.py — ConflictResolver."""
+"""Tests for ConflictResolver (now in orc.engine.workflow)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ import pytest
 
 import orc.config as _cfg
 import orc.engine.context as _ctx
-import orc.git.core as _git
-from orc.git.conflict import ConflictResolutionFailed, ConflictResolver
+from orc.engine.workflow import ConflictResolutionFailed, ConflictResolver
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,7 +40,7 @@ class TestResolveMergeConflict:
         with (
             patch.object(_ctx, "build_agent_context", return_value=("model", "ctx")),
             patch.object(_ctx, "invoke_agent", return_value=0),
-            patch.object(_git, "_merge_in_progress", return_value=False),
+            patch("orc.git.Git.is_merge_in_progress", return_value=False),
         ):
             # Should NOT raise
             resolver.resolve_merge_conflict("feat/task", tmp_path, "M src/foo.py")
@@ -66,7 +65,7 @@ class TestResolveMergeConflict:
         with (
             patch.object(_ctx, "build_agent_context", return_value=("model", "ctx")),
             patch.object(_ctx, "invoke_agent", return_value=0),
-            patch.object(_git, "_merge_in_progress", return_value=True),
+            patch("orc.git.Git.is_merge_in_progress", return_value=True),
         ):
             with pytest.raises(ConflictResolutionFailed):
                 resolver.resolve_merge_conflict("feat/task", tmp_path, "M src/foo.py")
