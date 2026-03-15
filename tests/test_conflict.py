@@ -23,7 +23,7 @@ def _make_resolver():
         def model(self, role: str) -> str:
             return "test-model"
 
-    return ConflictResolver(squad_cfg=FakeSquad(), messages=[])
+    return ConflictResolver(squad_cfg=FakeSquad())
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ class TestResolveMergeConflict:
         resolver = _make_resolver()
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value=("model", "ctx")),
+            patch.object(_ctx, "build_agent_context", return_value="ctx"),
             patch.object(_ctx, "invoke_agent", return_value=0),
             patch("orc.git.Git.is_merge_in_progress", return_value=False),
         ):
@@ -51,7 +51,7 @@ class TestResolveMergeConflict:
         resolver = _make_resolver()
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value=("model", "ctx")),
+            patch.object(_ctx, "build_agent_context", return_value="ctx"),
             patch.object(_ctx, "invoke_agent", return_value=1),
         ):
             with pytest.raises(ConflictResolutionFailed):
@@ -63,7 +63,7 @@ class TestResolveMergeConflict:
         resolver = _make_resolver()
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value=("model", "ctx")),
+            patch.object(_ctx, "build_agent_context", return_value="ctx"),
             patch.object(_ctx, "invoke_agent", return_value=0),
             patch("orc.git.Git.is_merge_in_progress", return_value=True),
         ):

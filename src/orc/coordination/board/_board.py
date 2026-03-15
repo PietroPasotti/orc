@@ -119,14 +119,6 @@ def delete_task(task_name: str) -> None:
     mgr.delete_task_file(task_name)
 
 
-def _active_task_name() -> str | None:
-    """Return the file name of the first task, or None if the board is empty."""
-    tasks = _read_board().tasks
-    if not tasks:
-        return None
-    return tasks[0].name
-
-
 def _read_work() -> str:
     """Return a human-readable kanban overview (board metadata only).
 

@@ -10,15 +10,13 @@ import orc.config as _cfg
 import orc.engine.workflow as _wf
 from orc.cli import _check_env_or_exit, app
 from orc.git import Git, UntrackedMergeBlockError
-from orc.messaging import telegram as tg
 
 logger = structlog.get_logger(__name__)
 
 
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
-    messages = tg.get_messages()
-    _wf.rebase_dev_on_main(messages)
+    _wf.rebase_dev_on_main()
 
     if auto:
         cfg = _cfg.get()

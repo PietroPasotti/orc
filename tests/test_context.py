@@ -284,46 +284,25 @@ class TestContextCoverage:
         self._setup_context(monkeypatch, tmp_path)
         from orc.coordination.state import BoardStateManager
 
-        model, ctx = _ctx.build_agent_context(
-            "planner", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
-        )
+        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
         assert isinstance(ctx, str)
         assert ".orc/agents/planner/_main.md" in ctx
 
     def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
         """QA agent with an active feature branch gets review-specific git info."""
         self._setup_context(monkeypatch, tmp_path)
-        work_dir = tmp_path / ".orc" / "work"
-        (work_dir / "board.yaml").write_text(
-            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
-        )
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
-        _, ctx = _ctx.build_agent_context(
-            "qa", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
+        ctx = _ctx.build_agent_context(
+            "qa",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            task_name="0001-task.md",
         )
         assert "feat/0001-task" in ctx
         assert "Branch to review" in ctx
-
-    def test_build_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
-        """else-branch with feature_branch set (agent_name not coder/qa)."""
-        self._setup_context(monkeypatch, tmp_path)
-        work_dir = tmp_path / ".orc" / "work"
-        (work_dir / "board.yaml").write_text(
-            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
-        )
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
-        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feature/0001-task")
-        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
-        from orc.coordination.state import BoardStateManager
-
-        _, ctx = _ctx.build_agent_context(
-            "planner", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
-        )
-        assert "feature/0001-task" in ctx
 
     def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
         """ORC_DIR not under REPO_ROOT → falls back to dir name in role path."""
@@ -352,8 +331,8 @@ class TestContextCoverage:
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
         from orc.coordination.state import BoardStateManager
 
-        _, ctx = _ctx.build_agent_context("planner", [], BoardStateManager(_cfg.get().orc_dir))
-        assert "external-orc/work/" in ctx
+        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
+        assert "external-orc/agents/planner/_main.md" in ctx
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +502,7 @@ class TestBuildContextTodos:
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: fake_todos)
         from orc.coordination.state import BoardStateManager
 
-        _, ctx = _ctx.build_agent_context("planner", [], BoardStateManager(_cfg.get().orc_dir))
+        ctx = _ctx.build_agent_context("planner", board=BoardStateManager(_cfg.get().orc_dir))
         assert "Code TODOs and FIXMEs" in ctx
         assert "`TODO`" in ctx
 
@@ -542,49 +521,10 @@ class TestBuildContextTodos:
         )
         from orc.coordination.state import BoardStateManager
 
-        _, ctx = _ctx.build_agent_context("coder", [], BoardStateManager(_cfg.get().orc_dir))
+        ctx = _ctx.build_agent_context(
+            "coder", board=BoardStateManager(_cfg.get().orc_dir), task_name="0001-task.md"
+        )
         assert "Code TODOs and FIXMEs" not in ctx
-
-
-# ---------------------------------------------------------------------------
-# _window_chat
-# ---------------------------------------------------------------------------
-
-
-class TestWindowChat:
-    def test_empty_chat_unchanged(self):
-        assert _ctx._window_chat("") == ""
-
-    def test_short_chat_unchanged(self):
-        text = "\n".join(f"line {i}" for i in range(10))
-        assert _ctx._window_chat(text, max_recent=50) == text
-
-    def test_long_chat_trims_old_non_agent_lines(self):
-        old_lines = [f"human message {i}" for i in range(20)]
-        agent_line = "[coder-1](done) 2026-03-01T12:00:00Z: Task complete."
-        old_lines.insert(5, agent_line)
-        recent_lines = [f"recent line {i}" for i in range(10)]
-        text = "\n".join(old_lines + recent_lines)
-        result = _ctx._window_chat(text, max_recent=10)
-        # Recent lines preserved
-        assert "recent line 0" in result
-        assert "recent line 9" in result
-        # Agent state line preserved from old section
-        assert "[coder-1](done)" in result
-        # Old human messages trimmed
-        assert "human message 0" not in result
-        assert "older messages trimmed" in result
-
-    def test_all_old_are_agent_lines(self):
-        old_lines = [f"[agent-{i}](running) msg" for i in range(5)]
-        recent_lines = [f"recent {i}" for i in range(3)]
-        text = "\n".join(old_lines + recent_lines)
-        result = _ctx._window_chat(text, max_recent=3)
-        # All agent lines kept
-        for i in range(5):
-            assert f"[agent-{i}](running)" in result
-        # No trimmed notice since nothing was dropped
-        assert "trimmed" not in result
 
 
 # ---------------------------------------------------------------------------

@@ -175,24 +175,6 @@ class TestFeatureWorktree:
         wt = _cfg.get().feature_worktree_path("0003-resource-type-enum.md")
         assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
-    def test_active_task_name_returns_first_open(self, tmp_path):
-        from orc.coordination.state import BoardStateManager
-
-        orc_dir = tmp_path / ".orc"
-        (orc_dir / "work").mkdir(parents=True, exist_ok=True)
-        (orc_dir / "work" / "board.yaml").write_text(
-            "counter: 2\ntasks:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n"
-        )
-        assert BoardStateManager(orc_dir).active_task_name() == "0001-foo.md"
-
-    def test_active_task_name_returns_none_when_empty(self, tmp_path):
-        from orc.coordination.state import BoardStateManager
-
-        orc_dir = tmp_path / ".orc"
-        (orc_dir / "work").mkdir(parents=True, exist_ok=True)
-        (orc_dir / "work" / "board.yaml").write_text("counter: 1\ntasks: []\n")
-        assert BoardStateManager(orc_dir).active_task_name() is None
-
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):
         runs: list[list[str]] = []
 

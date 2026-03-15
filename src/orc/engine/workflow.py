@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 import structlog
 import typer
@@ -20,8 +21,6 @@ from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
 from orc.engine.state_machine import LastCommit, WorldState
 from orc.engine.state_machine import route as _route
 from orc.git import Git, MergeConflictError, RebaseConflictError
-from orc.messaging import telegram as tg
-from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole, SquadConfig
 
 logger = structlog.get_logger(__name__)
@@ -64,13 +63,10 @@ class ConflictResolver:
     ----------
     squad_cfg:
         Squad configuration; used to select the coder model.
-    messages:
-        Current Telegram message history; passed as context to the agent.
     """
 
-    def __init__(self, squad_cfg: SquadConfig, messages: list[ChatMessage]) -> None:
+    def __init__(self, squad_cfg: SquadConfig) -> None:
         self.squad_cfg = squad_cfg
-        self.messages = messages
 
     def _coder_model(self) -> str:
         return self.squad_cfg.model(AgentRole.CODER)
@@ -100,14 +96,8 @@ class ConflictResolver:
             "4. Do NOT `git merge --abort`. Finish the merge.\n"
             "5. Exit when the merge is complete.\n"
         )
-        model, context = _ctx.build_agent_context(
-            AgentRole.CODER,
-            self.messages,
-            extra=conflict_extra,
-            worktree=worktree,
-            model=self._coder_model(),
-        )
-        rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
+        context = _ctx.build_agent_context(AgentRole.CODER) + "\n\n" + conflict_extra
+        rc = _ctx.invoke_agent(AgentRole.CODER, context, self._coder_model(), worktree=worktree)
         if rc != 0:
             logger.error("coder agent failed to resolve merge conflict", exit_code=rc)
             typer.echo(f"✗ Coder agent exited with code {rc} while resolving merge conflict.")
@@ -145,10 +135,8 @@ class ConflictResolver:
             "5. Exit when the rebase is complete.\n"
         )
         coder_model = self._coder_model()
-        model, context = _ctx.build_agent_context(
-            AgentRole.CODER, self.messages, extra=conflict_extra, model=coder_model
-        )
-        rc = _ctx.invoke_agent(AgentRole.CODER, context, model)
+        context = _ctx.build_agent_context(AgentRole.CODER) + "\n\n" + conflict_extra
+        rc = _ctx.invoke_agent(AgentRole.CODER, context, coder_model)
         if rc != 0:
             logger.error("coder agent failed to resolve startup rebase", exit_code=rc)
             typer.echo(f"✗ Coder agent exited with code {rc} while resolving startup rebase.")
@@ -264,7 +252,7 @@ def _merge_feature_into_dev(task_name: str) -> None:
     git_root.branch_delete(branch, force=True)
 
 
-def rebase_dev_on_main(messages: list[ChatMessage], squad_cfg: SquadConfig | None = None) -> None:
+def rebase_dev_on_main(squad_cfg: SquadConfig | None = None) -> None:
     """Rebase dev on top of main so each session starts with the latest code.
 
     If the rebase produces conflicts a coder agent is invoked to resolve them
@@ -287,7 +275,7 @@ def rebase_dev_on_main(messages: list[ChatMessage], squad_cfg: SquadConfig | Non
                     return _ctx._DEFAULT_MODEL
 
             _squad = _DefaultModel()  # type: ignore[assignment]
-        resolver = ConflictResolver(squad_cfg=_squad, messages=messages)  # type: ignore[arg-type]
+        resolver = ConflictResolver(squad_cfg=_squad)  # type: ignore[arg-type]
         try:
             resolver.resolve_rebase_conflict(cfg.dev_worktree, exc.status_output)
         except ConflictResolutionFailed as e:
@@ -385,25 +373,29 @@ def _derive_task_state(task_name: str, task_data: TaskEntry | None = None) -> tu
 # ---------------------------------------------------------------------------
 
 
+class _ContextBuilder(Protocol):
+    def __call__(
+        self,
+        role: AgentRole,
+        agent_id: str,
+        task_name: str | None = ...,
+    ) -> tuple[str, str]: ...
+
+
 def _make_context_builder(
     squad_cfg: SquadConfig,
     board: BoardStateManager,
-) -> Callable[[str, str, list[ChatMessage], Path | None], tuple[str, str]]:
+) -> _ContextBuilder:
     """Return a ``build_context`` callback that sources models from *squad_cfg*."""
 
     def _build(
-        role: str,
+        role: AgentRole,
         agent_id: str,
-        messages: list[ChatMessage],
-        worktree: Path | None,
+        task_name: str | None = None,
     ) -> tuple[str, str]:
-        return _ctx.build_agent_context(
-            role,
-            messages,
-            board,
-            worktree=worktree,
-            agent_id=agent_id,
-            model=squad_cfg.model(role),
+        return (
+            squad_cfg.model(role),
+            _ctx.build_agent_context(role, board=board, agent_id=agent_id, task_name=task_name),
         )
 
     return _build
@@ -416,8 +408,7 @@ def _make_merge_feature_fn(squad_cfg: SquadConfig) -> Callable[[str], None]:
         try:
             _merge_feature_into_dev(task_name)
         except MergeConflictError as exc:
-            messages = tg.get_messages()
-            resolver = ConflictResolver(squad_cfg=squad_cfg, messages=messages)
+            resolver = ConflictResolver(squad_cfg=squad_cfg)
             try:
                 resolver.resolve_merge_conflict(exc.branch, exc.worktree, exc.status_output)
             except ConflictResolutionFailed as e:
@@ -445,17 +436,16 @@ class AgentSvc:
     """Bundles agent-spawn callbacks that require *squad_cfg* at construction time."""
 
     def __init__(self, squad_cfg: SquadConfig, board: BoardStateManager) -> None:
-        self._build = _make_context_builder(squad_cfg, board)
+        self._build: _ContextBuilder = _make_context_builder(squad_cfg, board)
         self._board = board
 
     def build_context(
         self,
-        role: str,
+        role: AgentRole,
         agent_id: str,
-        messages: list[ChatMessage],
-        worktree: Path | None,
+        task_name: str | None = None,
     ) -> tuple[str, str]:
-        return self._build(role, agent_id, messages, worktree)
+        return self._build(role, agent_id, task_name=task_name)
 
     def spawn(
         self, context: str, cwd: Path, model: str | None, log_path: Path | None

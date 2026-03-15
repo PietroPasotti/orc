@@ -20,6 +20,7 @@ from orc.ai.backends import SpawnResult
 from orc.coordination.models import TaskEntry
 from orc.engine.context import TodoItem
 from orc.messaging.messages import ChatMessage
+from orc.squad import AgentRole
 
 
 @runtime_checkable
@@ -120,10 +121,9 @@ class AgentService(Protocol):
 
     def build_context(
         self,
-        role: str,
+        role: AgentRole,
         agent_id: str,
-        messages: list[ChatMessage],
-        worktree: Path | None,
+        task_name: str | None = None,
     ) -> tuple[str, str]:
         """Return ``(model, context_prompt)`` for an agent."""
         ...

@@ -11,7 +11,6 @@ Public API
 """
 
 from orc.coordination.board._board import (
-    _active_task_name,  # noqa: F401
     _read_board,  # noqa: F401
     _read_work,  # noqa: F401
     add_task_comment,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+import typing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,9 +22,6 @@ from orc.messaging.messages import (
 )
 from orc.messaging.messages import (
     is_agent_message as _is_agent_message,
-)
-from orc.messaging.messages import (
-    messages_to_text as _messages_to_text,
 )
 from orc.messaging.messages import (
     parse_agent_id as _parse_agent_id,
@@ -43,6 +41,8 @@ class TodoItem:
     text: str
 
 
+# TODO move all these globals to config as
+#  'default-model', 'human-reply-wait-timeout', 'chat-window-size'.
 _DEFAULT_MODEL = "claude-sonnet-4.6"
 _BLOCKED_TIMEOUT = 3600.0  # seconds before giving up on a human reply
 _CHAT_WINDOW_SIZE = 50  # max recent messages to keep in full
@@ -50,36 +50,6 @@ _CHAT_WINDOW_SIZE = 50  # max recent messages to keep in full
 # ---- Chat-history windowing -----------------------------------------------
 
 _AGENT_STATE_RE = re.compile(r"^\[.+?\]\(.+?\)")
-
-
-def _window_chat(chat_text: str, *, max_recent: int = _CHAT_WINDOW_SIZE) -> str:
-    """Trim chat history to *max_recent* full messages.
-
-    Older messages are kept only if they look like agent state-transition
-    lines (``[role](state) ...``).  Everything else is dropped and replaced
-    with a ``[... N older messages trimmed ...]`` notice.
-    """
-    if not chat_text:
-        return chat_text
-    lines = chat_text.splitlines()
-    if len(lines) <= max_recent:
-        return chat_text
-
-    old = lines[:-max_recent]
-    recent = lines[-max_recent:]
-
-    kept: list[str] = []
-    trimmed = 0
-    for line in old:
-        if _AGENT_STATE_RE.match(line.strip()):
-            kept.append(line)
-        else:
-            trimmed += 1
-
-    if trimmed:
-        kept.append(f"\n[... {trimmed} older messages trimmed ...]\n")
-
-    return "\n".join(kept + recent)
 
 
 def _scan_todos(root: Path) -> list[TodoItem]:
@@ -167,14 +137,11 @@ def _role_symbol(role: str) -> str:
 
 
 def build_agent_context(
-    agent_name: str,
-    messages: list[ChatMessage],
+    role: AgentRole,
     board: BoardStateManager | None = None,
-    extra: str = "",
-    worktree: Path | None = None,
     agent_id: str | None = None,
-    model: str | None = None,
-) -> tuple[str, str]:
+    task_name: str | None = None,  # this can be None only for planner
+) -> str:
     """Return ``(model, context)`` for the given agent.
 
     The context is kept intentionally compact: only live runtime data is
@@ -185,103 +152,98 @@ def build_agent_context(
     *board* is the coordination state manager.  When omitted (e.g. from CLI
     commands like ``orc merge`` that run outside of ``orc run``), a fresh
     :class:`BoardStateManager` is created from the current config.
+
+    *task_name* is the specific task assigned to this agent (coder/QA only).
+    The dispatcher always knows which task it is dispatching; it must pass it
+    explicitly rather than letting context.py guess from board state.
     """
     if board is None:
         board = BoardStateManager(_cfg.get().orc_dir)
-    resolved_model = model or _DEFAULT_MODEL
 
     cfg = _cfg.get()
-    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)
+    dev_branch = cfg.work_dev_branch
     dev_worktree = cfg.dev_worktree
+
+    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, dev_branch)
     try:
         agents_rel = cfg.orc_dir.relative_to(cfg.repo_root)
     except ValueError:
         agents_rel = Path(cfg.orc_dir.name)
 
-    role_path = agents_rel / "agents" / agent_name / "_main.md"
+    role_main_prompt_path = (agents_rel / "agents" / role / "_main.md").absolute()
 
-    chat = _messages_to_text(messages)
-    chat = _window_chat(chat)
+    context = f"""
+    Your ``agent ID`` is: **`{agent_id}`**.
+    Read this file before doing anything else, 
+    consider it an extension of your prompt: `{role_main_prompt_path}`.
+    Reading that will clarify what to do with what follows.
+    
+    # Additional Context:\n\n
+    """
 
-    # Board: metadata-only summary (no task content, no comments — agents fetch on demand)
-    active_task = board.active_task_name()
-    plans = board.read_work_summary()
+    feature_branch = cfg.feature_branch(task_name) if task_name else None
+    feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
 
-    feature_branch = cfg.feature_branch(active_task) if active_task else None
-    feature_wt = cfg.feature_worktree_path(active_task) if active_task else None
+    match role:
+        case AgentRole.PLANNER:
+            planner_ctx = f"""
+            Dev branch: `{dev_branch}`\n
+            Dev worktree path: `{dev_worktree}`\n
+            Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)\n\n
+            All file edits and git commands must be performed inside the dev 
+            worktree (`{dev_worktree}`).
+            """
+            if feature_branch:
+                planner_ctx += f"\nActive feature branch: `{feature_branch}` (coder's branch)"
+            if blocked_tasks := board.get_blocked_tasks():
+                items = "\n".join(
+                    f"- `{name}` — run `.orc/agent_tools/share/get_task.py {name}`"
+                    " to view full details and conversation"
+                    for name in blocked_tasks
+                )
+                planner_ctx += f"### Blocked tasks\n\n{items}\n\n"
+            todos = _scan_todos(cfg.repo_root)
+            planner_ctx += f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
+            context += planner_ctx
 
-    id_line = (
-        f"\n**Your agent ID**: `{agent_id}` — use this ID in all Telegram messages.\n"
-        if agent_id
-        else ""
-    )
+        case AgentRole.CODER:
+            assert feature_branch is not None
+            assert feature_wt is not None
 
-    if agent_name == AgentRole.CODER and feature_branch:
-        git_info = (
-            f"Your branch: `{feature_branch}` (cut from `main`)\n"
-            f"Your worktree: `{feature_wt}` — all edits and git commands go here\n"
-            f"Dev branch: `{cfg.work_dev_branch}` (managed by planner and QA — do not touch)\n"
-            f"Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
-            f"Work exclusively in your feature worktree (`{feature_wt}`). "
-            f"Commit to `{feature_branch}` only. "
-            f"The orchestrator will merge your branch into "
-            f"`{cfg.work_dev_branch}` after QA passes."
-        )
-    elif agent_name == AgentRole.QA and feature_branch:
-        git_info = (
-            f"Branch to review: `{feature_branch}`\n"
-            f"Feature worktree: `{feature_wt}`\n"
-            f"Dev branch: `{cfg.work_dev_branch}`\n"
-            f"Dev worktree: `{dev_worktree}`\n"
-            f"Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
-            f"Review `{feature_branch}` against `{cfg.work_dev_branch}` "
-            f"(e.g. `git diff {cfg.work_dev_branch}...{feature_branch}`).\n"
-            f"Run in the dev worktree (`{dev_worktree}`). "
-            f"**Do NOT merge** — the orchestrator merges after you signal `passed`."
-        )
-    else:
-        git_info = (
-            f"Dev branch: `{cfg.work_dev_branch}`\n"
-            f"Dev worktree path: `{dev_worktree}`\n"
-            f"Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)\n\n"
-            f"All file edits and git commands must be performed inside the dev "
-            f"worktree (`{dev_worktree}`)."
-        )
-        if feature_branch:
-            git_info += f"\nActive feature branch: `{feature_branch}` (coder's branch)"
+            context += f"""
+            Your branch: `{feature_branch}` (cut from `{dev_branch}`)\n
+            Your worktree: `{feature_wt}` — all edits and git commands go here\n
+            Dev branch: `{dev_branch}` (managed by planner and QA — do not touch)\n
+            Work exclusively in your feature worktree. 
+            Commit to `{feature_branch}` **EXCLUSIVELY**. 
+            The orchestrator will merge your branch into 
+            `{dev_branch}` after QA passes.    
+            """
 
-    extra_section = f"## Current task\n\n{extra}\n\n" if extra else ""
+        case AgentRole.QA:
+            assert feature_branch is not None
+            assert feature_wt is not None
 
-    blocked_section = ""
-    if agent_name == AgentRole.PLANNER:
-        blocked_tasks = board.get_blocked_tasks()
-        if blocked_tasks:
-            items = "\n".join(
-                f"- `{name}` — run `.orc/agent_tools/share/get_task.py {name}`"
-                " to view full details and conversation"
-                for name in blocked_tasks
-            )
-            blocked_section = f"### Blocked tasks\n\n{items}\n\n"
+            context += f"""
+            Task: `{task_name}`
+            Branch to review: `{feature_branch}`
+            Feature worktree: `{feature_wt}`
+            Dev branch: `{dev_branch}`
+            Dev worktree: `{dev_worktree}`
+            Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
+            
+            Review `{feature_branch}` against `{dev_branch}` 
+            (e.g. `git diff {dev_branch}...{feature_branch}`).
+            
+            Run in the dev worktree (`{dev_worktree}`). 
+            **Do NOT merge** — the orchestrator merges only if you 
+            approve this work by signalling `passed`.
+            """
 
-    todos_section = ""
-    if agent_name == AgentRole.PLANNER:
-        todos = _scan_todos(cfg.repo_root)
-        todos_section = f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
+        case _:
+            typing.assert_never(role)
 
-    context = (
-        f"Your role instructions are at `{role_path}` —"
-        " read this file before doing anything else.\n"
-        f"{id_line}\n"
-        "---\n\n"
-        f"{extra_section}"
-        "## Runtime context\n\n"
-        f"### Git workflow\n\n{git_info}\n\n"
-        f"### Chat history (Telegram)\n\n{chat}\n\n"
-        f"### Kanban board ({agents_rel}/work/)\n\n{plans}\n"
-        f"{blocked_section}"
-        f"{todos_section}"
-    )
-    return resolved_model, context
+    return context
 
 
 def wait_for_human_reply(
@@ -346,7 +308,7 @@ def _boot_message_body(agent_id: str, board: BoardStateManager) -> str:
 
 
 def invoke_agent(
-    agent_name: str, context: str, model: str, worktree: Path | None = None
+    role: str, context: str, model: str, worktree: Path | None = None
 ) -> int:  # pragma: no cover
     """Invoke the configured AI CLI with the agent's full context prompt."""
     cfg = _cfg.get()

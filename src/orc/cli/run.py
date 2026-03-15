@@ -95,8 +95,7 @@ def _run(
         )
 
     typer.echo("⟳ Syncing dev on main…")
-    messages = tg.get_messages()
-    _wf.rebase_dev_on_main(messages, squad_cfg)
+    _wf.rebase_dev_on_main(squad_cfg)
 
     # Start the coordination API server so agent tools in worktrees always
     # write to the correct (main) .orc/ directory.

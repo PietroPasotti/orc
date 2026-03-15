@@ -156,7 +156,7 @@ class FakeAgent:
         def _default_spawn(ctx, cwd, model, log):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
-        self.build_context = lambda role, agent_id, msgs, wt: ("model", "ctx")
+        self.build_context = lambda role, agent_id, task_name=None: ("model", "ctx")
         self.spawn = spawn_fn or _default_spawn
         self.boot_message_body = lambda agent_id: f"working on something ({agent_id})"
 

@@ -430,7 +430,7 @@ class Dispatcher:
         else:
             raise ValueError(f"No worktree: role={role!r} requires task_name")
 
-        model, context = self.agent.build_context(role, agent_id, [], worktree)
+        model, context = self.agent.build_context(role, agent_id, task_name=task_name)
 
         self._total_spawned += 1
 

@@ -52,7 +52,7 @@ class TestBlockedResumption:
         monkeypatch.setattr(
             _ctx,
             "build_agent_context",
-            lambda name, msgs, board, **kw: invocations.append(name) or ("model", "ctx"),
+            lambda role, board=None, **kw: invocations.append(role) or "ctx",
         )
         monkeypatch.setattr(
             inv,

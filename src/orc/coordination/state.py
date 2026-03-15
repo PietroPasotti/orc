@@ -66,11 +66,6 @@ class BoardStateManager:
         """Return names of tasks with ``status == "blocked"``."""
         return self.query_tasks("blocked")
 
-    def active_task_name(self) -> str | None:
-        """Return the name of the first task on the board, or ``None`` if empty."""
-        tasks = self.get_tasks()
-        return tasks[0].name if tasks else None
-
     @_locked
     def delete_task(self, task_name: str) -> None:
         """Remove *task_name* from board.yaml and delete its task file."""

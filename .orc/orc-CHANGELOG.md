@@ -57,3 +57,11 @@
 **Summary:** Added Board tab to orc status TUI showing kanban swimlane view (To refine, To do, In progress, Awaiting review, Done) fetched from the coordination API. Falls back gracefully when the server is unreachable.
 
 **Implemented by:** 0014-orc-status-board-view.md
+
+## 0022-planner-tui-status-details (merged 2026-03-15T17:41:16Z)
+
+**Branch:** feat/0022-planner-tui-status-details
+
+**Task:** 0022-planner-tui-status-details.md
+
+**Merge commit:** 8321631
