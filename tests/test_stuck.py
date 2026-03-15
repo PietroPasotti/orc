@@ -221,8 +221,6 @@ class TestStatusCommandStuck:
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
         monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: 0)
-        monkeypatch.setattr(_st, "_dev_log_since_main", lambda: [])
-        monkeypatch.setattr(_st._wf, "features_in_dev_not_main", lambda: [])
         monkeypatch.setattr(
             _st, "load_squad", lambda n, orc_dir: (_ for _ in ()).throw(ValueError("no squad"))
         )
@@ -394,9 +392,7 @@ class TestStatusPlannerNoteStuck:
         monkeypatch.setattr(_st, "_pending_reviews", lambda: [])
         monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: [])
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: 0)
-        monkeypatch.setattr(_st, "_dev_log_since_main", lambda: [])
         monkeypatch.setattr(_st._wf, "features_in_dev_not_main", lambda: [])
-        monkeypatch.setattr(_st._ctx, "_role_symbol", lambda role: "")
         monkeypatch.setattr("orc.git.Git.branch_exists", lambda self, b: False)
 
         squad = SquadConfig(

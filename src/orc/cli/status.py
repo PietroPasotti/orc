@@ -116,19 +116,6 @@ def _get_approved_branches(branches: list[str] | None = None) -> list[str]:
     return result
 
 
-def _dev_log_since_main() -> list[str]:
-    """Return one-line summaries of commits on dev not yet in main."""
-    result = subprocess.run(
-        ["git", "log", "--oneline", "--no-decorate", "main..dev"],
-        cwd=_cfg.get().repo_root,
-        capture_output=True,
-        text=True,
-    )
-    if not result.stdout.strip():
-        return []
-    return result.stdout.strip().splitlines()
-
-
 def _status(squad: str = "default") -> None:
     open_tasks = _board.get_tasks()
     open_visions = _pending_visions()

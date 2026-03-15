@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 import orc.cli.status as _st
 import orc.config as _cfg
 import orc.main as m
-from orc.cli.status import _dev_ahead_of_main, _dev_log_since_main
+from orc.cli.status import _dev_ahead_of_main
 from orc.coordination.models import Board, TaskEntry
 from orc.engine.context import TodoItem
 from orc.engine.dispatcher import QA_PASSED
@@ -26,7 +26,6 @@ class TestStatusCoverage:
         open_tasks=None,
         done_tasks=None,
         ahead=0,
-        dev_log=None,
         features_pending=None,
         derive_task_state=None,
         feature_branch=None,
@@ -61,7 +60,6 @@ class TestStatusCoverage:
         _todo_items = [TodoItem(**t) if isinstance(t, dict) else t for t in (open_todos or [])]
         monkeypatch.setattr(_st._ctx, "_scan_todos", lambda root: _todo_items)
         monkeypatch.setattr(_st, "_dev_ahead_of_main", lambda: ahead)
-        monkeypatch.setattr(_st, "_dev_log_since_main", lambda: dev_log or [])
         # Patch the git helper used by _status() for dev-vs-main display.
         _features = (
             features_pending
@@ -98,24 +96,6 @@ class TestStatusCoverage:
 
         with patch("orc.cli.status.subprocess.run", fake_run):
             assert _dev_ahead_of_main() == 0
-
-    def test_dev_log_since_main_returns_lines(self):
-        def fake_run(cmd, **kw):
-            r = MagicMock()
-            r.stdout = "abc one\ndef two\n"
-            return r
-
-        with patch("orc.cli.status.subprocess.run", fake_run):
-            assert len(_dev_log_since_main()) == 2
-
-    def test_dev_log_since_main_empty(self):
-        def fake_run(cmd, **kw):
-            r = MagicMock()
-            r.stdout = ""
-            return r
-
-        with patch("orc.cli.status.subprocess.run", fake_run):
-            assert _dev_log_since_main() == []
 
     def test_status_no_squad(self, tmp_path, monkeypatch):
         self._setup(monkeypatch, ahead=0)

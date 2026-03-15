@@ -48,7 +48,6 @@ class BoardStateManager:
 
     def __init__(self, orc_dir: Path) -> None:
         self._mgr = FileBoardManager(orc_dir)
-        self._orc_dir = orc_dir
         self._lock = threading.RLock()
 
     # ── Board: queries ────────────────────────────────────────────────────

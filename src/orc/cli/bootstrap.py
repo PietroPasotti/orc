@@ -84,7 +84,7 @@ def _bootstrap(force: bool = False) -> None:
     created: list[str] = []
     skipped: list[str] = []
 
-    def _copy_force(s: Path, d: Path, c: list[str], sk: list[str]) -> None:
+    def _copy_force(s: Path, d: Path, c: list[str], _sk: list[str]) -> None:
         shutil.copy2(s, d)
         c.append(str(d))
 
