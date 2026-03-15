@@ -1,8 +1,8 @@
 """Lightweight HTTP client for the orc coordination API.
 
 This module provides a small helper used by the TUI and other internal
-consumers to talk to the coordination server over its Unix-domain socket
-(``ORC_API_SOCKET`` env var).
+consumers to talk to the coordination server over its Unix-domain socket.
+The socket path is resolved via :func:`orc.config.get`.
 
 Usage::
 
@@ -19,7 +19,6 @@ Usage::
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 
 import httpx
@@ -44,8 +43,11 @@ def get_board_snapshot() -> BoardSnapshot | None:
     Returns ``None`` when the server socket is absent or unreachable so
     that callers can degrade gracefully without crashing.
     """
-    socket_path = os.environ.get("ORC_API_SOCKET", "")
-    if not socket_path:
+    try:
+        import orc.config as _cfg  # noqa: PLC0415
+
+        socket_path = str(_cfg.get().api_socket_path)
+    except Exception:
         return None
 
     transport = httpx.HTTPTransport(uds=socket_path)

@@ -229,7 +229,7 @@ def _render_board() -> RenderableType:
     """Build a Rich kanban table from the coordination API.
 
     Returns a plain :class:`~rich.text.Text` message when the coordination
-    server is unreachable or ``ORC_API_SOCKET`` is not set.
+    server is unreachable.
     """
     snap: BoardSnapshot | None = get_board_snapshot()
     if snap is None:
