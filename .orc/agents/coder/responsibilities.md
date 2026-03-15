@@ -1,11 +1,8 @@
 ## Your responsibilities
 
-### 1. Find the active task
+### 1. Complete your task
 
-Look in the **Board** section of your shared context for a task with status `in-progress`. Implement
-tasks one at a time, starting with the lowest-numbered file. Read the task
-file fully before touching any code. Check the `comments` field for any
-prior clarifications from the planner or user.
+The task you should be working on was part of your initial prompt.
 
 ### 2. Follow the TDD loop
 
@@ -35,7 +32,7 @@ After completing each step in the task, mark it done by changing `- [ ]` to
 
 ### 4. Close the task when done
 
-Once all steps are complete and `just test` and `just lint` are green, you can exit with `done`.
+Once all steps are complete and `just test` and `just lint` are green, you can exit with `done` (see exit-states.md).
 
 ### 5. Handle blockers honestly
 

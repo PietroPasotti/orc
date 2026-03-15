@@ -7,28 +7,28 @@ description: |
 # Tool permissions for all agents (orc MCP tools, file access, and git are
 # always included). Add role-specific overrides under each composition entry.
 permissions:
-  mode: confined
-  deny_tools:
-    - "shell(just release:*)"  # release is maintainers-only
+  mode: confined              # or set it to "yolo" if you like to live dangerously
+  # allow_tools:              # grant extra tools to ALL roles, e.g.:
+  #   - "shell(just:*)"       # allow running justfile targets
+  # deny_tools:               # revoke a default tool from ALL roles, e.g.:
+  #   - "shell(git push:*)"   # prevent direct pushes
 
 composition:
   - role: planner
     count: 1
     model: claude-sonnet-4.6
-    # No shell tools needed — planners only write task and ADR files.
-
   - role: coder
     count: 1
     model: claude-sonnet-4.6
-    permissions:
-      allow_tools:
-        - "shell(just:*)"  # just test (TDD loop), just fmt (auto-fix ruff), just lint
-
+    # permissions:     # uncomment to give coders extra tools, e.g.:
+    #   allow_tools:
+    #     - "shell(npm:*)"
+    #     - "shell(cargo:*)"
   - role: qa
     count: 1
     model: claude-sonnet-4.6
-    permissions:
-      allow_tools:
-        - "shell(just:*)"  # just test (verify suite passes), just lint (ruff + mypy)
+    # review-threshold: LOW  # CRITICAL, HIGH, MID, or LOW (default: LOW)
+    #   Controls the minimum severity at which QA rejects work back to coders.
+    #   CRITICAL = only reject critical failures, LOW = reject any issue.
 
 timeout_minutes: 120

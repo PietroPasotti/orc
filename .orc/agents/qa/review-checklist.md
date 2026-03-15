@@ -19,14 +19,12 @@ correctly. Look for:
 
 ## Run the test suite
 
-Always run `just test` before deciding. If tests fail, that is an automatic
-`[CRIT]` finding.
+Always test the code you're reviewing.
+If tests fail, that is an automatic `[CRITICAL]` finding.
 
 ## Decide: pass or fail?
 
-- **Pass** if there are no Critical or Major issues. Minor issues can be noted
-  but do not block progress.
-- **Fail** if there is at least one Critical or Major issue. List them clearly
-  in your chat message so the coder knows exactly what to fix.
-
 The bar does not have to be perfection. The show must go on.
+Depending on your threshold setting, you may be able to approve an implementation even if it has some issues, as long as they are below the threshold. Use your judgement to decide whether the issues you found are severe enough to block the implementation or not.
+
+Most importantly, it's perfectly OK if you don't find any issues with the code you're reviewing! Sometimes coders do a good job.

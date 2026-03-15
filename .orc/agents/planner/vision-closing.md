@@ -15,7 +15,5 @@ The tool closes the vision and prints a confirmation.
 ## When you are done
 
 You are done when:
-- All implemented visions are closed.
-- Remaining visions have been translated into tasks and/or ADRs.
+- All visions are closed, i.e. have been translated into tasks and/or ADRs.
 - All code `#TODO` and `#FIXME` comments have been translated into tasks.
-- All tasks are implemented and there are no remaining tasks with `planned`, `in-progress`, or `in-review` status.
