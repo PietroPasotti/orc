@@ -153,10 +153,15 @@ def _run(
             assert state is not None
             state.orc = _tui.OrcData(agent_id="orc", status="running", task=task)
 
+        def _on_feature_merged() -> None:
+            assert state is not None
+            state.features_done = _safe_features_done()
+
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start,
             on_agent_done=_on_agent_done,
             on_orc_status=_on_orc_status,
+            on_feature_merged=_on_feature_merged,
         )
 
     if _coord_state.is_empty():
