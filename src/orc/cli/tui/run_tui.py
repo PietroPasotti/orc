@@ -68,6 +68,9 @@ class AgentData:
     started_at: float
     """Monotonic timestamp when the agent was spawned."""
 
+    details: str | None = None
+    """Optional extra info shown below the task line (e.g. planner summary)."""
+
 
 @dataclass
 class RunState:
@@ -119,6 +122,8 @@ def _agent_card(row: AgentData) -> rich.panel.Panel:
         f"wt:      {worktree_base}\n"
         f"elapsed: {_elapsed(row.started_at)}"
     )
+    if row.details:
+        body += f"\n{row.details}"
     return rich.panel.Panel(body, title=row.agent_id)
 
 

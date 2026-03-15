@@ -107,6 +107,42 @@ class TestAgentCard:
         out = _panel_to_str(card)
         assert "—" in out
 
+    def test_details_shown_when_set(self):
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            row = AgentData(
+                agent_id="planner-1",
+                role="planner",
+                model="copilot",
+                status="running",
+                task_name=None,
+                worktree="/tmp/wt",
+                started_at=0.0,
+                details="3 todo(s)  visions: 0001-foo",
+            )
+            card = _agent_card(row)
+        out = _panel_to_str(card)
+        assert "3 todo(s)" in out
+        assert "visions: 0001-foo" in out
+
+    def test_details_absent_when_none(self):
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            row = AgentData(
+                agent_id="coder-1",
+                role="coder",
+                model="copilot",
+                status="running",
+                task_name="0001-foo.md",
+                worktree="/tmp/wt",
+                started_at=0.0,
+                details=None,
+            )
+            card = _agent_card(row)
+        out = _panel_to_str(card)
+        assert "todo" not in out
+        assert "visions" not in out
+
 
 class TestOrcCard:
     def test_title_is_agent_id(self):
