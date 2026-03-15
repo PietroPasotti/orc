@@ -16,27 +16,23 @@ git diff main..HEAD
 ```
 
 **Do NOT merge the feature branch yourself.** The orchestrator handles the merge
-automatically once you signal approval via `review_task.py`.
+automatically once you signal approval via the `review_task` MCP tool.
 
 ### Signalling your verdict
 
-After completing your review, use the provided tools to signal your verdict.
-The tools update the board status and make a commit — the orchestrator reads
+After completing your review, call the `review_task` MCP tool to signal your verdict.
+It updates the board status and makes a commit — the orchestrator reads
 the board to route the task.
 
-**If passed** — no Critical or Major issues:
+- `task_code` — four-digit zero-padded task number, e.g. `"0002"`
+- `outcome` — `"done"` (approved) or `"in-progress"` (rejected, sends back to coder)
+- `message` — one-line summary (reason for rejection if applicable)
 
-```bash
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done "<one-line summary>"
-```
+**If passed** — no Critical or Major issues: call `review_task` with `outcome="done"`.
 
 **If failed** — one or more Critical or Major issues found:
 
 1. Append an issues section to the task `.md` file (see format below).
-2. Then run:
-
-```bash
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> in-progress "<one-line summary>"
-```
+2. Call `review_task` with `outcome="in-progress"`.
 
 Do **not** craft the commit message by hand.

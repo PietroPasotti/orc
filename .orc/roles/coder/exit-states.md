@@ -8,24 +8,12 @@
 
 ### Signalling `done`
 
-When your implementation is complete, run:
+When your implementation is complete, call the `close_task` MCP tool:
 
-```bash
-.orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
-```
+- `task_code` — four-digit zero-padded task number, e.g. `"0002"`
+- `message` — one-line summary of what was done (e.g. `"implemented auth module; all tests green"`)
 
-Arguments:
-- `agent-id` — your agent identifier, e.g. `coder-1`
-- `task-code` — zero-padded 4-digit task number, e.g. `0002`
-- `message` — one-line summary of what was done
-
-Example:
-```bash
-.orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
-```
-
-This commits all your changes and produces a structured commit the orchestrator
-uses to route the task to QA. Do **not** craft the commit message by hand.
+The tool stages all changes, commits with a structured message, and sets the board status to `in-review`. Do **not** craft the commit message by hand.
 
 ### Signalling `soft-blocked` or `blocked`
 

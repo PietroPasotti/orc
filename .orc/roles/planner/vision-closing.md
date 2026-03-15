@@ -8,12 +8,14 @@ implemented and merged.
 
 ## How to close
 
-```bash
-.orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-file...]
-```
+Call the `close_vision` MCP tool:
+
+- `vision_file` — vision filename, e.g. `"0001-shark-fleet.md"`
+- `summary` — 2–4 sentence description of what was accomplished
+- `task_files` — optional list of task filenames that implement this vision
 
 The tool appends a changelog entry to `.orc/orc-CHANGELOG.md`, deletes the
-vision file from the project cache, and prints a confirmation.
+vision file from the project cache, and returns a confirmation.
 
 ## When you are done
 
