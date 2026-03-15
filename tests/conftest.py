@@ -195,9 +195,9 @@ def mock_telegram(monkeypatch):
     import orc.messaging.telegram as tg
 
     sent: list[str] = []
-    monkeypatch.setattr(tg, "get_messages", lambda: [])
-    monkeypatch.setattr(tg, "send_message", lambda text: sent.append(text))
-    monkeypatch.setattr(tg, "is_configured", lambda: False)
+    monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
+    monkeypatch.setattr(tg, "_send_message", lambda text: sent.append(text))
+    monkeypatch.setattr(tg, "_is_configured", lambda: False)
     return sent
 
 

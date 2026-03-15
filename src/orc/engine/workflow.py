@@ -416,7 +416,7 @@ def _make_merge_feature_fn(squad_cfg: SquadConfig) -> Callable[[str], None]:
         try:
             _merge_feature_into_dev(task_name)
         except MergeConflictError as exc:
-            messages = tg.get_messages()
+            messages = tg.TelegramMessagingService().get_messages()
             resolver = ConflictResolver(squad_cfg=squad_cfg, messages=messages)
             try:
                 resolver.resolve_merge_conflict(exc.branch, exc.worktree, exc.status_output)

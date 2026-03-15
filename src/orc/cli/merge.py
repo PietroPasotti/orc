@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 
 def _merge(auto: bool = False) -> None:
     _check_env_or_exit()
-    messages = tg.get_messages()
+    messages = tg.TelegramMessagingService().get_messages()
     _wf.rebase_dev_on_main(messages)
 
     if auto:

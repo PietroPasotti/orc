@@ -96,8 +96,8 @@ class TestMergeCommand:
     ):
         """On conflict the coder is invoked; with --auto the merge completes."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(tg, "send_message", lambda t: None)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
+        monkeypatch.setattr(tg, "_send_message", lambda t: None)
 
         call_count = 0
 
@@ -134,8 +134,8 @@ class TestMergeCommand:
     ):
         """The coder agent receives an extra section describing the conflict."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(tg, "send_message", lambda t: None)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
+        monkeypatch.setattr(tg, "_send_message", lambda t: None)
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -168,8 +168,8 @@ class TestMergeCommand:
     ):
         """If the coder agent fails, merge exits with its exit code."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(tg, "send_message", lambda t: None)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
+        monkeypatch.setattr(tg, "_send_message", lambda t: None)
 
         def fake_run(cmd, **kw):
             r = MagicMock()
@@ -191,8 +191,8 @@ class TestMergeCommand:
     ):
         """If the agent exits 0 but rebase is still stalled, exit 1."""
         self._setup(monkeypatch, tmp_path, board_file, mock_validate_env, mock_git)
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
-        monkeypatch.setattr(tg, "send_message", lambda t: None)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
+        monkeypatch.setattr(tg, "_send_message", lambda t: None)
 
         def fake_run(cmd, **kw):
             r = MagicMock()

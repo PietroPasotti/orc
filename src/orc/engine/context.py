@@ -503,7 +503,8 @@ def wait_for_human_reply(
     timeout: float = _BLOCKED_TIMEOUT,
 ) -> str:
     """Poll Telegram until a new human message appears after *messages_snapshot*."""
-    if not tg.is_configured():
+    _tg_svc = tg.TelegramMessagingService()
+    if not _tg_svc.is_configured():
         logger.warning("Telegram not configured — cannot wait for human reply; treating as timeout")
         raise TimeoutError("Telegram not configured; human reply not possible.")
     seen = frozenset((m.date, m.text) for m in messages_snapshot)
@@ -516,7 +517,7 @@ def wait_for_human_reply(
         actual_delay = min(delay, remaining)
         logger.info("waiting for telegram reply", delay_s=round(actual_delay))
         time.sleep(actual_delay)
-        for msg in tg.get_messages():
+        for msg in _tg_svc.get_messages():
             key = (msg.date, msg.text)
             if key not in seen and not _is_agent_message(msg.text):
                 return msg.text

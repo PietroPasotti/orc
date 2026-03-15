@@ -11,8 +11,8 @@ Required environment variables (optional — Telegram is disabled when absent)::
 
 When Telegram is not configured:
 
-* ``send_message`` writes only to the local log (no HTTP call).
-* ``get_messages`` returns only the local log (no incoming updates fetched).
+* ``_send_message`` writes only to the local log (no HTTP call).
+* ``_get_messages`` returns only the local log (no incoming updates fetched).
 * Hard-blocked agents cannot be resolved via human reply; the dispatcher will
   log a warning and exit rather than waiting indefinitely.
 
@@ -30,7 +30,7 @@ Because the Telegram Bot API's ``getUpdates`` only returns *incoming* messages
 (not messages the bot itself sends), outbound ``send_message`` calls are also
 appended to a local JSONL log at ``{LOG_DIR}/chat.log`` (i.e. inside the
 project's log directory, configured via ``orc-log-dir`` in ``config.yaml``,
-defaulting to ``.orc/logs/``).  ``get_messages`` merges both sources
+defaulting to ``.orc/logs/``).  ``_get_messages`` merges both sources
 so the state machine always sees the full history.
 """
 
@@ -95,7 +95,7 @@ def _get_log_file() -> Path:
 _CA_BUNDLE = certifi.where()
 
 
-def is_configured() -> bool:
+def _is_configured() -> bool:
     """Return True if both Telegram env vars are present."""
     return bool(_TOKEN and _CHAT_ID)
 
@@ -183,7 +183,7 @@ def _get_telegram_updates(limit: int = 100) -> list[ChatMessage]:
 # ---------------------------------------------------------------------------
 
 
-def send_message(text: str) -> None:
+def _send_message(text: str) -> None:
     """Post *text* to the Telegram chat and record it in the local log.
 
     The local log write always happens so the local state machine has the
@@ -191,7 +191,7 @@ def send_message(text: str) -> None:
     Raises ``httpx.HTTPStatusError`` on Telegram API errors.
     """
     _append_to_log(text)
-    if not is_configured():
+    if not _is_configured():
         return
     with httpx.Client(timeout=15, verify=_CA_BUNDLE) as client:
         resp = client.post(
@@ -201,7 +201,7 @@ def send_message(text: str) -> None:
         resp.raise_for_status()
 
 
-def get_messages(limit: int = 100) -> list[ChatMessage]:
+def _get_messages(limit: int = 100) -> list[ChatMessage]:
     """Return the merged message history from the local log and Telegram updates.
 
     The local log contains all bot-sent messages (agent exit states).
@@ -210,7 +210,7 @@ def get_messages(limit: int = 100) -> list[ChatMessage]:
     events in the correct order.
     """
     local = _read_log()
-    if not is_configured():
+    if not _is_configured():
         return local
     try:
         remote = _get_telegram_updates(limit)
@@ -228,15 +228,26 @@ def get_messages(limit: int = 100) -> list[ChatMessage]:
     return merged
 
 
-# FIXME: this class should be the only public member of this module and should
-# encapsulate more of it. keep the public-facing API small. It should have no
-# inputs other than the envvars (for the telegram link) and the orc config
-# (for the chat.log). (we should probably get rid of chat.log)
 class TelegramMessagingService:
-    """Implements :class:`~orc.engine.services.MessagingService` via Telegram."""
+    """Sole public API for Telegram messaging.
 
-    def get_messages(self) -> list[ChatMessage]:
-        return get_messages()
+    Encapsulates all I/O with Telegram and the local chat log.
+    Has no inputs other than the env vars (for the Telegram link) and the
+    orc config (for the chat.log path).
+    """
+
+    def is_configured(self) -> bool:
+        """Return True if both Telegram env vars are present."""
+        return _is_configured()
+
+    def send_message(self, text: str) -> None:
+        """Post *text* to the Telegram chat and record it in the local log."""
+        _send_message(text)
+
+    def get_messages(self, limit: int = 100) -> list[ChatMessage]:
+        """Return the merged message history from the local log and Telegram updates."""
+        return _get_messages(limit)
 
     def post_boot_message(self, agent_id: str, body: str) -> None:
-        send_message(format_agent_message(agent_id, "boot", body))
+        """Format and send a boot message to Telegram."""
+        _send_message(format_agent_message(agent_id, "boot", body))
