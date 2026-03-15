@@ -229,6 +229,7 @@ def build_agent_context(
             Dev branch: `{dev_branch}`
             Dev worktree: `{dev_worktree}`
             Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
+            Review threshold: `{threshold.value}`
             
             Review `{feature_branch}` against `{dev_branch}` 
             (e.g. `git diff {dev_branch}...{feature_branch}`).
@@ -236,11 +237,6 @@ def build_agent_context(
             Run in the dev worktree (`{dev_worktree}`). 
             **Do NOT merge** — the orchestrator merges only if you 
             approve this work by signalling `passed`.
-            
-            **Review threshold: `{threshold.value}`** — only fail this review 
-            for issues at **{threshold.value}** severity or above. 
-            Issues below this threshold should be noted but must NOT 
-            cause the review to fail.
             """
         case _:
             typing.assert_never(role)
