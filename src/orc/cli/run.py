@@ -110,7 +110,6 @@ def _run(
 
     _last_dev_refresh: list[float] = [0.0]
 
-    messaging_svc = tg.TelegramMessagingService()
     workflow_svc = _wf.WorkflowSvc(squad_cfg)
     agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
     worktree_svc = _wf.WorktreeManager()
@@ -185,7 +184,7 @@ def _run(
             # fresh; the Textual app reads from state on its own timer.
             _orig_get_messages = messaging_svc.get_messages
 
-            def _updating_get_messages() -> list[ChatMessage]:
+            def _updating_get_messages(limit: int = 100) -> list[ChatMessage]:
                 assert state is not None
                 now = time.monotonic()
                 if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:
@@ -194,7 +193,7 @@ def _run(
                         1 for t in _coord_state.get_tasks() if t.status == "stuck"
                     )
                     _last_dev_refresh[0] = now
-                return _orig_get_messages()
+                return _orig_get_messages(limit)
 
             messaging_svc.get_messages = _updating_get_messages  # type: ignore[method-assign]
             _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))

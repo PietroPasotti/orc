@@ -90,7 +90,7 @@ class TestWaitForHumanReply:
         return ChatMessage(text=text, date=ts, sender_name="Pietro")
 
     def _patch_configured(self, monkeypatch) -> None:
-        monkeypatch.setattr(tg, "is_configured", lambda: True)
+        monkeypatch.setattr(tg, "_is_configured", lambda: True)
 
     def _mock_time(self, monkeypatch, values: list[float]) -> list[float]:
         """Mock time.monotonic() and time.sleep(), returning sleeps list."""
@@ -104,7 +104,7 @@ class TestWaitForHumanReply:
         self._patch_configured(monkeypatch)
         snapshot = [make_msg("[coder-1](blocked) 2026-03-09T11:00:00Z: Need help.", ts=1000)]
         human = self._human("Here is the clarification.", ts=2000)
-        monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [human])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot + [human])
         self._mock_time(monkeypatch, [0.0, 1.0])
 
         result = _ctx.wait_for_human_reply(snapshot, timeout=3600.0)
@@ -115,7 +115,7 @@ class TestWaitForHumanReply:
         old_human = self._human("old message", ts=500)
         snapshot = [old_human]
         new_human = self._human("new message", ts=600)
-        monkeypatch.setattr(tg, "get_messages", lambda: snapshot + [new_human])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot + [new_human])
         self._mock_time(monkeypatch, [0.0, 1.0])
 
         result = _ctx.wait_for_human_reply(snapshot, timeout=3600.0)
@@ -128,12 +128,12 @@ class TestWaitForHumanReply:
         human_msg = self._human("Please continue.", ts=3000)
         call_count = 0
 
-        def get_messages():
+        def get_messages(limit=100):
             nonlocal call_count
             call_count += 1
             return snapshot + [agent_msg] if call_count == 1 else snapshot + [agent_msg, human_msg]
 
-        monkeypatch.setattr(tg, "get_messages", get_messages)
+        monkeypatch.setattr(tg, "_get_messages", get_messages)
         sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0])
 
         result = _ctx.wait_for_human_reply(snapshot, initial_delay=5.0, timeout=3600.0)
@@ -146,12 +146,12 @@ class TestWaitForHumanReply:
         human = self._human("Done.", ts=9000)
         call_count = 0
 
-        def get_messages():
+        def get_messages(limit=100):
             nonlocal call_count
             call_count += 1
             return snapshot if call_count < 3 else [human]
 
-        monkeypatch.setattr(tg, "get_messages", get_messages)
+        monkeypatch.setattr(tg, "_get_messages", get_messages)
         sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0, 3.0])
 
         _ctx.wait_for_human_reply(
@@ -165,12 +165,12 @@ class TestWaitForHumanReply:
         human = self._human("Done.", ts=9000)
         call_count = 0
 
-        def get_messages():
+        def get_messages(limit=100):
             nonlocal call_count
             call_count += 1
             return snapshot if call_count < 4 else [human]
 
-        monkeypatch.setattr(tg, "get_messages", get_messages)
+        monkeypatch.setattr(tg, "_get_messages", get_messages)
         sleeps = self._mock_time(monkeypatch, [0.0, 1.0, 2.0, 3.0, 4.0])
 
         _ctx.wait_for_human_reply(
@@ -183,7 +183,7 @@ class TestWaitForHumanReply:
 
         self._patch_configured(monkeypatch)
         snapshot: list[ChatMessage] = []
-        monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot)
         self._mock_time(monkeypatch, [0.0, 3601.0])
 
         with pytest.raises(TimeoutError):
@@ -195,7 +195,7 @@ class TestWaitForHumanReply:
 
         self._patch_configured(monkeypatch)
         snapshot: list[ChatMessage] = []
-        monkeypatch.setattr(tg, "get_messages", lambda: snapshot)
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot)
         sleeps = self._mock_time(monkeypatch, [0.0, 9.0, 10.1])
 
         with pytest.raises(TimeoutError):
@@ -207,7 +207,7 @@ class TestWaitForHumanReply:
         """Without Telegram, wait_for_human_reply raises TimeoutError immediately."""
         import pytest
 
-        monkeypatch.setattr(tg, "is_configured", lambda: False)
+        monkeypatch.setattr(tg, "_is_configured", lambda: False)
         with pytest.raises(TimeoutError, match="not configured"):
             _ctx.wait_for_human_reply([], timeout=3600.0)
 
@@ -251,7 +251,7 @@ class TestContextCoverage:
                 board_file=work_dir / "board.yaml",
             ),
         )
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
     def _setup_agents(self, monkeypatch, tmp_path):
@@ -393,7 +393,7 @@ class TestContextCoverage:
                 board_file=orc_dir / "work" / "board.yaml",
             ),
         )
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
         from orc.coordination.state import BoardStateManager
 
@@ -560,7 +560,7 @@ class TestBuildContextTodos:
                 board_file=work_dir / "board.yaml",
             ),
         )
-        monkeypatch.setattr(tg, "get_messages", lambda: [])
+        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
     def test_planner_context_includes_todos_section(self, tmp_path, monkeypatch):
