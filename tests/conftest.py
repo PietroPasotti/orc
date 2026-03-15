@@ -153,7 +153,7 @@ class FakeAgent:
     def __init__(self, tmp_path, *, spawn_fn=None):
         from orc.ai.backends import SpawnResult
 
-        def _default_spawn(ctx, cwd, model, log):
+        def _default_spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         self.build_context = lambda role, agent_id, task_name=None: ("model", "ctx")

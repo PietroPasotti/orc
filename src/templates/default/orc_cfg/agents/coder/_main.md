@@ -17,7 +17,7 @@ Read the following documents in order:
 2. `CONTRIBUTING.md` – development workflow, TDD, commit conventions
 3. The Telegram chat history (shown in the shared context as "Chat history (Telegram)") to understand the current state.
 4. The **Board** section in your shared context — find the task with status `in-progress` assigned to you.
-5. Run `.orc/agent_tools/share/get_task.py <task-filename>` to fetch the full task description and any prior conversation (QA rejection comments, notes). This is always required before you start implementing.
+5. Call the `get_task` MCP tool to fetch the full task description and any prior conversation (QA rejection comments, notes). This is always required before you start implementing. Use: `get_task(task_filename="<task-filename>")`.
 
 You do **not** need to read the vision documents. The planner has already
 distilled the vision into plans and ADRs.

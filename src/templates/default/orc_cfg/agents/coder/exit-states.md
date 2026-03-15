@@ -8,20 +8,17 @@
 
 ### Signalling `done`
 
-When your implementation is complete, run:
+When your implementation is complete, call the `close_task` MCP tool:
 
-```bash
-.orc/agent_tools/coder/close_task.py <agent-id> <task-code> "<message>"
-```
+`close_task(task_code="<code>", message="<message>")`
 
 Arguments:
-- `agent-id` — your agent identifier, e.g. `coder-1`
-- `task-code` — zero-padded 4-digit task number, e.g. `0002`
+- `task_code` — zero-padded 4-digit task number, e.g. `0002`
 - `message` — one-line summary of what was done
 
 Example:
-```bash
-.orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
+```
+close_task(task_code="0002", message="implemented auth module; all tests green")
 ```
 
 This commits your changes and signals that implementation is complete. Do **not** craft the commit message by hand.
@@ -30,20 +27,22 @@ This commits your changes and signals that implementation is complete. Do **not*
 
 Both states require **two steps** — updating the board and notifying the chat:
 
-**Step 1:** Update the board status and leave a comment explaining the blocker:
+**Step 1:** Update the board status and leave a comment explaining the blocker.
 
-```bash
-# Set the task status to blocked
-.orc/agent_tools/share/update_task.py <task-code> blocked
+Call the `update_task_status` MCP tool to set the task status:
+```
+update_task_status(task_code="<code>", status="blocked")
+```
 
-# Add a comment describing what is blocking you
-.orc/agent_tools/share/add_comment_to_task.py <agent-id> <task-code> "<reason>"
+Call the `add_comment` MCP tool to add a comment describing what is blocking you:
+```
+add_comment(task_code="<code>", comment="<reason>")
 ```
 
 Example:
-```bash
-.orc/agent_tools/share/update_task.py 0002 blocked
-.orc/agent_tools/share/add_comment_to_task.py coder-1 0002 "blocked: API spec for /auth endpoint is missing — cannot implement without it"
+```
+update_task_status(task_code="0002", status="blocked")
+add_comment(task_code="0002", comment="blocked: API spec for /auth endpoint is missing — cannot implement without it")
 ```
 
 **Step 2:** Write **one** message to the **Telegram chat**, then stop. Use

@@ -197,7 +197,7 @@ def build_agent_context(
                 planner_ctx += f"\nActive feature branch: `{feature_branch}` (coder's branch)"
             if blocked_tasks := board.get_blocked_tasks():
                 items = "\n".join(
-                    f"- `{name}` — run `.orc/agent_tools/share/get_task.py {name}`"
+                    f"- `{name}` — call the `get_task` MCP tool with `task_filename={name!r}`"
                     " to view full details and conversation"
                     for name in blocked_tasks
                 )

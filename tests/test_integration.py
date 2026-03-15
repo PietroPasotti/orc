@@ -322,6 +322,7 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
+        **_kwargs,
     ) -> SpawnResult:
         idx = idx_box[0]
         call_records.append({"idx": idx, "cwd": cwd, "model": model})

@@ -1,14 +1,12 @@
 # Board management
 
-Use the board management tool to create new tasks:
+Use the board management tool to create new tasks by calling the `create_task` MCP tool:
 
-```bash
-echo '<body-json>' | .orc/agent_tools/planner/create_task.py <agent-id> <task-title> <vision-file> [extra-file...]
-```
+Call the `create_task` tool with parameters: `task_title="<title>"`, `vision_file="<vision-filename>"`, `body="<json-body>"`, `extra_files=[...]`
 
 The tool creates the task on the board and prints its filename.
 
-### Body format (JSON on stdin)
+### Body format (JSON)
 
 ```json
 {
@@ -22,19 +20,16 @@ The tool creates the task on the board and prints its filename.
 
 ### Example
 
-```bash
-echo '{
-  "overview": "Add JWT-based authentication to the API.",
-  "in_scope": ["login endpoint", "token refresh"],
-  "out_of_scope": ["OAuth integration", "UI changes"],
-  "steps": ["Write failing tests", "Implement auth middleware", "Wire into routes"],
-  "notes": "See ADR-0042 for the chosen algorithm."
-}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md
-```
+To create a task titled "add-user-auth" from vision file "0001-auth-vision.md":
 
-With an optional extra file (e.g. a new ADR):
-```bash
-echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 add-user-auth 0001-auth-vision.md docs/adr/0042-auth.md
+Call `create_task` with:
+- `task_title="add-user-auth"`
+- `vision_file="0001-auth-vision.md"`
+- `body='{"overview": "Add JWT-based authentication to the API.", "in_scope": ["login endpoint", "token refresh"], "out_of_scope": ["OAuth integration", "UI changes"], "steps": ["Write failing tests", "Implement auth middleware", "Wire into routes"], "notes": "See ADR-0042 for the chosen algorithm."}'`
+
+With optional extra files (e.g. a new ADR), add them to the `extra_files` parameter:
+```
+extra_files=["docs/adr/0042-auth.md"]
 ```
 
 ## Task comments

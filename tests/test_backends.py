@@ -15,6 +15,7 @@ from orc.ai.backends import (
     SpawnResult,
     get_backend,
 )
+from orc.squad import PermissionConfig
 
 
 class TestGetBackend:
@@ -94,15 +95,41 @@ class TestCopilotBackend:
 
     def test_build_command(self):
         b = CopilotBackend()
-        cmd = b._build_command("/tmp/ctx.txt", None)
+        perm = PermissionConfig(mode="yolo")
+        cmd = b._build_command("/tmp/ctx.txt", None, None, perm)
         assert cmd == ["copilot", "--yolo", "--prompt", "@/tmp/ctx.txt"]
+
+    def test_build_command_confined(self):
+        b = CopilotBackend()
+        perm = PermissionConfig(
+            mode="confined",
+            allow_tools=("orc", "read", "write"),
+            deny_tools=("shell(git push:*)",),
+        )
+        cmd = b._build_command("/tmp/ctx.txt", None, "/tmp/mcp.json", perm)
+        assert "--allow-tool=orc" in cmd
+        assert "--allow-tool=read" in cmd
+        assert "--allow-tool=write" in cmd
+        assert "--deny-tool=shell(git push:*)" in cmd
+        assert "--additional-mcp-config" in cmd
+        assert "@/tmp/mcp.json" in cmd
+        assert "--prompt" in cmd
+        assert "@/tmp/ctx.txt" in cmd
+        assert "--yolo" not in cmd
+
+    def test_build_command_confined_no_mcp(self):
+        """In yolo mode the mcp config is NOT passed."""
+        b = CopilotBackend()
+        perm = PermissionConfig(mode="yolo")
+        cmd = b._build_command("/tmp/ctx.txt", None, "/tmp/mcp.json", perm)
+        assert "--additional-mcp-config" not in cmd
 
     def test_invoke_calls_subprocess(self, monkeypatch, tmp_path):
         b = CopilotBackend()
         monkeypatch.setenv("GH_TOKEN", "ghp_test")
         fake_result = MagicMock(returncode=0)
         with patch("subprocess.run", return_value=fake_result) as mock_run:
-            rc = b.invoke("hello context", cwd=tmp_path)
+            rc = b.invoke("hello context", cwd=tmp_path, permissions=PermissionConfig(mode="yolo"))
         assert rc == 0
         assert mock_run.called
 
@@ -112,7 +139,9 @@ class TestCopilotBackend:
         log_path = tmp_path / "agent.log"
         fake_proc = MagicMock()
         with patch("subprocess.Popen", return_value=fake_proc):
-            result = b.spawn("context", tmp_path, log_path=log_path)
+            result = b.spawn(
+                "context", tmp_path, log_path=log_path, permissions=PermissionConfig(mode="yolo")
+            )
         assert isinstance(result, SpawnResult)
         assert result.process is fake_proc
         assert result.log_fh is not None
@@ -123,7 +152,7 @@ class TestCopilotBackend:
         monkeypatch.setenv("GH_TOKEN", "ghp_test")
         fake_proc = MagicMock()
         with patch("subprocess.Popen", return_value=fake_proc):
-            result = b.spawn("context", tmp_path)
+            result = b.spawn("context", tmp_path, permissions=PermissionConfig(mode="yolo"))
         assert isinstance(result, SpawnResult)
         assert result.log_fh is None
 
@@ -143,17 +172,48 @@ class TestClaudeBackend:
 
     def test_build_command_without_model(self):
         b = ClaudeBackend()
-        cmd = b._build_command("/tmp/ctx.txt", None)
-        assert cmd == ["claude", "-p", "@/tmp/ctx.txt"]
+        perm = PermissionConfig(mode="yolo")
+        cmd = b._build_command("/tmp/ctx.txt", None, None, perm)
+        assert cmd == ["claude", "-p", "@/tmp/ctx.txt", "--dangerouslySkipPermissions"]
 
     def test_build_command_with_model(self):
         b = ClaudeBackend()
-        cmd = b._build_command("/tmp/ctx.txt", "claude-3-opus")
-        assert cmd == ["claude", "-p", "@/tmp/ctx.txt", "--model", "claude-3-opus"]
+        perm = PermissionConfig(mode="yolo")
+        cmd = b._build_command("/tmp/ctx.txt", "claude-3-opus", None, perm)
+        assert cmd == [
+            "claude",
+            "-p",
+            "@/tmp/ctx.txt",
+            "--model",
+            "claude-3-opus",
+            "--dangerouslySkipPermissions",
+        ]
+
+    def test_build_command_confined(self):
+        b = ClaudeBackend()
+        perm = PermissionConfig(
+            mode="confined",
+            allow_tools=("orc", "read", "write", "shell(git:*)"),
+        )
+        cmd = b._build_command("/tmp/ctx.txt", None, "/tmp/mcp.json", perm)
+        assert "--mcp-config" in cmd
+        assert "/tmp/mcp.json" in cmd
+        assert "--allowedTools" in cmd
+        assert "mcp__orc__*" in cmd
+        assert "Read" in cmd
+        assert "Write" in cmd
+        assert "Bash(git *)" in cmd
+        assert "--dangerouslySkipPermissions" not in cmd
+
+    def test_build_command_confined_no_mcp_in_yolo(self):
+        b = ClaudeBackend()
+        perm = PermissionConfig(mode="yolo")
+        cmd = b._build_command("/tmp/ctx.txt", None, "/tmp/mcp.json", perm)
+        assert "--mcp-config" not in cmd
 
     def test_invoke_returns_exit_code(self, monkeypatch, tmp_path):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         b = ClaudeBackend()
         with patch("subprocess.run", return_value=MagicMock(returncode=1)):
-            rc = b.invoke("context", cwd=tmp_path)
+            rc = b.invoke("context", cwd=tmp_path, permissions=PermissionConfig(mode="yolo"))
         assert rc == 1

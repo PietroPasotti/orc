@@ -1,7 +1,7 @@
 """Squad profile loader for the orc orchestrator.
 
-A squad profile defines how many agents of each role may run in parallel and
-which AI model each role should use.
+A squad profile defines how many agents of each role may run in parallel,
+which AI model each role should use, and what tool permissions agents have.
 Profiles are YAML files stored in ``.orc/squads/`` (project-level) or in the
 package's bundled ``squads/`` directory.
 
@@ -13,6 +13,7 @@ Usage::
     squad = load_squad("broad", orc_dir=orc_dir)   # project-level first
     squad.count("coder")                               # → 1
     squad.model("coder")                               # → "claude-sonnet-4.6"
+    squad.permissions("coder")                         # → PermissionConfig(...)
 
     all_squads = load_all_squads(orc_dir=orc_dir)   # list[SquadConfig]
 
@@ -21,6 +22,15 @@ Profile format::
     name: default
     description: |
       One agent of each type, running sequentially.
+
+    # Optional squad-level permission defaults (applied to all roles).
+    permissions:
+      mode: confined          # "confined" (default) or "yolo"
+      allow_tools:            # extra tools beyond orc defaults
+        - "shell(just:*)"
+      deny_tools:             # tools explicitly denied
+        - "shell(git push:*)"
+
     composition:
       - role: planner
         count: 1
@@ -28,10 +38,22 @@ Profile format::
       - role: coder
         count: 4
         model: claude-sonnet-4.6
+        permissions:          # role-level overrides, merged with squad defaults
+          allow_tools:
+            - "shell(npm:*)"
       - role: qa
         count: 2
         model: claude-sonnet-4.6
     timeout_minutes: 120  # watchdog: kill stuck agents after this many minutes
+
+Permission resolution
+---------------------
+1. Orc defaults (hardcoded, always present when mode is "confined"):
+   ``orc``, ``read``, ``write``, ``shell(git:*)``, plus worktree directory.
+2. Squad-level ``permissions`` block merged on top.
+3. Per-role ``permissions`` block merged on top of that.
+4. If any level sets ``mode: yolo``, all allow/deny lists are ignored and the
+   agent runs with full permissions (``--yolo`` / ``--allow-all``).
 
 Constraints
 -----------
@@ -41,6 +63,7 @@ Constraints
   rather than undefined behaviour.
 * All counts must be ``>= 1``.
 * ``timeout_minutes`` must be ``>= 1``.
+* ``permissions.mode`` must be ``"confined"`` or ``"yolo"``.
 """
 
 from __future__ import annotations
@@ -50,6 +73,110 @@ from enum import StrEnum
 from pathlib import Path
 
 import yaml
+
+# ---------------------------------------------------------------------------
+# Permission configuration
+# ---------------------------------------------------------------------------
+
+_VALID_MODES = frozenset({"confined", "yolo"})
+
+# Orc's built-in defaults applied to every agent in confined mode.
+# These are the minimum set of tools needed to do development work.
+_ORC_DEFAULT_ALLOW_TOOLS: tuple[str, ...] = (
+    "orc",  # all orc MCP board tools
+    "read",  # read files
+    "write",  # write/edit files
+    "shell(git:*)",  # git operations
+)
+
+
+@dataclass(frozen=True)
+class PermissionConfig:
+    """Resolved permission configuration for one agent role.
+
+    Attributes
+    ----------
+    mode:
+        ``"confined"`` (default) — only explicitly allowed tools run without
+        confirmation.  ``"yolo"`` — all tools are allowed (no restrictions).
+    allow_tools:
+        Ordered list of tool patterns that agents may use without prompting.
+        Only meaningful when ``mode == "confined"``.
+    deny_tools:
+        Ordered list of tool patterns that are explicitly denied.
+        Takes precedence over ``allow_tools``.  Only meaningful when
+        ``mode == "confined"``.
+    """
+
+    mode: str = "confined"
+    allow_tools: tuple[str, ...] = field(default_factory=tuple)
+    deny_tools: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if self.mode not in _VALID_MODES:
+            raise ValueError(f"permissions.mode must be 'confined' or 'yolo', got {self.mode!r}.")
+
+    @property
+    def is_yolo(self) -> bool:
+        """Return ``True`` when the agent should run with unrestricted permissions."""
+        return self.mode == "yolo"
+
+
+def _merge_permissions(base: PermissionConfig, override: PermissionConfig) -> PermissionConfig:
+    """Return a new :class:`PermissionConfig` with *override* merged onto *base*.
+
+    ``mode: yolo`` in either level wins.  Allow/deny lists are concatenated
+    (override appended to base, deduplicating while preserving order).
+    """
+    if base.is_yolo or override.is_yolo:
+        return PermissionConfig(mode="yolo")
+
+    seen_allow: dict[str, None] = dict.fromkeys(base.allow_tools)
+    seen_allow.update(dict.fromkeys(override.allow_tools))
+    seen_deny: dict[str, None] = dict.fromkeys(base.deny_tools)
+    seen_deny.update(dict.fromkeys(override.deny_tools))
+    return PermissionConfig(
+        mode="confined",
+        allow_tools=tuple(seen_allow),
+        deny_tools=tuple(seen_deny),
+    )
+
+
+def _parse_permission_block(raw: object, context: str) -> PermissionConfig:
+    """Parse a raw ``permissions:`` YAML value into a :class:`PermissionConfig`.
+
+    Parameters
+    ----------
+    raw:
+        The parsed YAML value (dict or None).
+    context:
+        Description for error messages (e.g. ``"squad 'default'", "role 'coder'``).
+    """
+    if not raw:
+        return PermissionConfig()
+    if not isinstance(raw, dict):
+        raise ValueError(f"permissions block for {context} must be a mapping, got {type(raw)}.")
+
+    mode = str(raw.get("mode", "confined")).strip()
+    if mode not in _VALID_MODES:
+        raise ValueError(
+            f"permissions.mode for {context} must be 'confined' or 'yolo', got {mode!r}."
+        )
+
+    def _to_strs(val: object, key: str) -> tuple[str, ...]:
+        if val is None:
+            return ()
+        if not isinstance(val, list):
+            raise ValueError(
+                f"permissions.{key} for {context} must be a list of strings, got {type(val)}."
+            )
+        return tuple(str(v) for v in val)
+
+    return PermissionConfig(
+        mode=mode,
+        allow_tools=_to_strs(raw.get("allow_tools"), "allow_tools"),
+        deny_tools=_to_strs(raw.get("deny_tools"), "deny_tools"),
+    )
 
 
 class AgentRole(StrEnum):
@@ -87,6 +214,8 @@ class SquadConfig:
     name: str = ""
     description: str = ""
     _models: dict[str, str] = field(default_factory=dict, compare=False)
+    _permissions: PermissionConfig = field(default_factory=PermissionConfig, compare=False)
+    _role_permissions: dict[str, PermissionConfig] = field(default_factory=dict, compare=False)
 
     def count(self, role: AgentRole | str) -> int:
         """Return the configured agent count for *role*."""
@@ -105,6 +234,29 @@ class SquadConfig:
         role_value = role.value if isinstance(role, AgentRole) else role
         return self._models.get(role_value, _DEFAULT_MODEL)
 
+    def permissions(self, role: AgentRole | str) -> PermissionConfig:
+        """Return the resolved :class:`PermissionConfig` for *role*.
+
+        Resolution order:
+
+        1. Orc built-in defaults (``_ORC_DEFAULT_ALLOW_TOOLS``).
+        2. Squad-level ``permissions:`` block merged on top.
+        3. Per-role ``permissions:`` merged on top.
+
+        If any level declares ``mode: yolo`` the result is always yolo.
+        """
+        if role not in _VALID_ROLES:
+            raise ValueError(f"Unknown role {role!r}. Valid roles: {sorted(_VALID_ROLES)}")
+        role_value = role.value if isinstance(role, AgentRole) else role
+
+        orc_defaults = PermissionConfig(
+            mode="confined",
+            allow_tools=_ORC_DEFAULT_ALLOW_TOOLS,
+        )
+        with_squad = _merge_permissions(orc_defaults, self._permissions)
+        role_override = self._role_permissions.get(role_value, PermissionConfig())
+        return _merge_permissions(with_squad, role_override)
+
 
 def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
     """Parse and validate a squad YAML file at *path*.
@@ -122,7 +274,11 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
             " {{role, count, model}} entries."
         )
 
+    # Squad-level permissions (applies to all roles unless overridden).
+    squad_permissions = _parse_permission_block(raw.get("permissions"), f"squad {file_name!r}")
+
     counts: dict[str, int] = {}
+    role_permissions: dict[str, PermissionConfig] = {}
     for entry in composition:
         if not isinstance(entry, dict):
             continue
@@ -132,6 +288,10 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         counts[role] = int(entry.get("count", 1))
         if "model" in entry and entry["model"]:
             models[role] = str(entry["model"]).strip()
+        if "permissions" in entry:
+            role_permissions[role] = _parse_permission_block(
+                entry["permissions"], f"role {role!r} in squad {file_name!r}"
+            )
     planner = counts.get(AgentRole.PLANNER, 1)
     coder = counts.get(AgentRole.CODER, 1)
     qa = counts.get(AgentRole.QA, 1)
@@ -166,6 +326,8 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         name=name,
         description=description,
         _models=models,
+        _permissions=squad_permissions,
+        _role_permissions=role_permissions,
     )
 
 

@@ -437,6 +437,7 @@ class AgentSvc:
 
     def __init__(self, squad_cfg: SquadConfig, board: BoardStateManager) -> None:
         self._build: _ContextBuilder = _make_context_builder(squad_cfg, board)
+        self._squad_cfg = squad_cfg
         self._board = board
 
     def build_context(
@@ -448,11 +449,26 @@ class AgentSvc:
         return self._build(role, agent_id, task_name=task_name)
 
     def spawn(
-        self, context: str, cwd: Path, model: str | None, log_path: Path | None
+        self,
+        context: str,
+        cwd: Path,
+        model: str | None,
+        log_path: Path | None,
+        agent_id: str | None = None,
+        role: AgentRole | None = None,
     ) -> SpawnResult:
         from orc.ai import invoke as inv
 
-        return inv.spawn(context, cwd, model, log_path)
+        permissions = self._squad_cfg.permissions(role) if role is not None else None
+        return inv.spawn(
+            context,
+            cwd,
+            model,
+            log_path,
+            agent_id=agent_id,
+            role=str(role) if role is not None else None,
+            permissions=permissions,
+        )
 
     def boot_message_body(self, agent_id: str) -> str:
         return _ctx._boot_message_body(agent_id, self._board)

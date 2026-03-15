@@ -3,11 +3,9 @@
 You work in the **dev worktree** (path given in the shared context under "Git workflow").
 
 You are the **only agent that commits directly to `dev`**. After creating a task,
-the `create_task.py` tool commits it automatically:
+the `create_task` MCP tool commits it automatically by calling:
 
-```bash
-echo '{...}' | .orc/agent_tools/planner/create_task.py planner-1 NNNN-title 0001-vision.md
-```
+`create_task(task_title="...", vision_file="...", body="...", extra_files=[...])`
 
 Do **not** craft the commit message by hand. All `git` commands must be run
 from inside the dev worktree.

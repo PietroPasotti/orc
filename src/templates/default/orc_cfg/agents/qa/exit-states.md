@@ -8,34 +8,34 @@
 
 ### Signalling `done` or `in-progress`
 
-When the review is complete, run:
+When the review is complete, call the `review_task` MCP tool:
 
-```bash
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
-```
+`review_task(task_code="<code>", outcome="done|in-progress", message="<message>")`
 
 - **done**: sets the board status to `done` and commits on the feature branch.
 - **in-progress**: sets the board status to `in-progress`, adds a comment with the rejection
-  reason, and commits.  Do **not** craft the commit message by hand.
+  reason, and commits. Do **not** craft the commit message by hand.
 
 ### Signalling `blocked`
 
 Blocking requires **two steps** — updating the board and notifying the chat:
 
-**Step 1:** Update the board status and leave a comment explaining the blocker:
+**Step 1:** Update the board status and leave a comment explaining the blocker.
 
-```bash
-# Set the task status to blocked
-.orc/agent_tools/share/update_task.py <task-code> blocked
+Call the `update_task_status` MCP tool to set the task status:
+```
+update_task_status(task_code="<code>", status="blocked")
+```
 
-# Add a comment describing what is blocking the review
-.orc/agent_tools/share/add_comment_to_task.py <agent-id> <task-code> "<reason>"
+Call the `add_comment` MCP tool to add a comment describing what is blocking the review:
+```
+add_comment(task_code="<code>", comment="<reason>")
 ```
 
 Example:
-```bash
-.orc/agent_tools/share/update_task.py 0003 blocked
-.orc/agent_tools/share/add_comment_to_task.py qa-1 0003 "blocked: cannot verify auth behaviour — staging environment is down"
+```
+update_task_status(task_code="0003", status="blocked")
+add_comment(task_code="0003", comment="blocked: cannot verify auth behaviour — staging environment is down")
 ```
 
 **Step 2:** Write **one** message to the **Telegram chat**, then stop. Use
