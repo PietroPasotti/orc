@@ -35,3 +35,15 @@ orc-dev-branch: dev
 #   skip (e.g. vendor/, third-party/, docs/).
 # orc-todo-scan-exclude:
 #   - .orc
+
+# default-model: the AI model used when a squad profile does not specify one
+#   for a given role.  This is also the fallback when no squad is configured.
+# default-model: claude-sonnet-4.6
+
+# human-reply-wait-timeout: seconds to wait for a human Telegram reply before
+#   giving up on a blocked task.  Increase this if your team responds slowly.
+# human-reply-wait-timeout: 3600.0
+
+# chat-window-size: maximum number of recent messages kept in full in the chat
+#   window passed to agents.  Reduce this to cut prompt size on long threads.
+# chat-window-size: 50
