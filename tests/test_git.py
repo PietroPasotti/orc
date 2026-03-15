@@ -10,7 +10,6 @@ import yaml
 import orc.config as _cfg
 import orc.git.core as _git
 from orc.git.core import (
-    _derive_task_state,
     _ensure_feature_worktree,
     _feature_branch,
     _feature_worktree_path,
@@ -18,7 +17,7 @@ from orc.git.core import (
 )
 
 # ---------------------------------------------------------------------------
-# _derive_task_state
+# _derive_task_state (now in engine/workflow.py)
 # ---------------------------------------------------------------------------
 
 
@@ -61,6 +60,7 @@ class TestDeriveStateFromGit:
         expected_reason_substr,
     ):
         from orc.engine.dispatcher import CLOSE_BOARD
+        from orc.engine.workflow import _derive_task_state
 
         self._patch(
             monkeypatch,
@@ -79,6 +79,8 @@ class TestDeriveStateFromGit:
             assert expected_reason_substr in reason
 
     def test_reason_includes_branch_name(self, monkeypatch):
+        from orc.engine.workflow import _derive_task_state
+
         self._patch(
             monkeypatch,
             active_task="0003-resource-type-enum.md",
@@ -679,7 +681,7 @@ class TestGitCoverage:
 
 
 class TestDeriveTaskStateBoardStatus:
-    """Tests for board-status-based routing in _derive_task_state."""
+    """Tests for board-status-based routing in _derive_task_state (engine/workflow.py)."""
 
     def _patch(self, monkeypatch, *, board_status):
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
@@ -687,31 +689,38 @@ class TestDeriveTaskStateBoardStatus:
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
 
     def test_review_status_routes_to_qa(self, monkeypatch):
+        from orc.engine.workflow import _derive_task_state
+
         self._patch(monkeypatch, board_status="in-review")
         task_data = {"name": "0002-foo.md", "status": "in-review"}
-        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
+        agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "qa"
         assert "awaiting QA" in reason
 
     def test_approved_status_routes_to_qa_passed(self, monkeypatch):
         from orc.engine.dispatcher import QA_PASSED
+        from orc.engine.workflow import _derive_task_state
 
         self._patch(monkeypatch, board_status="done")
         task_data = {"name": "0002-foo.md", "status": "done"}
-        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
+        agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == QA_PASSED
         assert "ready to merge" in reason
 
     def test_rejected_status_routes_to_coder(self, monkeypatch):
+        from orc.engine.workflow import _derive_task_state
+
         self._patch(monkeypatch, board_status="in-progress")
         task_data = {"name": "0002-foo.md", "status": "in-progress"}
-        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
+        agent, reason = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
     def test_coding_status_routes_to_coder(self, monkeypatch):
+        from orc.engine.workflow import _derive_task_state
+
         self._patch(monkeypatch, board_status="in-progress")
         task_data = {"name": "0002-foo.md", "status": "in-progress"}
-        agent, _ = _git._derive_task_state("0002-foo.md", task_data)
+        agent, _ = _derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import orc.git.core as _git
+import orc.engine.workflow as _wf
 from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED
 from orc.engine.state_machine import (
     ACTION_CLOSE_BOARD,
@@ -184,7 +184,7 @@ class TestRouteMatchesImplementation:
             commits_ahead=commits_ahead,
             merged_into_dev=merged_into_dev,
         )
-        impl_token, _ = _git._derive_task_state("0001-foo.md", task_data=task_data)
+        impl_token, _ = _wf._derive_task_state("0001-foo.md", task_data=task_data)
 
         last_commit = (
             self._STATUS_TO_LAST_COMMIT.get(board_status, LastCommit.CODER_WORK)

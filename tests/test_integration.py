@@ -218,7 +218,7 @@ def _coder_handler():
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
-        import orc.board as _board_mod
+        import orc.coordination.board as _board_mod
 
         impl = cwd / "feature_x.py"
         impl.write_text("# Feature X implementation\n\ndef feature_x():\n    pass\n")
@@ -245,7 +245,7 @@ def _qa_handler():
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
-        import orc.board as _board_mod
+        import orc.coordination.board as _board_mod
 
         qa_note = cwd / "qa_review.txt"
         qa_note.write_text("Reviewed. All checks passed.\n")

@@ -10,12 +10,13 @@ from typing import Annotated
 import structlog
 import typer
 
-import orc.board as _board
 import orc.config as _cfg
+import orc.coordination.board as _board
 import orc.engine.context as _ctx
+import orc.engine.workflow as _wf
 import orc.git.core as _git
-from orc.board_manager import TaskStatus
 from orc.cli import app
+from orc.coordination.board import TaskStatus
 from orc.engine.dispatcher import QA_PASSED as _QA_PASSED
 from orc.squad import AgentRole, load_squad
 
@@ -181,7 +182,7 @@ def _status(squad: str = "default") -> None:
         merge_pending: list[str] = []
         for task in open_tasks:
             name = task["name"]
-            token, reason = _git._derive_task_state(name)
+            token, reason = _wf._derive_task_state(name, task)
             if token == AgentRole.CODER:
                 coder_tasks.append((name, reason))
             elif token == AgentRole.QA:

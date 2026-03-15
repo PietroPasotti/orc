@@ -8,7 +8,7 @@ instead of touching the filesystem directly.
 Public surface
 --------------
 :class:`~orc.coordination.state.BoardStateManager`
-    Thread-safe wrapper around :class:`~orc.board_manager.FileBoardManager`
+    Thread-safe wrapper around :class:`~orc.coordination.board.FileBoardManager`
     that handles all board and vision mutations.
 
 :class:`~orc.coordination.server.CoordinationServer`

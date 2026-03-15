@@ -15,7 +15,7 @@ P = ParamSpec("P")
 
 
 # noinspection PyNewStyleGenericSyntax
-class Result(ABC, ResultCombinators, Generic[E, A]):
+class Result(ABC, ResultCombinators, Generic[E, A]):  # noqa
     @abstractmethod
     def map[B](self, f: Callable[[A], B]) -> Result[E, B]: ...
 

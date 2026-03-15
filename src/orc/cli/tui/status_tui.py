@@ -30,7 +30,7 @@ from textual.widgets import ContentSwitcher, Static
 
 import orc.config as _cfg
 import orc.git.core as _git
-from orc.board_manager import TaskStatus
+from orc.coordination.board import TaskStatus
 from orc.coordination.client import BoardSnapshot, get_board_snapshot
 
 # Maximum commits fetched per branch.

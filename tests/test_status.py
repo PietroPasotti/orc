@@ -60,7 +60,7 @@ class TestStatusCoverage:
         )
         monkeypatch.setattr(_st._git, "_features_in_dev_not_main", lambda: _features)
         if derive_task_state:
-            monkeypatch.setattr(_st._git, "_derive_task_state", derive_task_state)
+            monkeypatch.setattr(_st._wf, "_derive_task_state", derive_task_state)
         if feature_branch:
             monkeypatch.setattr(_st._git, "_feature_branch", feature_branch)
         if feature_branch_exists is not None:
@@ -172,7 +172,7 @@ class TestStatusCoverage:
             planner=1, coder=2, qa=1, timeout_minutes=30, name="default", description="", _models={}
         )
 
-        def derive(name):
+        def derive(name, task_data=None):
             if "foo" in name:
                 return ("coder", "r")
             elif "bar" in name:
@@ -199,7 +199,7 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             open_tasks=["0001-foo.md"],
-            derive_task_state=lambda name: ("coder", "r"),
+            derive_task_state=lambda name, td=None: ("coder", "r"),
             feature_branch=lambda name: "feat-foo",
             feature_branch_exists=False,
             ahead=0,
@@ -226,7 +226,7 @@ class TestStatusCoverage:
             monkeypatch,
             squad_cfg=squad,
             open_tasks=["0001-foo.md"],
-            derive_task_state=lambda name: (QA_PASSED, "r"),
+            derive_task_state=lambda name, td=None: (QA_PASSED, "r"),
             feature_branch=lambda name: "feat-foo",
             feature_branch_exists=False,
             ahead=0,

@@ -1,8 +1,8 @@
 """orc – board YAML CRUD operations.
 
 All public functions delegate to the module-level :data:`_manager` singleton
-(:class:`~orc.board_manager.FileBoardManager`).  Call :func:`init_manager`
-once (done automatically by :func:`orc.config.init`).
+(:class:`~orc.coordination.board._manager.FileBoardManager`).  Call
+:func:`init_manager` once (done automatically by :func:`orc.config.init`).
 
 .. note::
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import structlog
 
 import orc.config as _cfg
-from orc.board_manager import TaskStatus
+from orc.coordination.board._manager import TaskStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -27,14 +27,14 @@ _manager = None
 def init_manager() -> None:
     """Initialise (or reinitialise) the module-level BoardManager from Config."""
     global _manager
-    from orc.board_manager import FileBoardManager  # noqa: PLC0415
+    from orc.coordination.board._manager import FileBoardManager  # noqa: PLC0415
 
     _manager = FileBoardManager(_cfg.get().orc_dir)
 
 
 def _get_manager():
     global _manager
-    from orc.board_manager import FileBoardManager  # noqa: PLC0415
+    from orc.coordination.board._manager import FileBoardManager  # noqa: PLC0415
 
     orc_dir = _cfg.get().orc_dir
     if _manager is None or _manager._work_dir != orc_dir / "work":
@@ -121,6 +121,19 @@ def clear_all_assignments() -> None:
     if changed:
         _write_board(board)
         logger.info("cleared stale task assignments on startup")
+
+
+def delete_task(task_name: str) -> None:
+    """Remove *task_name* from board.yaml and delete its task file."""
+    mgr = _get_manager()
+    board = _read_board()
+    board["tasks"] = [
+        t
+        for t in board.get("tasks", [])
+        if (t["name"] if isinstance(t, dict) else str(t)) != task_name
+    ]
+    _write_board(board)
+    mgr.delete_task_file(task_name)
 
 
 def _active_task_name() -> str | None:
