@@ -215,6 +215,7 @@ def plan_dispatch(
         role_allowed=_role_allowed(AgentRole.PLANNER),
         has_assignable_tasks=bool(assignable),
     ):
+        logger.debug("planner needed", coder_bound=len(coder_bound), coder_capacity=coder_capacity)
         spawns.append(SpawnIntent(role=AgentRole.PLANNER, task_name=None))
 
     # Per-task dispatch.
@@ -415,6 +416,7 @@ class Dispatcher:
         if call_budget > 0:
             self._echo("dispatching agents...")
             return self._dispatch(call_budget=call_budget)
+        logger.debug("dispatch skipped: budget exhausted")
         return 0
 
     def _loop(self, maxcalls: int) -> None:
@@ -425,6 +427,7 @@ class Dispatcher:
             loop_count += 1
             contextvars.clear_contextvars()
             contextvars.bind_contextvars(cycle=loop_count)
+            logger.debug("dispatch cycle starting", pool_size=len(self.pool.all_agents()))
 
             self._set_orc_task("polling agents")
             self._poll_completed_agents()
@@ -439,6 +442,12 @@ class Dispatcher:
             self._set_orc_task("dispatching")
             dispatched_count = self._dispatch_agents(maxcalls - spawn_count)
             spawn_count += dispatched_count
+            logger.debug(
+                "dispatch cycle complete",
+                dispatched=dispatched_count,
+                total_spawned=spawn_count,
+                pool_size=len(self.pool.all_agents()),
+            )
 
             # Check termination.
             if self.dry_run:
@@ -452,11 +461,17 @@ class Dispatcher:
             # already in-flight when the limit was hit.
             if self.pool.is_empty():
                 if spawn_count == maxcalls:
+                    logger.info("maxcalls reached, shutting down", maxcalls=maxcalls)
                     self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Shutting down.", final=True)
                     break
 
                 if not dispatched_count:
                     if self.only_role is not None or not self._any_work():
+                        logger.info(
+                            "no pending work, shutting down",
+                            only_role=self.only_role,
+                            total_spawned=spawn_count,
+                        )
                         if self.only_role is not None:
                             self._echo(
                                 f"\n✓ No dispatchable work for --agent"
@@ -481,6 +496,7 @@ class Dispatcher:
             self._stuck_notified.add(task.name)
             last_comment = next((c.text for c in reversed(task.comments or [])), None)
             detail = f" — {last_comment}" if last_comment else ""
+            logger.warning("task stuck, notifying", task=task.name, detail=last_comment)
             self.messaging.post_boot_message(
                 "orc",
                 f"Task {task.name!r} is stuck and needs human intervention{detail}",
@@ -504,6 +520,14 @@ class Dispatcher:
         )
 
         stuck, assignable, coder_bound = classify_tasks(open_tasks)
+        logger.debug(
+            "dispatch snapshot",
+            open_tasks=len(open_tasks),
+            stuck=len(stuck),
+            assignable=len(assignable),
+            coder_bound=len(coder_bound),
+            has_planner_work=has_planner_work,
+        )
         self._notify_stuck_tasks(stuck)
 
         plan = plan_dispatch(
@@ -516,6 +540,12 @@ class Dispatcher:
             role_counts={r: self.pool.count_by_role(r) for r in (AgentRole.CODER, AgentRole.QA)},
             role_limits={r: self.squad.count(r) for r in (AgentRole.CODER, AgentRole.QA)},
             derive_task_state=self.workflow.derive_task_state,
+        )
+        logger.debug(
+            "dispatch plan built",
+            spawns=len(plan.spawns),
+            board_ops=len(plan.board_ops),
+            budget=call_budget,
         )
 
         return self._execute_plan(plan, call_budget)
@@ -534,7 +564,12 @@ class Dispatcher:
 
         for intent in plan.spawns:
             if dispatched >= budget:
-                logger.warning("skipped dispatch call: maxcalls reached")
+                logger.warning(
+                    "dispatch budget exhausted, skipping remaining spawns",
+                    skipped_role=intent.role,
+                    skipped_task=intent.task_name,
+                    budget=budget,
+                )
                 break
 
             agent_id = self._next_id(intent.role)
@@ -603,6 +638,8 @@ class Dispatcher:
         logger.info(
             "spawned agent",
             agent_id=agent_id,
+            role=role,
+            model=model,
             task=task_name,
             worktree=str(worktree),
             log=str(log_path),
@@ -614,7 +651,13 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _handle_completion(self, agent: AgentProcess, rc: int) -> None:
-        logger.info("agent exited", agent_id=agent.agent_id, exit_code=rc)
+        logger.info(
+            "agent exited",
+            agent_id=agent.agent_id,
+            role=agent.role,
+            task=agent.task_name,
+            exit_code=rc,
+        )
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
         _cleanup_agent_temps(agent)
@@ -623,7 +666,12 @@ class Dispatcher:
 
         if rc != 0:
             logger.error(
-                "agent failed", agent_id=agent.agent_id, exit_code=rc, log=str(agent.log_path)
+                "agent failed",
+                agent_id=agent.agent_id,
+                role=agent.role,
+                task=agent.task_name,
+                exit_code=rc,
+                log=str(agent.log_path),
             )
             self._echo(
                 f"\n✗ {agent.agent_id} exited with code {rc}. See {agent.log_path} for details."
@@ -646,6 +694,7 @@ class Dispatcher:
         try:
             self.workflow.merge_feature(task_name)
             self.board.delete_task(task_name)
+            logger.info("merge succeeded", task=task_name)
             self._echo(f"✓ {task_name} merged.")
         except Exception as exc:
             logger.error("merge failed", task=task_name, error=str(exc))
@@ -660,6 +709,8 @@ class Dispatcher:
         logger.warning(
             "agent exceeded watchdog timeout",
             agent_id=agent.agent_id,
+            role=agent.role,
+            task=agent.task_name,
             elapsed_minutes=f"{elapsed_min:.1f}",
             timeout_minutes=self.squad.timeout_minutes,
         )
@@ -680,7 +731,14 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _kill_all_and_unassign(self) -> None:
-        for agent in self.pool.all_agents():
+        agents = self.pool.all_agents()
+        if agents:
+            logger.info(
+                "graceful shutdown: killing all agents",
+                count=len(agents),
+                agent_ids=[a.agent_id for a in agents],
+            )
+        for agent in agents:
             if agent.task_name:
                 self.board.unassign_task(agent.task_name)
         self.pool.kill_all()
