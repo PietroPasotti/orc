@@ -4,18 +4,15 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import Generic, ParamSpec, TypeVar, final
+from typing import ParamSpec, final
 
 from orc.fn.result_combinators import ResultCombinators
 
 type WithErrors[A] = Result[Sequence[str], A]
-E = TypeVar("E", covariant=True)
-A = TypeVar("A", covariant=True)
 P = ParamSpec("P")
 
 
-# noinspection PyNewStyleGenericSyntax
-class Result(ABC, ResultCombinators, Generic[E, A]):  # noqa
+class Result[E, A](ABC, ResultCombinators):
     @abstractmethod
     def map[B](self, f: Callable[[A], B]) -> Result[E, B]: ...
 
@@ -94,10 +91,9 @@ class Result(ABC, ResultCombinators, Generic[E, A]):  # noqa
         return Ok(value) if value is not None else Err(on_missing())
 
 
-# noinspection PyNewStyleGenericSyntax
 @final
 @dataclass(frozen=True)
-class Ok(Result[E, A]):
+class Ok[E, A](Result[E, A]):
     value: A
 
     def map[B](self, f: Callable[[A], B]) -> Result[E, B]:
@@ -122,10 +118,9 @@ class Ok(Result[E, A]):
         return on_success(self.value)
 
 
-# noinspection PyNewStyleGenericSyntax
 @final
 @dataclass(frozen=True)
-class Err(Result[E, A]):
+class Err[E, A](Result[E, A]):
     error: E
 
     def map[B](self, f: Callable[[A], B]) -> Result[E, B]:
