@@ -27,5 +27,8 @@ composition:
   - role: qa
     count: 1
     model: claude-sonnet-4.6
+    # review-threshold: LOW  # CRITICAL, HIGH, MID, or LOW (default: LOW)
+    #   Controls the minimum severity at which QA rejects work back to coders.
+    #   CRITICAL = only reject critical failures, LOW = reject any issue.
 
 timeout_minutes: 120

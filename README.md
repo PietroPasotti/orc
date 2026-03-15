@@ -142,6 +142,7 @@ composition:
   - role: qa
     count: 2
     model: claude-sonnet-4.6
+    review-threshold: HIGH  # CRITICAL, HIGH, MID, or LOW (default: LOW)
 
 timeout_minutes: 180
 ```
@@ -152,6 +153,15 @@ timeout_minutes: 180
 - `yolo` — unrestricted tool access (equivalent to the pre-MCP behaviour). Use for trusted environments or debugging.
 
 **Orc MCP tools** are always available in confined mode and cover all board operations (get/create/close tasks, review, comment, etc.) via the built-in MCP server that `orc run` starts automatically per agent.
+
+**QA review threshold:**
+
+The `review-threshold` option (QA role only) controls which severity of issues cause QA to reject work back to coders:
+
+- `CRITICAL` — only reject on critical failures (most lenient).
+- `HIGH` — reject on high-severity issues and above.
+- `MID` — reject on medium-severity issues and above.
+- `LOW` — reject on any issue (strictest, default).
 
 The `planner` count must always be `1`. Scale throughput by adding coders and QA reviewers.
 

@@ -4,7 +4,14 @@ import textwrap
 
 import pytest
 
-from orc.squad import _DEFAULT_MODEL, SquadConfig, list_squads, load_all_squads, load_squad
+from orc.squad import (
+    _DEFAULT_MODEL,
+    ReviewThreshold,
+    SquadConfig,
+    list_squads,
+    load_all_squads,
+    load_squad,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -485,3 +492,143 @@ class TestSquadCoverage:
 
         result = list_squads(orc_dir=tmp_path)
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# ReviewThreshold
+# ---------------------------------------------------------------------------
+
+_QA_THRESHOLD_YAML = textwrap.dedent("""\
+    name: strict
+    composition:
+      - role: planner
+        count: 1
+      - role: coder
+        count: 1
+      - role: qa
+        count: 1
+        review-threshold: HIGH
+    timeout_minutes: 60
+""")
+
+
+class TestReviewThreshold:
+    def test_default_review_threshold(self):
+        """SquadConfig defaults to LOW (strictest) review threshold."""
+        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        assert cfg.review_threshold == ReviewThreshold.LOW
+
+    def test_review_threshold_from_yaml(self, tmp_path):
+        """review-threshold on QA role entry is parsed correctly."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir(exist_ok=True)
+        (squads_dir / "strict.yaml").write_text(_QA_THRESHOLD_YAML)
+        cfg = load_squad("strict", orc_dir=tmp_path)
+        assert cfg.review_threshold == ReviewThreshold.HIGH
+
+    @pytest.mark.parametrize("value", ["CRITICAL", "HIGH", "MID", "LOW"])
+    def test_review_threshold_all_valid_values(self, tmp_path, value):
+        """All four threshold levels are accepted."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir(exist_ok=True)
+        (squads_dir / "t.yaml").write_text(
+            textwrap.dedent(f"""\
+                composition:
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                    review-threshold: {value}
+                timeout_minutes: 60
+            """)
+        )
+        cfg = load_squad("t", orc_dir=tmp_path)
+        assert cfg.review_threshold == ReviewThreshold(value)
+
+    def test_review_threshold_case_insensitive(self, tmp_path):
+        """review-threshold accepts case-insensitive values."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir(exist_ok=True)
+        (squads_dir / "ci.yaml").write_text(
+            textwrap.dedent("""\
+                composition:
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                    review-threshold: high
+                timeout_minutes: 60
+            """)
+        )
+        cfg = load_squad("ci", orc_dir=tmp_path)
+        assert cfg.review_threshold == ReviewThreshold.HIGH
+
+    def test_review_threshold_invalid_raises(self, tmp_path):
+        """Invalid review-threshold value raises ValueError."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir(exist_ok=True)
+        (squads_dir / "bad.yaml").write_text(
+            textwrap.dedent("""\
+                composition:
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                    review-threshold: EXTREME
+                timeout_minutes: 60
+            """)
+        )
+        with pytest.raises(ValueError, match="review-threshold"):
+            load_squad("bad", orc_dir=tmp_path)
+
+    def test_review_threshold_omitted_defaults_to_low(self, tmp_path):
+        """Omitting review-threshold gives the default LOW."""
+        squads_dir = tmp_path / "squads"
+        squads_dir.mkdir(exist_ok=True)
+        (squads_dir / "plain.yaml").write_text(
+            textwrap.dedent("""\
+                composition:
+                  - role: planner
+                    count: 1
+                  - role: coder
+                    count: 1
+                  - role: qa
+                    count: 1
+                timeout_minutes: 60
+            """)
+        )
+        cfg = load_squad("plain", orc_dir=tmp_path)
+        assert cfg.review_threshold == ReviewThreshold.LOW
+
+    def test_review_threshold_on_non_qa_role_ignored(self, tmp_path):
+        """review-threshold on non-QA roles is silently ignored."""
+        from orc.squad import _parse_squad_file
+
+        squad_yaml = tmp_path / "test.yaml"
+        squad_yaml.write_text(
+            textwrap.dedent("""\
+                composition:
+                  - role: planner
+                    count: 1
+                    review-threshold: CRITICAL
+                  - role: coder
+                    count: 1
+                    review-threshold: HIGH
+                  - role: qa
+                    count: 1
+                timeout_minutes: 60
+            """)
+        )
+        cfg = _parse_squad_file("test", squad_yaml)
+        assert cfg.review_threshold == ReviewThreshold.LOW
+
+    def test_package_default_has_low_threshold(self):
+        """Package bundled default squad has LOW review threshold."""
+        cfg = load_squad("default")
+        assert cfg.review_threshold == ReviewThreshold.LOW
