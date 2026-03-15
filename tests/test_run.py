@@ -295,21 +295,6 @@ class TestSafeFeaturesDone:
         assert _run_mod._safe_features_done() == 3
 
 
-class TestServiceAdapters:
-    """Tests for the service adapter classes."""
-
-    def test_workflow_svc_do_close_board_delegates(self, monkeypatch):
-        """WorkflowSvc.do_close_board delegates to _do_close_board."""
-        import orc.engine.workflow as _wf
-
-        called = []
-        monkeypatch.setattr(_wf, "_do_close_board", lambda t: called.append(t))
-        monkeypatch.setattr(_wf, "_make_merge_feature_fn", lambda squad: lambda t: None)
-        svc = _wf.WorkflowSvc(_minimal_squad())
-        svc.do_close_board("0001-foo.md")
-        assert called == ["0001-foo.md"]
-
-
 class TestMaxcallsCliValidation:
     """CLI validates --maxcalls; 0 is rejected, UNLIMITED is accepted."""
 

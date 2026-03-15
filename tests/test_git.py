@@ -9,9 +9,7 @@ import yaml
 
 import orc.config as _cfg
 import orc.git.core as _git
-from orc.board import _active_task_name
 from orc.git.core import (
-    _close_task_on_board,
     _derive_task_state,
     _ensure_feature_worktree,
     _feature_branch,
@@ -35,17 +33,12 @@ class TestDeriveStateFromGit:
         is_merged=False,
         board_status=None,
     ):
-        monkeypatch.setattr("orc.board._active_task_name", lambda: active_task)
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: branch_exists)
         monkeypatch.setattr(
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: has_commits
         )
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: is_merged)
-        if board_status is not None and active_task:
-            monkeypatch.setattr(
-                "orc.board.get_task",
-                lambda name: {"name": name, "status": board_status},
-            )
+        self._task_data = {"name": active_task, "status": board_status} if board_status else None
 
     @pytest.mark.parametrize(
         "branch_exists,has_commits,is_merged,board_status,expected_agent,expected_reason_substr",
@@ -77,7 +70,7 @@ class TestDeriveStateFromGit:
             is_merged=is_merged,
             board_status=board_status,
         )
-        agent, reason = _derive_task_state("0003-foo.md")
+        agent, reason = _derive_task_state("0003-foo.md", self._task_data)
         if expected_agent == "CLOSE_BOARD_SENTINEL":
             assert agent == CLOSE_BOARD
         else:
@@ -93,64 +86,58 @@ class TestDeriveStateFromGit:
             has_commits=True,
             board_status="coding",
         )
-        _, reason = _derive_task_state("0003-resource-type-enum.md")
+        task_data = {"name": "0003-resource-type-enum.md", "status": "coding"}
+        _, reason = _derive_task_state("0003-resource-type-enum.md", task_data)
         assert "feat/0003-resource-type-enum" in reason
 
 
 # ---------------------------------------------------------------------------
-# Board reconciliation (_close_task_on_board)
+# BoardStateManager.delete_task (replaces _close_task_on_board)
 # ---------------------------------------------------------------------------
 
 
-class TestBoardReconciliation:
-    def test_close_task_moves_to_done(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
+class TestDeleteTask:
+    def test_delete_task_removes_from_board(self, tmp_path):
+        from orc.coordination.state import BoardStateManager
 
-        board_path = tmp_path / ".orc" / "work" / "board.yaml"
+        orc_dir = tmp_path / ".orc"
+        board_path = orc_dir / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True, exist_ok=True)
         board_path.write_text("counter: 2\ntasks:\n  - name: 0002-bar.md\n  - name: 0003-foo.md\n")
 
-        _close_task_on_board("0003-foo.md")
+        mgr = BoardStateManager(orc_dir)
+        mgr.delete_task("0003-foo.md")
 
         board = yaml.safe_load(board_path.read_text())
         names = [t["name"] if isinstance(t, dict) else str(t) for t in board["tasks"]]
         assert "0003-foo.md" not in names
         assert "0002-bar.md" in names
 
-    def test_close_task_deletes_md_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
+    def test_delete_task_deletes_md_file(self, tmp_path):
+        from orc.coordination.state import BoardStateManager
 
-        board_path = tmp_path / ".orc" / "work" / "board.yaml"
+        orc_dir = tmp_path / ".orc"
+        board_path = orc_dir / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True, exist_ok=True)
         board_path.write_text("counter: 1\ntasks:\n  - name: 0003-foo.md\n")
-        task_md = tmp_path / ".orc" / "work" / "0003-foo.md"
+        task_md = orc_dir / "work" / "0003-foo.md"
         task_md.write_text("# Task\n")
 
-        _close_task_on_board("0003-foo.md")
+        mgr = BoardStateManager(orc_dir)
+        mgr.delete_task("0003-foo.md")
 
         assert not task_md.exists()
 
-    def test_close_task_missing_board_does_not_raise(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
+    def test_delete_task_preserves_other_tasks(self, tmp_path):
+        from orc.coordination.state import BoardStateManager
 
-        _close_task_on_board("0003-foo.md")
-
-    def test_close_task_other_tasks_preserved(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
-
-        board_path = tmp_path / ".orc" / "work" / "board.yaml"
+        orc_dir = tmp_path / ".orc"
+        board_path = orc_dir / "work" / "board.yaml"
         board_path.parent.mkdir(parents=True, exist_ok=True)
         board_path.write_text("counter: 3\ntasks:\n  - name: 0003-foo.md\n  - name: 0004-bar.md\n")
 
-        _close_task_on_board("0003-foo.md")
+        mgr = BoardStateManager(orc_dir)
+        mgr.delete_task("0003-foo.md")
 
         board = yaml.safe_load(board_path.read_text())
         names = [t["name"] if isinstance(t, dict) else str(t) for t in board["tasks"]]
@@ -182,19 +169,23 @@ class TestFeatureWorktree:
         wt = _feature_worktree_path("0003-resource-type-enum.md")
         assert wt == tmp_path / "wt" / "0003-resource-type-enum"
 
-    def test_active_task_name_returns_first_open(self, monkeypatch, tmp_path):
-        (tmp_path / ".orc" / "work" / "board.yaml").write_text(
+    def test_active_task_name_returns_first_open(self, tmp_path):
+        from orc.coordination.state import BoardStateManager
+
+        orc_dir = tmp_path / ".orc"
+        (orc_dir / "work").mkdir(parents=True, exist_ok=True)
+        (orc_dir / "work" / "board.yaml").write_text(
             "counter: 2\ntasks:\n  - name: 0001-foo.md\n  - name: 0002-bar.md\n"
         )
-        assert _active_task_name() == "0001-foo.md"
+        assert BoardStateManager(orc_dir).active_task_name() == "0001-foo.md"
 
-    def test_active_task_name_returns_none_when_empty(self, monkeypatch, tmp_path):
-        (tmp_path / ".orc" / "work" / "board.yaml").write_text("counter: 1\ntasks: []\n")
-        assert _active_task_name() is None
+    def test_active_task_name_returns_none_when_empty(self, tmp_path):
+        from orc.coordination.state import BoardStateManager
 
-    def test_active_task_name_returns_none_when_no_board(self):
-        # board.yaml doesn't exist → returns None
-        assert _active_task_name() is None
+        orc_dir = tmp_path / ".orc"
+        (orc_dir / "work").mkdir(parents=True, exist_ok=True)
+        (orc_dir / "work" / "board.yaml").write_text("counter: 1\ntasks: []\n")
+        assert BoardStateManager(orc_dir).active_task_name() is None
 
     def test_ensure_feature_worktree_creates_branch_and_worktree(self, monkeypatch, tmp_path):
         runs: list[list[str]] = []
@@ -233,12 +224,6 @@ class TestFeatureWorktree:
             _cfg, "_config", _replace(_cfg.get(), repo_root=tmp_path, orc_dir=tmp_path / ".orc")
         )
 
-        work_dir = tmp_path / ".orc" / "work"
-        work_dir.mkdir(parents=True, exist_ok=True)
-        board_yaml = work_dir / "board.yaml"
-        board_yaml.write_text("counter: 1\ntasks:\n  - name: 0001-foo.md\n")
-        (work_dir / "0001-foo.md").write_text("task content")
-
         fake_wt = tmp_path / "colony-feat-0001-foo"
         fake_wt.mkdir(exist_ok=True)
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: fake_wt)
@@ -249,10 +234,8 @@ class TestFeatureWorktree:
         assert any("merge" in c and "feat/0001-foo" in c for c in cmds), cmds
         assert any("worktree remove" in c for c in cmds), cmds
         assert any("branch" in c and "-D" in c for c in cmds), cmds
-        updated = yaml.safe_load(board_yaml.read_text())
-        assert "0001-foo.md" not in [
-            t["name"] if isinstance(t, dict) else str(t) for t in updated.get("tasks", [])
-        ]
+        # Board deletion is handled by the dispatcher after merge; _merge_feature_into_dev
+        # is a pure git operation and does not modify board.yaml.
 
 
 # ---------------------------------------------------------------------------
@@ -274,14 +257,6 @@ class TestGitCoverage:
         with patch("orc.git.core.subprocess.run", fake_run):
             _git._ensure_dev_worktree()
         assert any("worktree" in " ".join(c) for c in runs)
-
-    def test_close_task_on_board_missing_board(self, tmp_path, monkeypatch):
-        """No board.yaml → close_task_on_board creates done entry (no crash)."""
-        monkeypatch.setattr(
-            _cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path / ".orc", repo_root=tmp_path)
-        )
-        # board does not exist — should not raise
-        _git._close_task_on_board("0001-foo.md")
 
     def test_rebase_in_progress_false(self, tmp_path):
         """Lines 235-244: _rebase_in_progress with real git dir returns False."""
@@ -434,7 +409,7 @@ class TestGitCoverage:
         assert result == 0
 
     def test_merge_feature_updates_board(self, tmp_path, monkeypatch):
-        """_merge_feature_into_dev updates board (moves task to done) without a git commit."""
+        """_merge_feature_into_dev is a pure git operation; board deletion is done by dispatcher."""
         import orc.config as _cfg
         import orc.git.core as _git
 
@@ -469,14 +444,18 @@ class TestGitCoverage:
         with patch("orc.git.core.subprocess.run", fake_run):
             _git._merge_feature_into_dev("0001-task.md")
 
-        # Board updated: task moved from open to done
+        # Git operations: merge, worktree remove, branch delete
+        cmds_str = [" ".join(c) for c in runs]
+        assert any("merge" in c for c in cmds_str), cmds_str
+        assert any("worktree remove" in c or "branch" in c for c in cmds_str), cmds_str
+
+        # Board is NOT modified by _merge_feature_into_dev (dispatcher calls board.delete_task).
         board = yaml.safe_load(board_yaml.read_text())
-        assert "0001-task.md" not in [
+        assert "0001-task.md" in [
             t.get("name") for t in board.get("tasks", []) if isinstance(t, dict)
         ]
 
         # No board-commit: git commands are merge/worktree/branch only
-        cmds_str = [" ".join(c) for c in runs]
         assert not any("commit" in c and ".orc" in c for c in cmds_str), (
             "board must not be committed to git: " + str(cmds_str)
         )
@@ -531,6 +510,7 @@ class TestGitCoverage:
 
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir(exist_ok=True)
+        (dev_wt / ".orc").mkdir(exist_ok=True)  # needed for changelog write
         feat_wt = tmp_path / "feat"
         feat_wt.mkdir(exist_ok=True)
 
@@ -705,14 +685,11 @@ class TestDeriveTaskStateBoardStatus:
         monkeypatch.setattr("orc.git.core._feature_branch_exists", lambda b: True)
         monkeypatch.setattr("orc.git.core._feature_has_commits_ahead_of_main", lambda b: True)
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: False)
-        monkeypatch.setattr(
-            "orc.board.get_task",
-            lambda name: {"name": name, "status": board_status},
-        )
 
     def test_review_status_routes_to_qa(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-review")
-        agent, reason = _git._derive_task_state("0002-foo.md")
+        task_data = {"name": "0002-foo.md", "status": "in-review"}
+        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
         assert agent == "qa"
         assert "awaiting QA" in reason
 
@@ -720,18 +697,21 @@ class TestDeriveTaskStateBoardStatus:
         from orc.engine.dispatcher import QA_PASSED
 
         self._patch(monkeypatch, board_status="done")
-        agent, reason = _git._derive_task_state("0002-foo.md")
+        task_data = {"name": "0002-foo.md", "status": "done"}
+        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
         assert agent == QA_PASSED
         assert "ready to merge" in reason
 
     def test_rejected_status_routes_to_coder(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-progress")
-        agent, reason = _git._derive_task_state("0002-foo.md")
+        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        agent, reason = _git._derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
     def test_coding_status_routes_to_coder(self, monkeypatch):
         self._patch(monkeypatch, board_status="in-progress")
-        agent, _ = _git._derive_task_state("0002-foo.md")
+        task_data = {"name": "0002-foo.md", "status": "in-progress"}
+        agent, _ = _git._derive_task_state("0002-foo.md", task_data)
         assert agent == "coder"
 
 

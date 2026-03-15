@@ -111,7 +111,7 @@ def _run(
 
     messaging_svc = tg.TelegramMessagingService()
     workflow_svc = _wf.WorkflowSvc(squad_cfg)
-    agent_svc = _wf.AgentSvc(squad_cfg)
+    agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
     worktree_svc = _git.WorktreeManager()
 
     hooks: _disp.DispatchHooks | None = None

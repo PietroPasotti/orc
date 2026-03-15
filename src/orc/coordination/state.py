@@ -88,6 +88,44 @@ class BoardStateManager:
         """Return names of tasks with ``status == "blocked"``."""
         return self.query_tasks("blocked")
 
+    def active_task_name(self) -> str | None:
+        """Return the name of the first task on the board, or ``None`` if empty."""
+        tasks = self.get_tasks()
+        if not tasks:
+            return None
+        first = tasks[0]
+        return first["name"] if isinstance(first, dict) else str(first)
+
+    @_locked
+    def delete_task(self, task_name: str) -> None:
+        """Remove *task_name* from board.yaml and delete its task file."""
+        board = self._mgr.read_board()
+        board["tasks"] = [
+            t
+            for t in board.get("tasks", [])
+            if (t["name"] if isinstance(t, dict) else str(t)) != task_name
+        ]
+        self._mgr.write_board(board)
+        self._mgr.delete_task_file(task_name)
+
+    @_locked
+    def read_work_summary(self, active_only: str | None = None) -> str:
+        """Return a human-readable summary of the board and open task files.
+
+        When *active_only* is provided, only that task's full content is
+        included; others are listed by name only to reduce token cost.
+        """
+        parts: list[str] = []
+        board_path = self._mgr.board_path
+        if board_path.exists():
+            parts.append(f"### board.yaml\n\n```yaml\n{board_path.read_text().strip()}\n```")
+        for task_file in self._mgr.list_task_files():
+            if active_only and task_file.name != active_only:
+                parts.append(f"### {task_file.name} _(summary only)_")
+            else:
+                parts.append(f"### {task_file.name}\n\n{task_file.read_text()}")
+        return "\n\n".join(parts) if parts else "_No active work._"
+
     def read_task_content(self, task_name: str) -> str:
         """Return the raw markdown content of *task_name*'s task file.
 

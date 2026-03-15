@@ -10,7 +10,6 @@ from pathlib import Path
 import structlog
 import typer
 
-import orc.board as _board
 import orc.config as _cfg
 from orc.board_manager import TaskStatus
 from orc.engine.state_machine import ACTION_CLOSE_BOARD as _CLOSE_BOARD
@@ -237,18 +236,6 @@ def _append_changelog_entry(
     logger.info("changelog updated", task=task_name, merge_sha=merge_sha)
 
 
-def _close_task_on_board(task_name: str) -> None:
-    """Remove *task_name* from the board and delete its task file."""
-    board = _board._read_board()
-    board["tasks"] = [
-        t
-        for t in board.get("tasks", [])
-        if (t["name"] if isinstance(t, dict) else str(t)) != task_name
-    ]
-    _board._write_board(board)
-    _board._get_manager().delete_task_file(task_name)
-
-
 def _merge_feature_into_dev(task_name: str) -> None:
     """Merge the feature branch into dev, close the task on the board, and clean up.
 
@@ -298,9 +285,8 @@ def _merge_feature_into_dev(task_name: str) -> None:
         check=True,
     ).stdout.strip()
 
-    _close_task_on_board(task_name)
-    logger.info("board updated", task=task_name, commit_tag=merge_sha)
     _append_changelog_entry(task_name, branch, merge_sha, cfg.orc_dir)
+    logger.info("feature merged", task=task_name, commit_tag=merge_sha)
 
     if wt_path.exists():
         logger.info("removing feature worktree", path=str(wt_path))
@@ -350,12 +336,14 @@ def _feature_branch_exists(branch: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def _derive_task_state(task_name: str) -> tuple[str, str]:
-    """Inspect the git tree + board for *task_name* and return ``(token, reason)``.
+# TODO: no anonymous data structures and return types: Pydantic only.
+def _derive_task_state(task_name: str, task_data: dict | None = None) -> tuple[str, str]:
+    """Inspect the git tree and *task_data* for *task_name* and return ``(token, reason)``.
 
     Git branch checks determine whether work has started and completed.
     Routing is delegated to :func:`~orc.engine.state_machine.route` —
-    the single source of truth.  Task status is read from the board.
+    the single source of truth.  *task_data* is the task's board entry dict;
+    when ``None``, defaults to treating the task as ``in-progress``.
     """
     branch = _feature_branch(task_name)
 
@@ -378,7 +366,6 @@ def _derive_task_state(task_name: str) -> tuple[str, str]:
             return _CLOSE_BOARD, f"branch {branch!r} already merged into dev but board not updated"
         return AgentRole.CODER, f"feature branch {branch!r} has no commits ahead of main"
 
-    task_data = _board.get_task(task_name)
     status = (task_data or {}).get("status") or TaskStatus.IN_PROGRESS
     last_commit = _STATUS_TO_LAST_COMMIT.get(status, LastCommit.CODER_WORK)
     logger.debug(

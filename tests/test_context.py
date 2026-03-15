@@ -23,6 +23,11 @@ class TestBootMessageBody:
         board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text(content)
 
+    def _make_board(self):
+        from orc.coordination.state import BoardStateManager
+
+        return BoardStateManager(_cfg.get().orc_dir)
+
     @pytest.mark.parametrize(
         "agent_id,board_content,expected",
         [
@@ -43,11 +48,6 @@ class TestBootMessageBody:
                 "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
                 "planning 0002-foo.md.",
             ),
-            (
-                "planner-1",
-                "counter: 2\ntasks: []\nvisions:\n  - vision.md\n",
-                "translating vision docs.",
-            ),
             ("planner-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
             (
                 "coder-1",
@@ -66,7 +66,17 @@ class TestBootMessageBody:
     def test_boot_message_body(self, agent_id, board_content, expected):
         if board_content is not None:
             self._write_board(board_content)
-        assert _ctx._boot_message_body(agent_id) == expected
+        assert _ctx._boot_message_body(agent_id, self._make_board()) == expected
+
+    def test_boot_message_body_planner_with_vision(self):
+        """Planner with no tasks but a pending vision → 'translating vision docs.'"""
+        self._write_board("counter: 2\ntasks: []\n")
+        vision_ready = _cfg.get().orc_dir / "vision" / "ready"
+        vision_ready.mkdir(parents=True, exist_ok=True)
+        (vision_ready / "my-feature.md").write_text("# Vision\n")
+        assert (
+            _ctx._boot_message_body("planner-1", self._make_board()) == "translating vision docs."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +351,11 @@ class TestContextCoverage:
 
     def test_build_agent_context_planner(self, tmp_path, monkeypatch):
         self._setup_context(monkeypatch, tmp_path)
-        model, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
+        from orc.coordination.state import BoardStateManager
+
+        model, ctx = _ctx.build_agent_context(
+            "planner", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
+        )
         assert isinstance(ctx, str)
         assert len(ctx) > 0
 
@@ -355,7 +369,11 @@ class TestContextCoverage:
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feat/0001-task")
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
-        _, ctx = _ctx.build_agent_context("qa", [], worktree=tmp_path)
+        from orc.coordination.state import BoardStateManager
+
+        _, ctx = _ctx.build_agent_context(
+            "qa", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
+        )
         assert "feat/0001-task" in ctx
         assert "Branch to review" in ctx
 
@@ -375,7 +393,11 @@ class TestContextCoverage:
         monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_git, "_feature_branch", lambda t: "feature/0001-task")
         monkeypatch.setattr(_git, "_feature_worktree_path", lambda t: tmp_path / "feat")
-        _, ctx = _ctx.build_agent_context("planner", [], worktree=tmp_path)
+        from orc.coordination.state import BoardStateManager
+
+        _, ctx = _ctx.build_agent_context(
+            "planner", [], BoardStateManager(_cfg.get().orc_dir), worktree=tmp_path
+        )
         assert "feature/0001-task" in ctx
 
     def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
@@ -403,7 +425,9 @@ class TestContextCoverage:
         )
         monkeypatch.setattr(tg, "get_messages", lambda: [])
         monkeypatch.setattr(_git, "_ensure_dev_worktree", lambda: repo)
-        _, ctx = _ctx.build_agent_context("planner", [])
+        from orc.coordination.state import BoardStateManager
+
+        _, ctx = _ctx.build_agent_context("planner", [], BoardStateManager(_cfg.get().orc_dir))
         assert "external-orc/work/" in ctx
 
 
@@ -582,7 +606,9 @@ class TestBuildContextTodos:
         self._setup(tmp_path, monkeypatch)
         fake_todos = [{"file": "x.py", "line": 5, "tag": "TODO", "text": "# TODO: later"}]
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: fake_todos)
-        _, ctx = _ctx.build_agent_context("planner", [])
+        from orc.coordination.state import BoardStateManager
+
+        _, ctx = _ctx.build_agent_context("planner", [], BoardStateManager(_cfg.get().orc_dir))
         assert "Code TODOs and FIXMEs" in ctx
         assert "`TODO`" in ctx
 
@@ -599,7 +625,9 @@ class TestBuildContextTodos:
         (work_dir / "board.yaml").write_text(
             "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
         )
-        _, ctx = _ctx.build_agent_context("coder", [])
+        from orc.coordination.state import BoardStateManager
+
+        _, ctx = _ctx.build_agent_context("coder", [], BoardStateManager(_cfg.get().orc_dir))
         assert "Code TODOs and FIXMEs" not in ctx
 
 
@@ -792,6 +820,8 @@ class TestWindowChat:
 
 class TestReadWorkScoped:
     def test_active_only_includes_only_target_task(self, tmp_path, monkeypatch):
+        from orc.coordination.state import BoardStateManager
+
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
         (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
@@ -809,15 +839,15 @@ class TestReadWorkScoped:
             ),
         )
 
-        import orc.board as _board
-
-        result = _board._read_work(active_only="0001-a.md")
+        result = BoardStateManager(tmp_path).read_work_summary(active_only="0001-a.md")
         assert "Task A content." in result
         assert "Task B content." not in result
         assert "0002-b.md" in result  # name still listed
         assert "_(summary only)_" in result
 
     def test_no_active_only_includes_all(self, tmp_path, monkeypatch):
+        from orc.coordination.state import BoardStateManager
+
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
         (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n")
@@ -834,8 +864,6 @@ class TestReadWorkScoped:
             ),
         )
 
-        import orc.board as _board
-
-        result = _board._read_work()
+        result = BoardStateManager(tmp_path).read_work_summary()
         assert "Task A content." in result
         assert "_(summary only)_" not in result

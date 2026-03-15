@@ -115,7 +115,9 @@ class TestMergeCommand:
         monkeypatch.setattr(
             _ctx, "invoke_agent", lambda name, ctx, mdl, **kw: invocations.append(name) or 0
         )
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
+        )
         completed: list[bool] = []
         monkeypatch.setattr(_git, "_complete_merge", lambda: completed.append(True) or True)
 
@@ -174,7 +176,9 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
+        )
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 2
@@ -197,7 +201,9 @@ class TestMergeCommand:
         monkeypatch.setattr(_git, "_conflict_status", lambda wt: "UU src/foo.py")
         monkeypatch.setattr(_git, "_rebase_in_progress", lambda wt: True)
         monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda name, msgs, **kw: ("model", "ctx"))
+        monkeypatch.setattr(
+            _ctx, "build_agent_context", lambda name, msgs, board=None, **kw: ("model", "ctx")
+        )
 
         result = runner.invoke(m.app, ["merge"])
         assert result.exit_code == 1

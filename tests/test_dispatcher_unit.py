@@ -119,7 +119,7 @@ class TestDispatcherCoverage:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md", "assigned_to": "coder-1"}],
-            derive_task_state=lambda t: ("coder", "reason"),
+            derive_task_state=lambda t, td=None: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -127,31 +127,31 @@ class TestDispatcherCoverage:
         assert count == 0
 
     def test_dispatch_close_board(self, tmp_path):
-        """CLOSE_BOARD token → do_close_board called."""
-        closed = []
+        """CLOSE_BOARD token → board.delete_task called."""
+        deleted = []
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: (CLOSE_BOARD, "close"),
+            derive_task_state=lambda t, td=None: (CLOSE_BOARD, "close"),
         )
-        svcs.workflow.do_close_board = lambda t: closed.append(t)
+        svcs.board.delete_task = lambda t: deleted.append(t)
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
         d._dispatch(call_budget=100)
-        assert "0001-foo.md" in closed
+        assert "0001-foo.md" in deleted
 
     def test_dispatch_close_board_failure_is_logged(self, tmp_path, monkeypatch):
-        """do_close_board() failure is logged and does not propagate."""
+        """delete_task() failure is logged and does not propagate."""
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: (CLOSE_BOARD, "close"),
+            derive_task_state=lambda t, td=None: (CLOSE_BOARD, "close"),
         )
 
         def _boom(task_name):
             raise RuntimeError("board exploded")
 
-        svcs.workflow.do_close_board = _boom
+        svcs.board.delete_task = _boom
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
 
@@ -160,7 +160,7 @@ class TestDispatcherCoverage:
 
         mock_log.assert_called_once()
         call_kwargs = mock_log.call_args
-        assert "do_close_board failed" in call_kwargs[0]
+        assert "delete_task failed during crash recovery" in call_kwargs[0]
         assert result == 0  # no agents spawned, but dispatch continued without raising
 
     def test_dispatch_skips_unknown_token(self, tmp_path):
@@ -168,7 +168,7 @@ class TestDispatcherCoverage:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: ("unknown_token", "reason"),
+            derive_task_state=lambda t, td=None: ("unknown_token", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -179,7 +179,7 @@ class TestDispatcherCoverage:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: ("coder", "reason"),
+            derive_task_state=lambda t, td=None: ("coder", "reason"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -236,7 +236,7 @@ class TestDispatcherCoverage:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: (QA_PASSED, "qa passed"),
+            derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -500,7 +500,7 @@ class TestProactivePlanner:
             tmp_path,
             # 1 open task, squad has 2 coders → pipeline has room → spawn planner
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: ("coder", "ready"),
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
             spawn_fn=_spawn,
         )
@@ -521,7 +521,7 @@ class TestProactivePlanner:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}, {"name": "0002-bar.md"}],
-            derive_task_state=lambda t: ("coder", "ready"),
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
         # 2 open tasks, 2 coders → at capacity, no proactive planner
@@ -538,7 +538,7 @@ class TestProactivePlanner:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: ("coder", "ready"),
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: [],  # nothing to plan
         )
         squad = minimal_squad(coder=2)
@@ -554,7 +554,7 @@ class TestProactivePlanner:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [{"name": "0001-foo.md"}],
-            derive_task_state=lambda t: ("coder", "ready"),
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
         )
         squad = minimal_squad(coder=2)
@@ -596,7 +596,7 @@ class TestDispatchBudgetExhaustion:
                 {"name": "0001-foo.md"},
                 {"name": "0002-bar.md"},
             ],
-            derive_task_state=lambda t: ("coder", "ready"),
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
         )
         # Squad allows 2 coders, but budget is capped at 1.
         squad = minimal_squad(coder=2)
@@ -652,7 +652,7 @@ class TestOnlyRoleFiltering:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: tasks,
-            derive_task_state=lambda t: states[t],
+            derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
@@ -670,7 +670,7 @@ class TestOnlyRoleFiltering:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: tasks,
-            derive_task_state=lambda t: states[t],
+            derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )
@@ -688,7 +688,7 @@ class TestOnlyRoleFiltering:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: tasks,
-            derive_task_state=lambda t: states[t],
+            derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
         )

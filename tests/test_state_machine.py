@@ -147,12 +147,6 @@ class TestRouteMatchesImplementation:
             "orc.git.core._feature_has_commits_ahead_of_main", lambda b: commits_ahead
         )
         monkeypatch.setattr("orc.git.core._feature_merged_into_dev", lambda b: merged_into_dev)
-        if board_status is not None:
-            monkeypatch.setattr(
-                "orc.board.get_task",
-                lambda name: {"name": name, "status": board_status},
-            )
-        monkeypatch.setattr("orc.board._active_task_name", lambda: "0001-foo.md")
 
     _STATUS_TO_LAST_COMMIT = {
         "planned": LastCommit.CODER_WORK,
@@ -183,14 +177,14 @@ class TestRouteMatchesImplementation:
         merged_into_dev,
         board_status,
     ):
+        task_data = {"name": "0001-foo.md", "status": board_status} if board_status else None
         self._patch_git(
             monkeypatch,
             branch_exists=branch_exists,
             commits_ahead=commits_ahead,
             merged_into_dev=merged_into_dev,
-            board_status=board_status,
         )
-        impl_token, _ = _git._derive_task_state("0001-foo.md")
+        impl_token, _ = _git._derive_task_state("0001-foo.md", task_data=task_data)
 
         last_commit = (
             self._STATUS_TO_LAST_COMMIT.get(board_status, LastCommit.CODER_WORK)

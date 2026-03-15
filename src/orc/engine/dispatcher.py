@@ -367,7 +367,8 @@ class Dispatcher:
             if assigned_to:
                 continue  # already assigned to a running agent
 
-            token, reason = self.workflow.derive_task_state(task_name)
+            task_data = task if isinstance(task, dict) else None
+            token, reason = self.workflow.derive_task_state(task_name, task_data)
             logger.debug("task state", task=task_name, token=token, reason=reason)
 
             if token == QA_PASSED:
@@ -375,9 +376,13 @@ class Dispatcher:
 
             if token == CLOSE_BOARD:
                 try:
-                    self.workflow.do_close_board(task_name)
+                    logger.warning(
+                        "crash recovery: closing board for merged branch", task=task_name
+                    )
+                    typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
+                    self.board.delete_task(task_name)
                 except Exception:
-                    logger.exception("do_close_board failed", task=task_name)
+                    logger.exception("delete_task failed during crash recovery", task=task_name)
                 continue
 
             if token not in (AgentRole.CODER, AgentRole.QA):
@@ -430,7 +435,7 @@ class Dispatcher:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        self.messaging.post_boot_message(agent_id)
+        self.messaging.post_boot_message(agent_id, self.agent.boot_message_body(agent_id))
         contextvars.bind_contextvars(agent_id=agent_id)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
@@ -503,6 +508,7 @@ class Dispatcher:
         self._echo(f"\n⟳ Merging {task_name} into dev…")
         try:
             self.workflow.merge_feature(task_name)
+            self.board.delete_task(task_name)
             self._set_orc_status("running", f"merged {task_name}")
             self._echo(f"✓ {task_name} merged.")
         except Exception as exc:

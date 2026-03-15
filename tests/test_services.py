@@ -41,6 +41,9 @@ class StubBoard:
     def query_tasks(self, status: str) -> list[str]:
         return []
 
+    def delete_task(self, task_name: str) -> None:
+        pass
+
 
 class StubWorktree:
     def ensure_feature_worktree(self, task_name: str) -> Path:
@@ -54,7 +57,7 @@ class StubMessaging:
     def get_messages(self) -> list[dict]:
         return []
 
-    def post_boot_message(self, agent_id: str) -> None:
+    def post_boot_message(self, agent_id: str, body: str) -> None:
         pass
 
 

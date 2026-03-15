@@ -4,36 +4,6 @@ import orc.engine.context as _ctx
 import orc.git.core as _git
 import orc.messaging.telegram as tg
 
-# ---------------------------------------------------------------------------
-# workflow.py coverage gap tests
-# ---------------------------------------------------------------------------
-
-
-class TestWorkflowCoverage:
-    def test_do_close_board_crash_recovery(self, tmp_path, monkeypatch):
-        """_do_close_board removes task from the board (cache write, no git)."""
-        import yaml
-
-        import orc.engine.workflow as _wf
-
-        board_file = tmp_path / ".orc" / "work" / "board.yaml"
-        board_file.write_text("counter: 1\ntasks:\n  - name: 0001-foo.md\n")
-
-        _wf._do_close_board("0001-foo.md")
-
-        board = yaml.safe_load(board_file.read_text())
-        task_names = [
-            (t["name"] if isinstance(t, dict) else str(t)) for t in board.get("tasks", [])
-        ]
-        assert "0001-foo.md" not in task_names
-
-    def test_do_close_board_task_not_on_board_does_not_raise(self, tmp_path):
-        """_do_close_board is a no-op (no crash) when task isn't on the open list."""
-        import orc.engine.workflow as _wf
-
-        # board.yaml not created → empty board → no crash
-        _wf._do_close_board("0001-missing.md")
-
 
 class TestMakeMergeFeatureFn:
     def _make_squad(self, monkeypatch):

@@ -67,6 +67,10 @@ class BoardService(Protocol):
         """Return task names whose board status equals *status*."""
         ...
 
+    def delete_task(self, task_name: str) -> None:
+        """Remove *task_name* from the board and delete its task file."""
+        ...
+
 
 @runtime_checkable
 class WorktreeService(Protocol):
@@ -89,8 +93,8 @@ class MessagingService(Protocol):
         """Fetch the latest Telegram message history."""
         ...
 
-    def post_boot_message(self, agent_id: str) -> None:
-        """Build and send ``[{agent_id}](boot) …`` to Telegram."""
+    def post_boot_message(self, agent_id: str, body: str) -> None:
+        """Format and send a ``[{agent_id}](boot) …`` message to Telegram."""
         ...
 
     # TODO: incoming Telegram replies from the user should be appended to the
@@ -101,20 +105,18 @@ class MessagingService(Protocol):
 class WorkflowService(Protocol):
     """Workflow-level operations: task-state routing, merging, and crash-recovery."""
 
-    def derive_task_state(self, task_name: str) -> tuple[str, str]:
+    def derive_task_state(self, task_name: str, task_data: dict | None = None) -> tuple[str, str]:
         """Return ``(token, reason)`` for *task_name*.
 
-        *token* is a role name or one of the sentinels ``QA_PASSED`` /
-        ``CLOSE_BOARD`` defined in :mod:`orc.engine.dispatcher`.
+        *task_data* is the task's board entry dict (avoids a redundant board
+        read when the caller already has it).  *token* is a role name or one
+        of the sentinels ``QA_PASSED`` / ``CLOSE_BOARD`` defined in
+        :mod:`orc.engine.dispatcher`.
         """
         ...
 
     def merge_feature(self, task_name: str) -> None:
-        """Merge the feature branch for *task_name* into dev and close the board task."""
-        ...
-
-    def do_close_board(self, task_name: str) -> None:
-        """Crash-recovery: close the board entry for a task whose branch already merged."""
+        """Merge the feature branch for *task_name* into dev."""
         ...
 
 
@@ -140,4 +142,8 @@ class AgentService(Protocol):
         log_path: Path | None,
     ) -> object:
         """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
+        ...
+
+    def boot_message_body(self, agent_id: str) -> str:
+        """Return the role-specific body text for a boot Telegram message."""
         ...

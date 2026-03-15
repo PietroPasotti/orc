@@ -10,6 +10,7 @@ import typer
 
 import orc.engine.context as _ctx
 import orc.git.core as _git
+from orc.coordination.state import BoardStateManager
 from orc.git.conflict import ConflictResolutionFailed, ConflictResolver
 from orc.messaging import telegram as tg
 from orc.squad import SquadConfig
@@ -17,21 +18,9 @@ from orc.squad import SquadConfig
 logger = structlog.get_logger(__name__)
 
 
-def _post_boot_message(agent_id: str) -> None:
-    """Build and send ``[{agent_id}](boot) …`` to Telegram."""
-    body = _ctx._boot_message_body(agent_id)
-    tg.send_message(tg.format_agent_message(agent_id, "boot", body))
-
-
-def _do_close_board(task_name: str) -> None:
-    """Crash-recovery: close *task_name* on the board (cache write, no git commit)."""
-    logger.warning("crash recovery: closing board for merged branch", task=task_name)
-    typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
-    _git._close_task_on_board(task_name)
-
-
 def _make_context_builder(
     squad_cfg: SquadConfig,
+    board: BoardStateManager,
 ) -> Callable[[str, str, list[dict], Path | None], tuple[str, str]]:
     """Return a ``build_context`` callback that sources models from *squad_cfg*."""
 
@@ -44,6 +33,7 @@ def _make_context_builder(
         return _ctx.build_agent_context(
             role,
             messages,
+            board,
             worktree=worktree,
             agent_id=agent_id,
             model=squad_cfg.model(role),
@@ -84,21 +74,19 @@ class WorkflowSvc:
     def __init__(self, squad_cfg: SquadConfig) -> None:
         self._merge = _make_merge_feature_fn(squad_cfg)
 
-    def derive_task_state(self, task_name: str) -> tuple[str, str]:
-        return _git._derive_task_state(task_name)
+    def derive_task_state(self, task_name: str, task_data: dict | None = None) -> tuple[str, str]:
+        return _git._derive_task_state(task_name, task_data)
 
     def merge_feature(self, task_name: str) -> None:
         self._merge(task_name)
-
-    def do_close_board(self, task_name: str) -> None:
-        _do_close_board(task_name)
 
 
 class AgentSvc:
     """Bundles agent-spawn callbacks that require *squad_cfg* at construction time."""
 
-    def __init__(self, squad_cfg: SquadConfig) -> None:
-        self._build = _make_context_builder(squad_cfg)
+    def __init__(self, squad_cfg: SquadConfig, board: BoardStateManager) -> None:
+        self._build = _make_context_builder(squad_cfg, board)
+        self._board = board
 
     def build_context(
         self,
@@ -113,3 +101,6 @@ class AgentSvc:
         from orc.ai import invoke as inv
 
         return inv.spawn(context, cwd, model, log_path)
+
+    def boot_message_body(self, agent_id: str) -> str:
+        return _ctx._boot_message_body(agent_id, self._board)

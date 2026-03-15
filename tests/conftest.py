@@ -106,6 +106,7 @@ class FakeBoard:
         self.get_tasks = get_tasks or (lambda: [])
         self.assign_task = lambda task, agent: None
         self.unassign_task = lambda task: None
+        self.delete_task = lambda task: None
         self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
         self.get_pending_reviews = get_pending_reviews or (lambda: [])
         self.scan_todos = scan_todos or (lambda: [])
@@ -139,16 +140,15 @@ class FakeMessaging:
 
     def __init__(self, *, get_messages=None):
         self.get_messages = get_messages or (lambda: [])
-        self.post_boot_message = lambda agent_id: None
+        self.post_boot_message = lambda agent_id, body: None
 
 
 class FakeWorkflow:
     """Mutable fake for WorkflowService."""
 
     def __init__(self, *, derive_task_state=None):
-        self.derive_task_state = derive_task_state or (lambda t: ("coder", "ready"))
+        self.derive_task_state = derive_task_state or (lambda t, td=None: ("coder", "ready"))
         self.merge_feature = lambda task: None
-        self.do_close_board = lambda task: None
 
 
 class FakeAgent:
@@ -162,6 +162,7 @@ class FakeAgent:
 
         self.build_context = lambda role, agent_id, msgs, wt: ("model", "ctx")
         self.spawn = spawn_fn or _default_spawn
+        self.boot_message_body = lambda agent_id: f"working on something ({agent_id})"
 
 
 # ---------------------------------------------------------------------------

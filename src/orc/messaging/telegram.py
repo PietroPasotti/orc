@@ -201,13 +201,15 @@ def get_messages(limit: int = 100) -> list[dict]:
     return local
 
 
+# FIXME: this class should be the only public member of this module and should
+# encapsulate more of it. keep the public-facing API small. It should have no
+# inputs other than the envvars (for the telegram link) and the orc config
+# (for the chat.log). (we should probably get rid of chat.log)
 class TelegramMessagingService:
     """Implements :class:`~orc.engine.services.MessagingService` via Telegram."""
 
     def get_messages(self) -> list[dict]:
         return get_messages()
 
-    def post_boot_message(self, agent_id: str) -> None:
-        from orc.engine.workflow import _post_boot_message
-
-        _post_boot_message(agent_id)
+    def post_boot_message(self, agent_id: str, body: str) -> None:
+        send_message(format_agent_message(agent_id, "boot", body))

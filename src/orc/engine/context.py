@@ -10,10 +10,10 @@ from pathlib import Path
 import structlog
 import yaml
 
-import orc.board as _board
 import orc.config as _cfg
 import orc.git.core as _git
 from orc.ai import invoke as inv
+from orc.coordination.state import BoardStateManager
 from orc.messaging import telegram as tg
 from orc.squad import AgentRole
 
@@ -347,12 +347,20 @@ def _role_symbol(role: str) -> str:
 def build_agent_context(
     agent_name: str,
     messages: list[dict],
+    board: BoardStateManager | None = None,
     extra: str = "",
     worktree: Path | None = None,
     agent_id: str | None = None,
     model: str | None = None,
 ) -> tuple[str, str]:
-    """Return ``(model, context)`` for the given agent."""
+    """Return ``(model, context)`` for the given agent.
+
+    *board* is the coordination state manager.  When omitted (e.g. from CLI
+    commands like ``orc merge`` that run outside of ``orc run``), a fresh
+    :class:`BoardStateManager` is created from the current config.
+    """
+    if board is None:
+        board = BoardStateManager(_cfg.get().orc_dir)
     resolved_model = model or _DEFAULT_MODEL
     role = _parse_role_file(agent_name)
 
@@ -379,11 +387,11 @@ def build_agent_context(
     chat = _window_chat(chat)
 
     # Board: scoped to active task for coder/QA
-    active_task = _board._active_task_name()
+    active_task = board.active_task_name()
     if agent_name in (AgentRole.CODER, AgentRole.QA) and active_task:
-        plans = _board._read_work(active_only=active_task)
+        plans = board.read_work_summary(active_only=active_task)
     else:
-        plans = _board._read_work()
+        plans = board.read_work_summary()
 
     feature_branch = _git._feature_branch(active_task) if active_task else None
     feature_wt = _git._feature_worktree_path(active_task) if active_task else None
@@ -481,11 +489,10 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
-def _boot_message_body(agent_id: str) -> str:
+def _boot_message_body(agent_id: str, board: BoardStateManager) -> str:
     """Build the role-specific body text for a boot message."""
     role, _ = tg.parse_agent_id(agent_id)
-    board = _board._read_board()
-    open_tasks = board.get("tasks", [])
+    open_tasks = board.get_tasks()
     first_task = (
         (open_tasks[0]["name"] if isinstance(open_tasks[0], dict) else str(open_tasks[0]))
         if open_tasks
@@ -495,7 +502,7 @@ def _boot_message_body(agent_id: str) -> str:
     if role == AgentRole.PLANNER:
         if first_task:
             return f"planning {first_task}."
-        if board.get("visions"):
+        if board.get_pending_visions():
             return "translating vision docs."
         return "no open tasks on board."
 

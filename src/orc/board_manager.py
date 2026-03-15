@@ -6,6 +6,8 @@ using the filesystem (``cache_dir/work/`` and ``cache_dir/vision/``).
 
 The abstraction lets the storage backend be replaced in the future (e.g.
 SQLite, a remote API) by swapping only this module.
+
+This is the only module that should read/write board.yaml and task/vision .md files.
 """
 
 from __future__ import annotations
