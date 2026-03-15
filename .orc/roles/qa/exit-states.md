@@ -8,15 +8,13 @@
 
 ### Signalling `done` or `in-progress`
 
-When the review is complete, run:
+When the review is complete, call the `review_task` MCP tool:
 
-```bash
-.orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
-```
+- `task_code` — four-digit zero-padded task number, e.g. `"0002"`
+- `outcome` — `"done"` to approve or `"in-progress"` to reject
+- `message` — summary of the review outcome (reason for rejection if applicable)
 
-- **done**: sets the board status to `done` and commits on the feature branch.
-- **in-progress**: sets the board status to `in-progress`, adds a comment with the rejection
-  reason, and commits.  Do **not** craft the commit message by hand.
+The tool commits any staged changes, updates the board status, and (on rejection) appends a comment with the rejection reason.  Do **not** craft the commit message by hand.
 
 ### Signalling `blocked`
 

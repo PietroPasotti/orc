@@ -1,17 +1,15 @@
 # Board management
 
-Use the board management tool to create new tasks:
+Use the `create_task` MCP tool to create new tasks:
 
-```bash
-.orc/agent_tools/planner/create_task.py <task-title>
-```
+- `task_title` — dash-separated title, e.g. `"add-user-auth"`
+- `vision_file` — source vision filename
+- `overview`, `in_scope`, `out_of_scope`, `steps`, `notes` — task content
+- `extra_files` — optional extra files to commit alongside (e.g. ADR docs)
 
-The tool reads the current counter from the board, creates the task file
-from template, adds it to the `tasks` list with `status: planned`, and
-increments the counter.
-
-After running the tool, edit the created task file to fill in the overview,
-scope, steps, and notes.  Then use `publish_task.py` to commit.
+The tool reads the current counter from the board, creates the task file,
+adds it to the `tasks` list with `status: planned`, increments the counter,
+and commits everything in one step.
 
 ## Task status lifecycle
 

@@ -15,6 +15,8 @@ project).
 The orchestrator reads board task-status fields to determine which agent(s)
 to run next.  Git is used only for branch management and code merging.
 
+Agents interact with the board exclusively through a **per-agent MCP server** that `orc run` starts automatically. The server enforces strict isolation: each agent is scoped to its own role, cannot access other agents' state, and all board mutations go through authenticated MCP tool calls — no direct file access or shell scripts.
+
 Orc's work happens on a `dev` branch, so that you can keep working on `main` independently.
 Any time control goes to the orchestrator, it will rebase `dev` on `main`.
 Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate conflict resolution to an agent.

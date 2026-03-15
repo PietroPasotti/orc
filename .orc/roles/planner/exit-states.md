@@ -8,25 +8,14 @@
 
 ### Signalling `ready`
 
-When you have created a task (or ADR), publish it with:
+When you have created a task (or ADR), call the `create_task` MCP tool:
 
-```bash
-.orc/agent_tools/planner/publish_task.py <agent-id> <task-name> [extra-file...]
-```
+- `task_title` — dash-separated title, e.g. `"add-user-auth"`
+- `vision_file` — source vision filename, e.g. `"0001-auth-vision.md"`
+- `overview`, `in_scope`, `out_of_scope`, `steps`, `notes` — task content
+- `extra_files` — optional list of file paths to commit alongside (e.g. ADR docs)
 
-Arguments:
-- `agent-id` — your agent identifier, e.g. `planner-1`
-- `task-name` — task filename or name, e.g. `0003-add-foo` or `0003-add-foo.md`
-- `extra-file` — optional extra files to stage (e.g. ADR docs you created)
-
-Example:
-```bash
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo
-.orc/agent_tools/planner/publish_task.py planner-1 0003-add-foo docs/adr/0042-foo.md
-```
-
-This produces `chore(planner-1.ready.0003): add task 0003-add-foo` on the `dev`
-branch and signals that the coder can proceed.
+The tool creates the task file, adds it to the board, commits, and signals that the coder can proceed.
 
 Then write **one** message to the **Telegram chat**, then stop:
 
