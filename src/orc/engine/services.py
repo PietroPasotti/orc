@@ -134,6 +134,8 @@ class AgentService(Protocol):
         cwd: Path,
         model: str | None,
         log_path: Path | None,
+        agent_id: str | None = None,
+        role: AgentRole | None = None,
     ) -> SpawnResult:
         """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
         ...

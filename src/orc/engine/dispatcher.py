@@ -442,7 +442,9 @@ class Dispatcher:
         contextvars.bind_contextvars(agent_id=agent_id)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
-        spawn_result = self.agent.spawn(context, worktree, model, log_path)
+        spawn_result = self.agent.spawn(
+            context, worktree, model, log_path, agent_id=agent_id, role=role
+        )
 
         agent = AgentProcess(
             agent_id=agent_id,
@@ -454,6 +456,7 @@ class Dispatcher:
             log_path=log_path,
             log_fh=spawn_result.log_fh,
             context_tmp=spawn_result.context_tmp,
+            mcp_config_tmp=spawn_result.mcp_config_tmp,
         )
         self.pool.add(agent)
         if self.hooks.on_agent_start is not None:
@@ -480,7 +483,7 @@ class Dispatcher:
         logger.info("agent exited", agent_id=agent.agent_id, exit_code=rc)
         self.pool.remove(agent.agent_id)
         self.pool.close_log(agent)
-        _cleanup_context_tmp(agent.context_tmp)
+        _cleanup_agent_temps(agent)
         if self.hooks.on_agent_done is not None:
             self.hooks.on_agent_done(agent, rc)
 
@@ -538,7 +541,7 @@ class Dispatcher:
         )
         self.pool.kill(agent.agent_id)
         self.pool.remove(agent.agent_id)
-        _cleanup_context_tmp(agent.context_tmp)
+        _cleanup_agent_temps(agent)
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
 
@@ -571,3 +574,9 @@ def _cleanup_context_tmp(context_tmp: str | None) -> None:
         from pathlib import Path as _Path
 
         _Path(context_tmp).unlink(missing_ok=True)
+
+
+def _cleanup_agent_temps(agent: AgentProcess) -> None:
+    """Delete all temporary files created for *agent*."""
+    _cleanup_context_tmp(agent.context_tmp)
+    _cleanup_context_tmp(agent.mcp_config_tmp)

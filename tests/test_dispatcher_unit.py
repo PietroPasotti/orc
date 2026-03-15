@@ -83,7 +83,7 @@ class TestDispatcherCoverage:
 
         captured: dict = {}
 
-        def _spawn(ctx, cwd, model, log):
+        def _spawn(ctx, cwd, model, log, **_kwargs):
             captured["log_path"] = log
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
@@ -205,7 +205,7 @@ class TestDispatcherCoverage:
 
         spawned = [False]
 
-        def spawn_fn(ctx, cwd, model, log):
+        def spawn_fn(ctx, cwd, model, log, **_kwargs):
             if not spawned[0]:
                 spawned[0] = True
                 return SpawnResult(process=StuckPopen(), log_fh=None, context_tmp="")
@@ -368,7 +368,7 @@ class TestDispatchCallbacksOptional:
         """on_agent_start receives the AgentProcess just added to the pool."""
         started = []
 
-        def _spawn(ctx, cwd, model, log):
+        def _spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         svcs = make_services(
@@ -415,7 +415,7 @@ class TestDispatchCallbacksOptional:
     def test_on_agent_start_none_is_safe(self, tmp_path):
         """on_agent_start=None (default) does not crash."""
 
-        def _spawn(ctx, cwd, model, log):
+        def _spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         svcs = make_services(tmp_path, spawn_fn=_spawn)
@@ -494,7 +494,7 @@ class TestProactivePlanner:
         """Planner spawned when open_tasks < coder count and visions pending."""
         spawned_roles: list[str] = []
 
-        def _spawn(ctx, cwd, model, log):
+        def _spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
         svcs = make_services(

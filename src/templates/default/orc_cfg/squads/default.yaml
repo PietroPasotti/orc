@@ -2,6 +2,12 @@ name: default
 description: |
   Default squad: one agent of each type, running sequentially.
   Lowest-risk configuration; ideal for small projects or initial setup.
+  Agents run in confined mode — only approved tools are available.
+
+# Tool permissions for all agents (orc MCP tools, file access, and git are
+# always included). Add role-specific overrides under each composition entry.
+permissions:
+  mode: confined
 
 composition:
   - role: planner

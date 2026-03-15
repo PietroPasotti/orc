@@ -8,9 +8,7 @@ implemented and merged.
 
 ## How to close
 
-```bash
-.orc/agent_tools/planner/close_vision.py <vision-file> "<summary>" [task-file...]
-```
+Call the `close_vision` MCP tool with parameters: `vision_file="<vision-filename>"`, `summary="<summary>"`, `task_files=[...]`
 
 The tool closes the vision and prints a confirmation.
 

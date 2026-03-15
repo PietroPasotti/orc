@@ -90,7 +90,7 @@ def _bootstrap(force: bool = False) -> None:
 
     _copy: Callable[[Path, Path, list[str], list[str]], None] = _copy_force if force else _copy_file
 
-    # ── .orc/ content (config, roles, agent_tools, work/, vision/, …) ────────
+    # ── .orc/ content (config, roles, work/, vision/, …) ────────
     _copy_tree(
         _ORC_CFG_TEMPLATE,
         target,
@@ -135,7 +135,7 @@ def _upgrade(*, yes: bool = False) -> None:
     """Overwrite bundled template files in an existing .orc/ installation.
 
     Preserves: orc-CHANGELOG.md, worktrees/, logs/, work/, vision/.
-    Everything else (agents/, squads/, agent_tools/, justfile, config.yaml, …)
+    Everything else (agents/, squads/, justfile, config.yaml, …)
     is replaced with the version shipped in the currently installed package.
     """
     _obs.setup()
@@ -151,7 +151,7 @@ def _upgrade(*, yes: bool = False) -> None:
         typer.echo("This will overwrite all files in .orc/ EXCEPT:")
         for name in sorted(_UPGRADE_PRESERVE):
             typer.echo(f"  .orc/{name}")
-        typer.echo("\nChanges to agents/, squads/, and agent_tools/ will be lost.")
+        typer.echo("\nChanges to agents/ and squads/ will be lost.")
         typer.confirm("Continue?", abort=True)
 
     updated: list[str] = []
@@ -201,7 +201,7 @@ def bootstrap(
             help=(
                 "Upgrade an existing .orc/ installation to the bundled template version. "
                 "Preserves orc-CHANGELOG.md, worktrees/, logs/, work/, and vision/. "
-                "All other files (agents/, squads/, agent_tools/, …) are overwritten."
+                "All other files (agents/, squads/, …) are overwritten."
             ),
         ),
     ] = False,

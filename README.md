@@ -112,20 +112,49 @@ orc merge
 
 ## Squad profiles
 
-Squad profiles live in `.orc/squads/{name}.yaml` (project-level) or are provided by the package (built-in `default`). They define how many agents of each role may run in parallel:
+Squad profiles live in `.orc/squads/{name}.yaml` (project-level) or are provided by the package (built-in `default`). They define how many agents of each role may run in parallel and what tools they are permitted to use:
 
 ```yaml
-# orc/squads/broad.yaml
-planner: 1
-coder: 4
-qa: 2
+name: broad
+description: High-throughput squad for large projects.
+
+# Tool permissions (applied to all roles unless overridden per-role)
+permissions:
+  mode: confined       # "confined" (default) or "yolo"
+  allow_tools:         # extra tools beyond orc defaults (orc MCP, read, write, shell(git:*))
+    - "shell(just:*)"
+  deny_tools:          # tools explicitly denied for all roles
+    - "shell(git push:*)"
+
+composition:
+  - role: planner
+    count: 1
+    model: claude-sonnet-4.6
+  - role: coder
+    count: 4
+    model: claude-sonnet-4.6
+    permissions:
+      allow_tools:     # coders additionally get npm and cargo
+        - "shell(npm:*)"
+        - "shell(cargo:*)"
+  - role: qa
+    count: 2
+    model: claude-sonnet-4.6
+
 timeout_minutes: 180
 ```
+
+**Permission modes:**
+
+- `confined` (default) — agents may only use approved tools: `orc` MCP tools, `read`, `write`, `shell(git:*)`, plus any `allow_tools` you add. This runs agents without `--yolo`.
+- `yolo` — unrestricted tool access (equivalent to the pre-MCP behaviour). Use for trusted environments or debugging.
+
+**Orc MCP tools** are always available in confined mode and cover all board operations (get/create/close tasks, review, comment, etc.) via the built-in MCP server that `orc run` starts automatically per agent.
 
 The `planner` count must always be `1`. Scale throughput by adding coders and QA reviewers.
 
 Built-in profiles:
-- `default` – 1 planner, 1 coder, 1 QA (sequential)
+- `default` – 1 planner, 1 coder, 1 QA (sequential, confined mode)
 
 ## (optional) Agent monitoring and unblocking over Telegram channel
 

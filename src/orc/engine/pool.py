@@ -65,6 +65,9 @@ class AgentProcess:
     context_tmp: str | None
     """Path to the temporary prompt file; deleted when the agent is cleaned up."""
 
+    mcp_config_tmp: str | None = None
+    """Path to the temporary MCP config file; deleted when the agent is cleaned up."""
+
     started_at: float = field(default_factory=time.monotonic)
     """Monotonic timestamp of when the agent was spawned."""
 
