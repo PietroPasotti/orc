@@ -805,17 +805,21 @@ class TestWindowChat:
 
 
 # ---------------------------------------------------------------------------
-# _read_work(active_only=...)
+# read_work_summary — board-only, no task content, no comments
 # ---------------------------------------------------------------------------
 
 
 class TestReadWorkScoped:
-    def test_active_only_includes_only_target_task(self, tmp_path, monkeypatch):
+    def test_shows_task_names_and_statuses(self, tmp_path, monkeypatch):
         from orc.coordination.state import BoardStateManager
 
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n  - name: 0002-b.md\n")
+        (work_dir / "board.yaml").write_text(
+            "counter: 2\ntasks:\n"
+            "  - name: 0001-a.md\n    status: in-progress\n    assigned_to: coder-1\n"
+            "  - name: 0002-b.md\n    status: planned\n"
+        )
         (work_dir / "0001-a.md").write_text("Task A content.")
         (work_dir / "0002-b.md").write_text("Task B content.")
         monkeypatch.setattr(
@@ -830,18 +834,18 @@ class TestReadWorkScoped:
             ),
         )
 
-        result = BoardStateManager(tmp_path).read_work_summary(active_only="0001-a.md")
-        assert "Task A content." in result
-        assert "Task B content." not in result
-        assert "0002-b.md" in result  # name still listed
-        assert "_(summary only)_" in result
+        result = BoardStateManager(tmp_path).read_work_summary()
+        assert "0001-a.md" in result
+        assert "0002-b.md" in result
+        assert "in-progress" in result
+        assert "planned" in result
 
-    def test_no_active_only_includes_all(self, tmp_path, monkeypatch):
+    def test_never_includes_task_file_content(self, tmp_path, monkeypatch):
         from orc.coordination.state import BoardStateManager
 
         work_dir = tmp_path / "work"
         work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text("tasks:\n  - name: 0001-a.md\n")
+        (work_dir / "board.yaml").write_text("counter: 1\ntasks:\n  - name: 0001-a.md\n")
         (work_dir / "0001-a.md").write_text("Task A content.")
         monkeypatch.setattr(
             _cfg,
@@ -856,5 +860,32 @@ class TestReadWorkScoped:
         )
 
         result = BoardStateManager(tmp_path).read_work_summary()
-        assert "Task A content." in result
+        assert "Task A content." not in result
         assert "_(summary only)_" not in result
+
+    def test_never_includes_comments(self, tmp_path, monkeypatch):
+        from orc.coordination.state import BoardStateManager
+
+        work_dir = tmp_path / "work"
+        work_dir.mkdir(exist_ok=True)
+        (work_dir / "board.yaml").write_text(
+            "counter: 1\ntasks:\n"
+            "  - name: 0001-a.md\n    status: in-progress\n"
+            "    comments:\n"
+            "      - from: qa-1\n        text: fix the tests\n        ts: '2024-01-01T00:00:00Z'\n"
+        )
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                orc_dir=tmp_path,
+                board_file=work_dir / "board.yaml",
+                dev_worktree=tmp_path / "dev-wt",
+                work_dir=work_dir,
+            ),
+        )
+
+        result = BoardStateManager(tmp_path).read_work_summary()
+        assert "fix the tests" not in result
+        assert "comments" not in result

@@ -411,12 +411,9 @@ def build_agent_context(
     chat = _messages_to_text(messages)
     chat = _window_chat(chat)
 
-    # Board: scoped to active task for coder/QA
+    # Board: metadata-only summary (no task content, no comments — agents fetch on demand)
     active_task = board.active_task_name()
-    if agent_name in (AgentRole.CODER, AgentRole.QA) and active_task:
-        plans = board.read_work_summary(active_only=active_task)
-    else:
-        plans = board.read_work_summary()
+    plans = board.read_work_summary()
 
     feature_branch = cfg.feature_branch(active_task) if active_task else None
     feature_wt = cfg.feature_worktree_path(active_task) if active_task else None
@@ -463,6 +460,17 @@ def build_agent_context(
 
     extra_section = f"## Current task\n\n{extra}\n\n" if extra else ""
 
+    blocked_section = ""
+    if agent_name == AgentRole.PLANNER:
+        blocked_tasks = board.get_blocked_tasks()
+        if blocked_tasks:
+            items = "\n".join(
+                f"- `{name}` — run `.orc/agent_tools/share/get_task.py {name}`"
+                " to view full details and conversation"
+                for name in blocked_tasks
+            )
+            blocked_section = f"### Blocked tasks\n\n{items}\n\n"
+
     todos_section = ""
     if agent_name == AgentRole.PLANNER:
         todos = _scan_todos(cfg.repo_root)
@@ -480,6 +488,7 @@ def build_agent_context(
         f"### Architecture Decision Records\n\n{adrs}\n\n"
         f"### Chat history (Telegram)\n\n{chat}\n\n"
         f"### Kanban board ({agents_rel}/work/)\n\n{plans}\n"
+        f"{blocked_section}"
         f"{todos_section}"
     )
     return resolved_model, context
