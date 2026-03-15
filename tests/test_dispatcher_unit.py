@@ -568,6 +568,35 @@ class TestProactivePlanner:
         planner_count = sum(1 for a in d.pool.all_agents() if a.role == "planner")
         assert planner_count == 1, "second planner must not be spawned"
 
+    def test_spawns_planner_when_all_tasks_in_review(self, tmp_path):
+        """Planner spawned when all assignable tasks are in-review (going to QA).
+
+        The coder slot is free while QA handles the task, so the planner
+        should run to refine todos before the coder goes idle.
+        """
+
+        def _spawn(ctx, cwd, model, log, **_kwargs):
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        svcs = make_services(
+            tmp_path,
+            # 1 task in-review — routes to QA, not coder
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="in-review")],
+            derive_task_state=lambda t, td=None: ("qa", "coder finished, awaiting QA"),
+            scan_todos=lambda: [{"file": "src/x.py", "line": 1, "text": "TODO: fix me"}],
+            spawn_fn=_spawn,
+        )
+        # Default squad: 1 coder, 1 QA.
+        squad = minimal_squad(coder=1)
+        d = make_dispatcher(squad, svcs)
+        setup_work(d)
+        d._dispatch(call_budget=100)
+
+        pool_roles = [a.role for a in d.pool.all_agents()]
+        assert "planner" in pool_roles, (
+            f"expected planner to be spawned when all tasks are in-review, got {pool_roles}"
+        )
+
 
 class TestMaxcallsUnlimited:
     """Dispatcher.run() with sys.maxsize behaves as unlimited."""

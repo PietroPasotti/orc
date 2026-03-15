@@ -380,13 +380,16 @@ class Dispatcher:
                 dispatched += self._spawn_planner()
             return dispatched
         else:
-            # Keep the pipeline full when open tasks are fewer
-            # than the maximum number of coders that can run in parallel.  Without
-            # this, all coder slots may sit idle waiting for the last remaining
-            # task to finish before a new planner run creates more work.
+            # Keep the pipeline full when coder-bound tasks are fewer than the
+            # maximum number of coders that can run in parallel.  Without this,
+            # all coder slots may sit idle waiting for the last remaining task to
+            # finish before a new planner run creates more work.
+            # Only tasks NOT in-review count toward coder load — in-review tasks
+            # route to QA and leave coder slots free.
+            coder_bound = [t for t in assignable_tasks if t.status != TaskStatus.IN_REVIEW]
             if (
                 _role_allowed(AgentRole.PLANNER)
-                and len(assignable_tasks) < self.squad.count(AgentRole.CODER)
+                and len(coder_bound) < self.squad.count(AgentRole.CODER)
                 and has_planner_work
                 and self.pool.count_by_role(AgentRole.PLANNER) == 0
             ):
