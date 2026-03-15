@@ -2,14 +2,28 @@ name: default
 description: |
   Default squad: one agent of each type, running sequentially.
   Lowest-risk configuration; ideal for small projects or initial setup.
+  Agents run in confined mode — only approved tools are available.
+
+# Tool permissions for all agents (orc MCP tools, file access, and git are
+# always included). Add role-specific overrides under each composition entry.
+permissions:
+  mode: confined
+  # allow_tools:       # grant extra tools to ALL roles, e.g.:
+  #   - "shell(just:*)"  # allow running justfile targets
+  # deny_tools:        # revoke a default tool from ALL roles, e.g.:
+  #   - "shell(git push:*)"  # prevent direct pushes
 
 composition:
   - role: planner
     count: 1
     model: claude-sonnet-4.6
   - role: coder
-    count: 5
+    count: 1
     model: claude-sonnet-4.6
+    # permissions:     # uncomment to give coders extra tools, e.g.:
+    #   allow_tools:
+    #     - "shell(npm:*)"
+    #     - "shell(cargo:*)"
   - role: qa
     count: 1
     model: claude-sonnet-4.6
