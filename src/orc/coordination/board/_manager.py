@@ -22,6 +22,7 @@ from pathlib import Path
 import structlog
 import yaml
 from filelock import FileLock
+from pydantic import ValidationError
 
 from orc.coordination.models import Board, TaskBody, TaskComment, TaskEntry
 
@@ -224,6 +225,11 @@ class FileBoardManager(BoardManager):
             data: dict[str, object] = yaml.safe_load(path.read_text()) or {}
             data.setdefault("tasks", [])
             return data
+        except ValidationError:
+            logger.warning(
+                "read_board: board data failed validation", path=str(path), exc_info=True
+            )
+            raise
         except Exception:
             logger.debug("read_board: failed to parse board file", path=str(path), exc_info=True)
             return {"counter": 0, "tasks": []}

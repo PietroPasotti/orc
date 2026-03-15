@@ -188,3 +188,15 @@ class TestFileBoardManagerCoverage:
         cache_dir = tmp_path / "nonexistent"
         mgr = _bm.FileBoardManager(cache_dir)
         assert mgr.list_task_files() == []
+
+    def test_read_board_raises_on_invalid_board_structure(self, tmp_path):
+        """ValidationError is raised and logged when board.yaml has invalid structure."""
+        import pytest
+        from pydantic import ValidationError
+
+        mgr = self._mgr(tmp_path)
+        (tmp_path / "cache" / "work" / "board.yaml").write_text(
+            "counter: 1\ntasks: [{name: 123, status: [invalid-list-not-a-string]}]\n"
+        )
+        with pytest.raises(ValidationError):
+            mgr.read_board()
