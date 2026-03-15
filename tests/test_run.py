@@ -257,6 +257,209 @@ class TestTuiPath:
         assert called_with.get("no_tui") is True
 
 
+class TestPlannerDetails:
+    """_on_agent_start sets details for planner agents."""
+
+    def _make_tui_state_and_hooks(
+        self,
+        monkeypatch,
+        tmp_path,
+        mock_validate_env,
+        mock_telegram,
+        mock_rebase,
+        mock_git,
+        *,
+        mock_state,
+    ):
+        """Helper: run _run() with TUI enabled and return (state, hooks)."""
+        import sys
+        from unittest.mock import MagicMock
+
+        import orc.cli.tui as _tui_mod
+
+        captured_hooks: list = []
+        captured_state: list = []
+
+        original_init = _disp.Dispatcher.__init__
+
+        def capturing_init(self, squad, **kw):
+            captured_hooks.append(kw.get("hooks"))
+            original_init(self, squad, **kw)
+
+        def fake_run_tui(state, run_fn):
+            captured_state.append(state)
+            run_fn()
+
+        monkeypatch.setattr(_tui_mod, "run_tui", fake_run_tui)
+        monkeypatch.setattr(
+            sys,
+            "stdout",
+            type(
+                "FakeTTY",
+                (),
+                {
+                    "isatty": lambda self: True,
+                    "write": lambda self, s: None,
+                    "flush": lambda self: None,
+                },
+            )(),
+        )
+        monkeypatch.setattr(_run_mod, "_safe_features_done", lambda: 0)
+        monkeypatch.setattr(_disp.Dispatcher, "__init__", capturing_init)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=tmp_path))
+        monkeypatch.setattr(_sq, "load_squad", lambda *a, **kw: _minimal_squad())
+        monkeypatch.setattr(_run_mod, "_BoardSvc", lambda *a, **kw: mock_state)
+        mock_server = MagicMock()
+        monkeypatch.setattr(_run_mod, "CoordinationServer", lambda *a, **kw: mock_server)
+        monkeypatch.setattr(_disp.Dispatcher, "run", lambda self, **kw: None)
+
+        _run_mod._run(maxcalls=1, no_tui=False)
+        return captured_state[0], captured_hooks[0]
+
+    def test_planner_details_with_todos_and_visions(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
+        """Planner agent gets details with todo count and vision names."""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from conftest import FakePopen
+
+        from orc.engine.context import TodoItem
+        from orc.engine.pool import AgentProcess
+
+        mock_state = MagicMock()
+        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_pending_visions.return_value = ["0003-planner-status.md", "0004-foo.md"]
+        mock_state.scan_todos.return_value = [
+            TodoItem(file="x.py", line=1, tag="TODO", text="fix me"),
+            TodoItem(file="y.py", line=2, tag="FIXME", text="and me"),
+        ]
+        mock_state.get_pending_reviews.return_value = []
+        mock_state.get_blocked_tasks.return_value = []
+        mock_state.is_empty.return_value = False
+
+        state, hooks = self._make_tui_state_and_hooks(
+            monkeypatch,
+            tmp_path,
+            mock_validate_env,
+            mock_telegram,
+            mock_rebase,
+            mock_git,
+            mock_state=mock_state,
+        )
+
+        fake_agent = AgentProcess(
+            agent_id="planner-1",
+            role="planner",
+            model="copilot",
+            task_name=None,
+            process=FakePopen(),
+            worktree=Path(tmp_path),
+            log_path=tmp_path / "log",
+            log_fh=None,
+            context_tmp=None,
+        )
+        hooks.on_agent_start(fake_agent)
+
+        assert state.agents
+        agent_data = state.agents[0]
+        assert agent_data.details is not None
+        assert "2 todo(s)" in agent_data.details
+        assert "0003-planner-status" in agent_data.details
+        assert "0004-foo" in agent_data.details
+
+    def test_planner_details_no_todos_no_visions(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
+        """Planner details is None when no todos and no visions."""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from conftest import FakePopen
+
+        from orc.engine.pool import AgentProcess
+
+        mock_state = MagicMock()
+        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_pending_visions.return_value = []
+        mock_state.scan_todos.return_value = []
+        mock_state.get_pending_reviews.return_value = []
+        mock_state.get_blocked_tasks.return_value = []
+        mock_state.is_empty.return_value = False
+
+        state, hooks = self._make_tui_state_and_hooks(
+            monkeypatch,
+            tmp_path,
+            mock_validate_env,
+            mock_telegram,
+            mock_rebase,
+            mock_git,
+            mock_state=mock_state,
+        )
+
+        fake_agent = AgentProcess(
+            agent_id="planner-1",
+            role="planner",
+            model="copilot",
+            task_name=None,
+            process=FakePopen(),
+            worktree=Path(tmp_path),
+            log_path=tmp_path / "log",
+            log_fh=None,
+            context_tmp=None,
+        )
+        hooks.on_agent_start(fake_agent)
+
+        assert state.agents
+        assert state.agents[0].details is None
+
+    def test_coder_agent_details_is_none(
+        self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git
+    ):
+        """Non-planner agents do not get details set."""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from conftest import FakePopen
+
+        from orc.engine.pool import AgentProcess
+
+        mock_state = MagicMock()
+        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_pending_visions.return_value = ["0003-planner-status.md"]
+        mock_state.scan_todos.return_value = []
+        mock_state.get_pending_reviews.return_value = []
+        mock_state.get_blocked_tasks.return_value = []
+        mock_state.is_empty.return_value = False
+
+        state, hooks = self._make_tui_state_and_hooks(
+            monkeypatch,
+            tmp_path,
+            mock_validate_env,
+            mock_telegram,
+            mock_rebase,
+            mock_git,
+            mock_state=mock_state,
+        )
+
+        fake_agent = AgentProcess(
+            agent_id="coder-1",
+            role="coder",
+            model="copilot",
+            task_name="0001-test.md",
+            process=FakePopen(),
+            worktree=Path(tmp_path),
+            log_path=tmp_path / "log",
+            log_fh=None,
+            context_tmp=None,
+        )
+        hooks.on_agent_start(fake_agent)
+
+        assert state.agents
+        assert state.agents[0].details is None
+
+
 class TestEarlyExit:
     def test_no_pending_work_skips_dispatcher(
         self, tmp_path, monkeypatch, mock_validate_env, mock_telegram, mock_rebase, mock_git

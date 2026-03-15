@@ -24,7 +24,7 @@ from orc.engine.pool import AgentProcess
 from orc.engine.services import BoardService
 from orc.messaging import telegram as tg
 from orc.messaging.messages import ChatMessage
-from orc.squad import load_squad
+from orc.squad import AgentRole, load_squad
 
 _MAXCALLS_UNLIMITED = sys.maxsize
 
@@ -120,6 +120,17 @@ def _run(
         def _on_agent_start(agent: AgentProcess) -> None:
             assert state is not None
             state.current_calls += 1
+            details: str | None = None
+            if agent.role == AgentRole.PLANNER:
+                todos = _coord_state.scan_todos()
+                visions = _coord_state.get_pending_visions()
+                vision_names = [v.removesuffix(".md") for v in visions]
+                parts: list[str] = []
+                if todos:
+                    parts.append(f"{len(todos)} todo(s)")
+                if vision_names:
+                    parts.append("visions: " + ", ".join(vision_names))
+                details = "  ".join(parts) if parts else None
             state.agents.append(
                 _tui.AgentData(
                     agent_id=agent.agent_id,
@@ -129,6 +140,7 @@ def _run(
                     task_name=agent.task_name,
                     worktree=str(agent.worktree),
                     started_at=agent.started_at,
+                    details=details,
                 )
             )
 
@@ -264,8 +276,6 @@ def run(
 
     only_role: str | None = None
     if agent is not None:
-        from orc.squad import AgentRole
-
         normalized = agent.strip().lower()
         valid = {r.value for r in AgentRole}
         if normalized not in valid:
