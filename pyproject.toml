@@ -54,6 +54,7 @@ dev = [
     "qorc",  # orc developing orc!
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250915",
+    "vulture>=2.15",
 ]
 
 [tool.hatch.version]
