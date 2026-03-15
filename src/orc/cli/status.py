@@ -180,11 +180,12 @@ def _status(squad: str = "default") -> None:
             elif token == _QA_PASSED:
                 merge_pending.append(name)
 
-        # TODO: use has_ready_visions instead of has_open_work for the planner check
-        if not _board.has_open_work():
-            planner_note = "ready (visions pending)"
-        elif blocked_task:
-            planner_note = f"ready to clarify block on {blocked_task}"
+        if open_visions or open_todos_and_fixmes or blocked_task:
+            planner_note = (
+                "ready (visions pending)"
+                if open_visions
+                else f"ready to clarify block on {blocked_task}"
+            )
         else:
             planner_note = "idle"
 

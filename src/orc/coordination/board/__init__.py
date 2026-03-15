@@ -6,7 +6,7 @@ Public API
 - :class:`FileBoardManager` – filesystem-backed board manager
 - :func:`init_manager` / :func:`get_tasks` / :func:`get_task` /
   :func:`set_task_status` / :func:`add_task_comment` /
-  :func:`has_open_work` / :func:`assign_task` / :func:`unassign_task` /
+  :func:`assign_task` / :func:`unassign_task` /
   :func:`clear_all_assignments` – module-level board helpers (CLI / engine)
 """
 
@@ -20,7 +20,6 @@ from orc.coordination.board._board import (
     delete_task,
     get_task,
     get_tasks,
-    has_open_work,
     init_manager,
     set_task_status,
     unassign_task,
@@ -35,7 +34,6 @@ __all__ = [
     "get_task",
     "set_task_status",
     "add_task_comment",
-    "has_open_work",
     "assign_task",
     "unassign_task",
     "clear_all_assignments",
