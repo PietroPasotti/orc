@@ -20,7 +20,25 @@ When the review is complete, run:
 
 ### Signalling `blocked`
 
-Write **one** message to the **Telegram chat**, then stop. Use
+Blocking requires **two steps** — updating the board and notifying the chat:
+
+**Step 1:** Update the board status and leave a comment explaining the blocker:
+
+```bash
+# Set the task status to blocked
+.orc/agent_tools/share/update_task.py <task-code> blocked
+
+# Add a comment describing what is blocking the review
+.orc/agent_tools/share/add_comment_to_task.py <agent-id> <task-code> "<reason>"
+```
+
+Example:
+```bash
+.orc/agent_tools/share/update_task.py 0003 blocked
+.orc/agent_tools/share/add_comment_to_task.py qa-1 0003 "blocked: cannot verify auth behaviour — staging environment is down"
+```
+
+**Step 2:** Write **one** message to the **Telegram chat**, then stop. Use
 `.orc/telegram.py`'s `send_message(format_agent_message(...))` helper.
 
 ```
