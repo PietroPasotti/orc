@@ -55,7 +55,8 @@ import sys
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum, auto
 
 import structlog
 import structlog.contextvars as contextvars
@@ -63,6 +64,7 @@ import typer
 
 import orc.config as _cfg
 from orc.coordination.board import TaskStatus
+from orc.coordination.models import TaskEntry
 from orc.engine.pool import AgentPool, AgentProcess
 from orc.engine.services import (
     AgentService,
@@ -85,6 +87,167 @@ CLOSE_BOARD = "__close_board"
 
 # Seconds between poll cycles.
 _POLL_INTERVAL = 5.0
+
+
+# ---------------------------------------------------------------------------
+# Pure dispatch planning
+# ---------------------------------------------------------------------------
+
+
+class TaskAction(Enum):
+    """What the dispatcher should do with a single task."""
+
+    SPAWN = auto()
+    CLOSE_BOARD = auto()
+    SKIP = auto()
+
+
+@dataclass(frozen=True)
+class SpawnIntent:
+    """Instruction to spawn one agent."""
+
+    role: AgentRole
+    task_name: str | None  # None for planner
+
+
+@dataclass(frozen=True)
+class BoardOp:
+    """Instruction to perform a board-level operation (crash recovery)."""
+
+    task_name: str
+
+
+@dataclass(frozen=True)
+class DispatchPlan:
+    """Pure output of :func:`plan_dispatch` — no side effects attached."""
+
+    spawns: list[SpawnIntent] = field(default_factory=list)
+    board_ops: list[BoardOp] = field(default_factory=list)
+
+
+def classify_tasks(
+    tasks: list[TaskEntry],
+) -> tuple[list[TaskEntry], list[TaskEntry], list[TaskEntry]]:
+    """Partition *tasks* into ``(stuck, assignable, coder_bound)``.
+
+    * ``stuck`` — status is ``stuck``, needs human intervention.
+    * ``assignable`` — not blocked and not stuck.
+    * ``coder_bound`` — assignable tasks that route to coders (not in-review).
+    """
+    stuck: list[TaskEntry] = []
+    assignable: list[TaskEntry] = []
+    coder_bound: list[TaskEntry] = []
+    for t in tasks:
+        if t.status == TaskStatus.STUCK:
+            stuck.append(t)
+        elif t.status == TaskStatus.BLOCKED:
+            continue  # blocked tasks need planner, not dispatch
+        else:
+            assignable.append(t)
+            if t.status != TaskStatus.IN_REVIEW:
+                coder_bound.append(t)
+    return stuck, assignable, coder_bound
+
+
+def needs_planner(
+    *,
+    coder_bound_count: int,
+    coder_capacity: int,
+    has_planner_work: bool,
+    planner_running: bool,
+    role_allowed: bool,
+    has_assignable_tasks: bool,
+) -> bool:
+    """Return ``True`` when a planner agent should be dispatched.
+
+    When there are **no** assignable tasks the planner is needed whenever there
+    is planner work.  When there **are** assignable tasks the planner is only
+    spawned proactively to keep the coder pipeline full (coder-bound tasks
+    fewer than coder capacity).
+    """
+    if planner_running or not role_allowed or not has_planner_work:
+        return False
+    if not has_assignable_tasks:
+        return True
+    return coder_bound_count < coder_capacity
+
+
+def task_action(token: str) -> TaskAction:
+    """Map a ``derive_task_state`` *token* to a :class:`TaskAction`."""
+    if token == QA_PASSED:
+        return TaskAction.SKIP
+    if token == CLOSE_BOARD:
+        return TaskAction.CLOSE_BOARD
+    if token in (AgentRole.CODER, AgentRole.QA):
+        return TaskAction.SPAWN
+    return TaskAction.SKIP
+
+
+def plan_dispatch(
+    *,
+    assignable: list[TaskEntry],
+    coder_bound: list[TaskEntry],
+    has_planner_work: bool,
+    only_role: str | None,
+    coder_capacity: int,
+    planner_running: bool,
+    role_counts: dict[str, int],
+    role_limits: dict[str, int],
+    derive_task_state: Callable[[str, TaskEntry | None], tuple[str, str]],
+) -> DispatchPlan:
+    """Build a :class:`DispatchPlan` from the current board/pool snapshot.
+
+    Pure function — all inputs are plain data or callbacks; no I/O.
+    """
+
+    def _role_allowed(role: str) -> bool:
+        return only_role is None or only_role == role
+
+    spawns: list[SpawnIntent] = []
+    board_ops: list[BoardOp] = []
+
+    # Planner decision.
+    if needs_planner(
+        coder_bound_count=len(coder_bound),
+        coder_capacity=coder_capacity,
+        has_planner_work=has_planner_work,
+        planner_running=planner_running,
+        role_allowed=_role_allowed(AgentRole.PLANNER),
+        has_assignable_tasks=bool(assignable),
+    ):
+        spawns.append(SpawnIntent(role=AgentRole.PLANNER, task_name=None))
+
+    # Per-task dispatch.
+    running: dict[str, int] = dict(role_counts)  # mutable copy for capacity tracking
+    for task in assignable:
+        if task.assigned_to:
+            continue
+
+        token, reason = derive_task_state(task.name, task)
+        logger.debug("task state", task=task.name, token=token, reason=reason)
+
+        action = task_action(token)
+
+        if action is TaskAction.SKIP:
+            continue
+
+        if action is TaskAction.CLOSE_BOARD:
+            board_ops.append(BoardOp(task_name=task.name))
+            continue
+
+        # action is SPAWN — token is a role string (coder / qa).
+        if not _role_allowed(token):
+            continue
+
+        current = running.get(token, 0)
+        limit = role_limits.get(token, 1)
+        if current >= limit:
+            continue
+
+        running[token] = current + 1
+        spawns.append(SpawnIntent(role=AgentRole(token), task_name=task.name))
+
+    return DispatchPlan(spawns=spawns, board_ops=board_ops)
 
 
 # ---------------------------------------------------------------------------
@@ -314,36 +477,29 @@ class Dispatcher:
     # Dispatch
     # ------------------------------------------------------------------
 
+    def _notify_stuck_tasks(self, stuck: list[TaskEntry]) -> None:
+        """Notify stuck tasks via Telegram (once per task per dispatcher lifetime)."""
+        for task in stuck:
+            if task.name in self._stuck_notified:
+                continue
+            self._stuck_notified.add(task.name)
+            last_comment = next((c.text for c in reversed(task.comments or [])), None)
+            detail = f" — {last_comment}" if last_comment else ""
+            self.messaging.post_boot_message(
+                "orc",
+                f"Task {task.name!r} is stuck and needs human intervention{detail}",
+            )
+            self._echo(
+                f"\n🔧 Task {task.name!r} is stuck — human intervention needed."
+                + (f" {last_comment}" if last_comment else "")
+            )
+
     def _dispatch(self, call_budget: int) -> int:
-        """Spawn up to `call_budget` agents for all unassigned work.
+        """Spawn up to *call_budget* agents for all unassigned work.
 
-        Reads directly from board/git services on each call so the data
-        is always fresh (no stale snapshot).
-
-        When ``self.only_role`` is set, only agents matching that role are
-        dispatched; board operations (QA_PASSED, CLOSE_BOARD) still run so
-        the workflow state stays consistent.
-
-        Return number spawned.
+        Reads fresh state from board/git services, builds a pure
+        :class:`DispatchPlan`, then executes it.  Returns number spawned.
         """
-        remaining_budget = call_budget
-
-        def _spawn(call: Callable[[], object]) -> int:
-            nonlocal remaining_budget
-
-            if remaining_budget > 0:
-                remaining_budget -= 1
-                call()
-                return 1
-            else:
-                logger.warning("skipped dispatch call: maxcalls reached")
-                return 0
-
-        def _role_allowed(role: str) -> bool:
-            return self.only_role is None or self.only_role == role
-
-        dispatched = 0
-
         open_tasks = self.board.get_tasks()
         has_planner_work = bool(
             self.board.get_pending_visions()
@@ -351,87 +507,43 @@ class Dispatcher:
             or self.board.get_blocked_tasks()
         )
 
-        # Stuck tasks need human intervention — no agent can help.
-        # Notify via Telegram once per task per dispatcher lifetime.
-        stuck_tasks = [t for t in open_tasks if t.status == TaskStatus.STUCK]
-        for stuck in stuck_tasks:
-            if stuck.name not in self._stuck_notified:
-                self._stuck_notified.add(stuck.name)
-                last_comment = next((c.text for c in reversed(stuck.comments or [])), None)
-                detail = f" — {last_comment}" if last_comment else ""
-                self.messaging.post_boot_message(
-                    "orc",
-                    f"Task {stuck.name!r} is stuck and needs human intervention{detail}",
-                )
-                self._echo(
-                    f"\n🔧 Task {stuck.name!r} is stuck — human intervention needed."
-                    + (f" {last_comment}" if last_comment else "")
-                )
+        stuck, assignable, coder_bound = classify_tasks(open_tasks)
+        self._notify_stuck_tasks(stuck)
 
-        # Blocked tasks need planner attention; stuck tasks need human intervention.
-        assignable_tasks = [
-            t for t in open_tasks if t.status not in (TaskStatus.BLOCKED, TaskStatus.STUCK)
-        ]
+        plan = plan_dispatch(
+            assignable=assignable,
+            coder_bound=coder_bound,
+            has_planner_work=has_planner_work,
+            only_role=self.only_role,
+            coder_capacity=self.squad.count(AgentRole.CODER),
+            planner_running=self.pool.count_by_role(AgentRole.PLANNER) > 0,
+            role_counts={r: self.pool.count_by_role(r) for r in (AgentRole.CODER, AgentRole.QA)},
+            role_limits={r: self.squad.count(r) for r in (AgentRole.CODER, AgentRole.QA)},
+            derive_task_state=self.workflow.derive_task_state,
+        )
 
-        if not assignable_tasks:
-            if not has_planner_work:
-                return dispatched
-            if _role_allowed(AgentRole.PLANNER) and self.pool.count_by_role(AgentRole.PLANNER) == 0:
-                dispatched += self._spawn_planner()
-            return dispatched
-        else:
-            # Keep the pipeline full when coder-bound tasks are fewer than the
-            # maximum number of coders that can run in parallel.  Without this,
-            # all coder slots may sit idle waiting for the last remaining task to
-            # finish before a new planner run creates more work.
-            # Only tasks NOT in-review count toward coder load — in-review tasks
-            # route to QA and leave coder slots free.
-            coder_bound = [t for t in assignable_tasks if t.status != TaskStatus.IN_REVIEW]
-            if (
-                _role_allowed(AgentRole.PLANNER)
-                and len(coder_bound) < self.squad.count(AgentRole.CODER)
-                and has_planner_work
-                and self.pool.count_by_role(AgentRole.PLANNER) == 0
-            ):
-                dispatched += _spawn(lambda: self._spawn_planner())
+        return self._execute_plan(plan, call_budget)
 
-        # Dispatch coder/QA for each unassigned non-blocked task up to squad capacity.
-        for task in assignable_tasks:
-            task_name = task.name
-            assigned_to = task.assigned_to
+    def _execute_plan(self, plan: DispatchPlan, budget: int) -> int:
+        """Execute a :class:`DispatchPlan`, respecting *budget*. Returns spawned count."""
+        dispatched = 0
 
-            if assigned_to:
-                continue  # already assigned to a running agent
+        for op in plan.board_ops:
+            try:
+                logger.warning("crash recovery: closing board for merged branch", task=op.task_name)
+                typer.echo(f"\n⟳ Crash recovery: closing board entry for {op.task_name}…")
+                self.board.delete_task(op.task_name)
+            except Exception:
+                logger.exception("delete_task failed during crash recovery", task=op.task_name)
 
-            token, reason = self.workflow.derive_task_state(task_name, task)
-            logger.debug("task state", task=task_name, token=token, reason=reason)
+        for intent in plan.spawns:
+            if dispatched >= budget:
+                logger.warning("skipped dispatch call: maxcalls reached")
+                break
 
-            if token == QA_PASSED:
-                continue
-
-            if token == CLOSE_BOARD:
-                try:
-                    logger.warning(
-                        "crash recovery: closing board for merged branch", task=task_name
-                    )
-                    typer.echo(f"\n⟳ Crash recovery: closing board entry for {task_name}…")
-                    self.board.delete_task(task_name)
-                except Exception:
-                    logger.exception("delete_task failed during crash recovery", task=task_name)
-                continue
-
-            if token not in (AgentRole.CODER, AgentRole.QA):
-                continue
-
-            if not _role_allowed(token):
-                continue
-
-            # Check squad capacity for this role.
-            if self.pool.count_by_role(token) >= self.squad.count(token):
-                continue
-
-            agent_id = self._next_id(token)
-            dispatched += _spawn(lambda: self._spawn_agent(AgentRole(token), agent_id, task_name))
+            agent_id = self._next_id(intent.role)
+            self._spawn_agent(intent.role, agent_id, intent.task_name)
+            dispatched += 1
 
         return dispatched
 
@@ -442,11 +554,6 @@ class Dispatcher:
     def _next_id(self, role: AgentRole | str) -> str:
         self._id_counters[role] += 1
         return _make_agent_id(role, self._id_counters[role])
-
-    def _spawn_planner(self) -> int:
-        agent_id = self._next_id(AgentRole.PLANNER)
-        self._spawn_agent(AgentRole.PLANNER, agent_id, None)
-        return 1
 
     def _spawn_agent(
         self,
