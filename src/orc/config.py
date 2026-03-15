@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 # ── Package-relative constants (truly static, safe at import time) ─────────
 _PACKAGE_DIR = Path(__file__).parent
-_PACKAGE_ROLES_DIR = _PACKAGE_DIR / "roles"
+_PACKAGE_AGENTS_DIR = _PACKAGE_DIR / "agents"
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 _ORC_CFG_TEMPLATE = _TEMPLATES_DIR / "default" / "orc_cfg"
 
@@ -61,7 +61,7 @@ class Config:
     board_file: Path
     vision_dir: Path
     """Directory containing vision documents — ``orc_dir/vision``."""
-    roles_dir: Path
+    agents_dir: Path
     env_file: Path
     dev_worktree: Path
     worktree_base: Path
@@ -133,7 +133,7 @@ def init(orc_dir: Path, repo_root: Path | None = None) -> Config:
         work_dir=work_dir,
         board_file=work_dir / "board.yaml",
         vision_dir=vision_dir,
-        roles_dir=orc_dir / "roles",
+        agents_dir=orc_dir / "agents",
         env_file=Path.cwd() / ".env",
         dev_worktree=worktree_base / work_dev_branch,
         worktree_base=worktree_base,

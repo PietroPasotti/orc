@@ -137,7 +137,7 @@ def orc_env(git_project, monkeypatch):
             orc_dir=orc_dir,
             work_dir=orc_dir / "work",
             vision_dir=orc_dir / "vision",
-            roles_dir=orc_dir / "roles",
+            agents_dir=orc_dir / "agents",
             env_file=root / ".env",
             dev_worktree=dev_wt,
         ),
@@ -347,9 +347,9 @@ class TestBootstrap:
     def test_creates_expected_structure(self, git_project):
         root = git_project
         orc = root / ".orc"
-        assert (orc / "roles" / "planner" / "_main.md").exists()
-        assert (orc / "roles" / "coder" / "_main.md").exists()
-        assert (orc / "roles" / "qa" / "_main.md").exists()
+        assert (orc / "agents" / "planner" / "_main.md").exists()
+        assert (orc / "agents" / "coder" / "_main.md").exists()
+        assert (orc / "agents" / "qa" / "_main.md").exists()
         assert (orc / "squads" / "default.yaml").exists()
         assert (orc / "work" / "board.yaml").exists()
         assert (orc / "vision" / "ready" / "feature-x.md").exists()
