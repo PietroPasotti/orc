@@ -179,6 +179,28 @@ def _parse_permission_block(raw: object, context: str) -> PermissionConfig:
     )
 
 
+class ReviewThreshold(StrEnum):
+    """Severity level at which QA agents should reject work.
+
+    QA agents will fail a review (send the task back to coders) when they
+    encounter issues **at or above** the configured threshold:
+
+    * ``CRITICAL`` — only reject on critical failures.
+    * ``HIGH`` — reject on high-severity issues and above.
+    * ``MID`` — reject on medium-severity issues and above.
+    * ``LOW`` — reject on any issue, including low-severity ones (strictest).
+    """
+
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MID = "MID"
+    LOW = "LOW"
+
+
+_VALID_REVIEW_THRESHOLDS = frozenset(ReviewThreshold)
+_DEFAULT_REVIEW_THRESHOLD = ReviewThreshold.LOW
+
+
 class AgentRole(StrEnum):
     """Valid agent roles in an orc squad.
 
@@ -216,6 +238,16 @@ class SquadConfig:
     _models: dict[str, str] = field(default_factory=dict, compare=False)
     _permissions: PermissionConfig = field(default_factory=PermissionConfig, compare=False)
     _role_permissions: dict[str, PermissionConfig] = field(default_factory=dict, compare=False)
+    _review_threshold: ReviewThreshold = field(default=_DEFAULT_REVIEW_THRESHOLD, compare=False)
+
+    @property
+    def review_threshold(self) -> ReviewThreshold:
+        """Return the configured QA review threshold.
+
+        QA agents should reject work when they encounter issues **at or above**
+        this severity level.  Defaults to ``LOW`` (reject on any issue).
+        """
+        return self._review_threshold
 
     def count(self, role: AgentRole | str) -> int:
         """Return the configured agent count for *role*."""
@@ -279,6 +311,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
 
     counts: dict[str, int] = {}
     role_permissions: dict[str, PermissionConfig] = {}
+    review_threshold: ReviewThreshold = _DEFAULT_REVIEW_THRESHOLD
     for entry in composition:
         if not isinstance(entry, dict):
             continue
@@ -292,6 +325,15 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
             role_permissions[role] = _parse_permission_block(
                 entry["permissions"], f"role {role!r} in squad {file_name!r}"
             )
+        if role == AgentRole.QA and "review-threshold" in entry:
+            raw_threshold = str(entry["review-threshold"]).strip().upper()
+            try:
+                review_threshold = ReviewThreshold(raw_threshold)
+            except ValueError:
+                raise ValueError(
+                    f"Squad profile {file_name!r}: review-threshold for qa must be one of"
+                    f" {', '.join(t.value for t in ReviewThreshold)}, got {raw_threshold!r}."
+                )
     planner = counts.get(AgentRole.PLANNER, 1)
     coder = counts.get(AgentRole.CODER, 1)
     qa = counts.get(AgentRole.QA, 1)
@@ -328,6 +370,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         _models=models,
         _permissions=squad_permissions,
         _role_permissions=role_permissions,
+        _review_threshold=review_threshold,
     )
 
 

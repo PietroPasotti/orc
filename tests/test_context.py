@@ -306,6 +306,59 @@ class TestContextCoverage:
         assert "feat/0001-task" in ctx
         assert "Branch to review" in ctx
 
+    def test_build_agent_context_qa_review_threshold_injected(self, tmp_path, monkeypatch):
+        """QA context includes the review threshold when provided."""
+        self._setup_context(monkeypatch, tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        from orc.coordination.state import BoardStateManager
+        from orc.squad import ReviewThreshold
+
+        ctx = _ctx.build_agent_context(
+            "qa",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="qa-0",
+            task_name="0001-task.md",
+            review_threshold=ReviewThreshold.HIGH,
+        )
+        assert "Review threshold: `HIGH`" in ctx
+        assert "HIGH" in ctx
+
+    def test_build_agent_context_qa_review_threshold_defaults_to_low(self, tmp_path, monkeypatch):
+        """QA context defaults to LOW when no review threshold is provided."""
+        self._setup_context(monkeypatch, tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        from orc.coordination.state import BoardStateManager
+
+        ctx = _ctx.build_agent_context(
+            "qa",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="qa-0",
+            task_name="0001-task.md",
+        )
+        assert "Review threshold: `LOW`" in ctx
+
+    def test_build_agent_context_qa_review_threshold_critical(self, tmp_path, monkeypatch):
+        """QA context with CRITICAL threshold only fails on critical issues."""
+        self._setup_context(monkeypatch, tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        from orc.coordination.state import BoardStateManager
+        from orc.squad import ReviewThreshold
+
+        ctx = _ctx.build_agent_context(
+            "qa",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="qa-0",
+            task_name="0001-task.md",
+            review_threshold=ReviewThreshold.CRITICAL,
+        )
+        assert "Review threshold: `CRITICAL`" in ctx
+
     def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
         """ORC_DIR not under REPO_ROOT → falls back to dir name in role path."""
         repo = tmp_path / "repo"

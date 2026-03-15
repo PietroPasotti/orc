@@ -374,7 +374,13 @@ def _make_context_builder(
     ) -> tuple[str, str]:
         return (
             squad_cfg.model(role),
-            _ctx.build_agent_context(role, board=board, agent_id=agent_id, task_name=task_name),
+            _ctx.build_agent_context(
+                role,
+                board=board,
+                agent_id=agent_id,
+                task_name=task_name,
+                review_threshold=squad_cfg.review_threshold if role == AgentRole.QA else None,
+            ),
         )
 
     return _build

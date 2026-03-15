@@ -26,7 +26,7 @@ from orc.messaging.messages import (
 from orc.messaging.messages import (
     parse_agent_id as _parse_agent_id,
 )
-from orc.squad import AgentRole
+from orc.squad import AgentRole, ReviewThreshold
 
 logger = structlog.get_logger(__name__)
 
@@ -142,6 +142,7 @@ def build_agent_context(
     agent_id: str,
     task_name: str | None = None,  # this can be None only for planner
     plain: bool = False,  # plain: return only the base context, no agent-specific instructions
+    review_threshold: ReviewThreshold | None = None,
 ) -> str:
     """Return the context string for the given agent.
 
@@ -220,6 +221,7 @@ def build_agent_context(
             assert feature_branch is not None
             assert feature_wt is not None
 
+            threshold = review_threshold or ReviewThreshold.LOW
             context += f"""
             Task: `{task_name}`
             Branch to review: `{feature_branch}`
@@ -234,6 +236,11 @@ def build_agent_context(
             Run in the dev worktree (`{dev_worktree}`). 
             **Do NOT merge** — the orchestrator merges only if you 
             approve this work by signalling `passed`.
+            
+            **Review threshold: `{threshold.value}`** — only fail this review 
+            for issues at **{threshold.value}** severity or above. 
+            Issues below this threshold should be noted but must NOT 
+            cause the review to fail.
             """
         case _:
             typing.assert_never(role)
