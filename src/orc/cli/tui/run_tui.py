@@ -85,6 +85,9 @@ class RunState:
     features_done: int = 0
     """Number of feature branches merged into dev but not yet in main."""
 
+    stuck_tasks: int = 0
+    """Number of tasks currently in ``stuck`` status."""
+
     telegram_ok: bool = False
     """Whether the Telegram bot token is configured."""
 
@@ -169,11 +172,13 @@ def render(state: RunState) -> RenderableType:
     """
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
+    stuck_str = f"  🔧 {state.stuck_tasks} stuck" if state.stuck_tasks > 0 else ""
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
         f"{state.features_done} features done  "
         f"backend={state.backend}  "
         f"telegram={tg_str}"
+        f"{stuck_str}"
     )
 
     planners = [r for r in state.agents if r.role == AgentRole.PLANNER]

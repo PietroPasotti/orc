@@ -35,7 +35,8 @@ _LOCK_TIMEOUT = 30  # seconds to wait before raising FileLockError
 
 class TaskStatus(StrEnum):
     PLANNED = "planned"  # Not being worked on yet, but ready to start
-    BLOCKED = "blocked"  # Needs (human) intervention
+    BLOCKED = "blocked"  # Needs planner clarification
+    STUCK = "stuck"  # Needs human intervention (tooling/infra/permissions)
     IN_PROGRESS = "in-progress"  # Agent working on this
     IN_REVIEW = "in-review"  # Awaiting QA
     DONE = "done"  # QA approved, ready to merge

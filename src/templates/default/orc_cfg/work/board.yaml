@@ -6,7 +6,7 @@
 #
 # tasks    – active tasks on the board.  Each entry has at minimum a ``name``
 #            field (the task filename) and a ``status`` field (one of:
-#            planned, in-progress, in-review, done, blocked).
+#            planned, in-progress, in-review, done, blocked, stuck).
 #            Tasks are removed from this list when merged into dev.
 
 counter: 1

@@ -88,6 +88,7 @@ def _run(
             agents=[],
             orc=_tui.OrcData(agent_id="orc", status="running", task="rebasing dev on main"),
             features_done=_safe_features_done(),
+            stuck_tasks=0,
             telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
             backend=os.environ.get("COLONY_AI_CLI", "copilot"),
             current_calls=0,
@@ -184,6 +185,9 @@ def _run(
                 now = time.monotonic()
                 if now - _last_dev_refresh[0] >= _FEATURES_DONE_REFRESH_INTERVAL:
                     state.features_done = _safe_features_done()
+                    state.stuck_tasks = sum(
+                        1 for t in _coord_state.get_tasks() if t.status == "stuck"
+                    )
                     _last_dev_refresh[0] = now
                 return _orig_get_messages()
 

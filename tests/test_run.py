@@ -11,6 +11,7 @@ import orc.config as _cfg
 import orc.engine.dispatcher as _disp
 import orc.engine.workflow as _wf
 import orc.squad as _sq
+from orc.coordination.models import TaskEntry
 from orc.squad import SquadConfig
 
 runner = CliRunner()
@@ -33,7 +34,7 @@ def _minimal_squad(**kw) -> SquadConfig:
 def _mock_coord(monkeypatch, open_tasks=None) -> MagicMock:
     """Patch _BoardSvc and CoordinationServer so no real I/O happens in tests."""
     if open_tasks is None:
-        open_tasks = [{"name": "0001-test.md"}]
+        open_tasks = [TaskEntry(name="0001-test.md", status="in-progress")]
     mock_state = MagicMock()
     mock_state.get_tasks.return_value = open_tasks
     mock_state.get_pending_visions.return_value = []
@@ -329,7 +330,7 @@ class TestPlannerDetails:
         from orc.engine.pool import AgentProcess
 
         mock_state = MagicMock()
-        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_tasks.return_value = [TaskEntry(name="0001-test.md", status="in-progress")]
         mock_state.get_pending_visions.return_value = ["0003-planner-status.md", "0004-foo.md"]
         mock_state.scan_todos.return_value = [
             TodoItem(file="x.py", line=1, tag="TODO", text="fix me"),
@@ -381,7 +382,7 @@ class TestPlannerDetails:
         from orc.engine.pool import AgentProcess
 
         mock_state = MagicMock()
-        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_tasks.return_value = [TaskEntry(name="0001-test.md", status="in-progress")]
         mock_state.get_pending_visions.return_value = []
         mock_state.scan_todos.return_value = []
         mock_state.get_pending_reviews.return_value = []
@@ -426,7 +427,7 @@ class TestPlannerDetails:
         from orc.engine.pool import AgentProcess
 
         mock_state = MagicMock()
-        mock_state.get_tasks.return_value = [{"name": "0001-test.md"}]
+        mock_state.get_tasks.return_value = [TaskEntry(name="0001-test.md", status="in-progress")]
         mock_state.get_pending_visions.return_value = ["0003-planner-status.md"]
         mock_state.scan_todos.return_value = []
         mock_state.get_pending_reviews.return_value = []

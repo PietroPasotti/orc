@@ -33,6 +33,7 @@ _STATUS_TO_LAST_COMMIT: dict[str, LastCommit] = {
     TaskStatus.IN_REVIEW: LastCommit.CODER_DONE,
     TaskStatus.DONE: LastCommit.QA_PASSED,
     TaskStatus.BLOCKED: LastCommit.CODER_WORK,
+    TaskStatus.STUCK: LastCommit.CODER_WORK,
 }
 
 
