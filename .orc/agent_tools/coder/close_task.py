@@ -11,12 +11,6 @@ Arguments:
 
 Example:
   .orc/agent_tools/coder/close_task.py coder-1 0002 "implemented auth module; all tests green"
-
-Stages all changes and commits them, then updates the board task status to
-``review`` so the orchestrator routes the task to QA.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
 """
 
 from __future__ import annotations
@@ -66,7 +60,7 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        resp = client.put(f"/board/tasks/{task_name}/status", json={"status": "review"})
+        resp = client.put(f"/board/tasks/{task_name}/status", json={"status": "in-review"})
         resp.raise_for_status()
 
 

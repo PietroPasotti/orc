@@ -25,7 +25,9 @@ def main() -> None:
     review = Path(__file__).parent / "review_task.py"
     import subprocess  # noqa: PLC0415
 
-    result = subprocess.run([sys.executable, str(review), agent_id, task_code, "rejected", message])
+    result = subprocess.run(
+        [sys.executable, str(review), agent_id, task_code, "in-progress", message]
+    )
     sys.exit(result.returncode)
 
 

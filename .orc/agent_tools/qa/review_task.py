@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
-"""review_task.py — signal the outcome of a QA review (approved or rejected).
+"""review_task.py — signal the outcome of a QA review (done or in-progress).
 
 Usage:
-  .orc/agent_tools/qa/review_task.py <agent-id> <task-code> approved|rejected "<message>"
+  .orc/agent_tools/qa/review_task.py <agent-id> <task-code> done|in-progress "<message>"
 
 Arguments:
   agent-id    Your agent identifier, e.g. qa-1
   task-code   Zero-padded 4-digit task number, e.g. 0002
-  outcome     One of: approved, rejected
+  outcome     One of: done (approved), in-progress (rejected — back to coder)
   message     One-line summary of the review outcome
 
 Examples:
-  .orc/agent_tools/qa/review_task.py qa-1 0002 approved "all tests green; no issues"
-  .orc/agent_tools/qa/review_task.py qa-2 0003 rejected "missing tests for error paths"
-
-When outcome is ``approved``:
-  Commits all staged and unstaged tracked changes, then sets board status to
-  ``approved`` so the orchestrator triggers an automatic merge.
-
-When outcome is ``rejected``:
-  Commits all staged and unstaged tracked changes, sets board status to
-  ``rejected``, and posts the rejection message as a comment so the coder
-  knows what to fix.
-
-IMPORTANT: This tool MUST be run inside ``orc run``. Direct filesystem
-access to ``.orc/`` is forbidden — use this script instead.
+  .orc/agent_tools/qa/review_task.py qa-1 0002 done "all tests green; no issues"
+  .orc/agent_tools/qa/review_task.py qa-2 0003 in-progress "missing tests for error paths"
 """
 
 from __future__ import annotations
@@ -43,11 +31,16 @@ def main() -> None:
     )
     parser.add_argument("agent_id", help="Your agent identifier, e.g. qa-1")
     parser.add_argument("task_code", help="Zero-padded 4-digit task number, e.g. 0002")
-    parser.add_argument("outcome", choices=["approved", "rejected"], help="Review outcome")
+    parser.add_argument(
+        "outcome",
+        choices=["done", "in-progress"],
+        help="Review outcome: 'done' (approved) or 'in-progress' (rejected, back to coder)",
+    )
     parser.add_argument("message", help="One-line summary of the review outcome")
     args = parser.parse_args()
 
-    commit_msg = f"chore(qa/{args.task_code}): {args.outcome} — {args.message}"
+    verb = "approved" if args.outcome == "done" else "rejected"
+    commit_msg = f"chore(qa/{args.task_code}): {verb} — {args.message}"
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": args.agent_id,
@@ -72,7 +65,7 @@ def main() -> None:
             sys.exit(1)
         resp = client.put(f"/board/tasks/{task_name}/status", json={"status": args.outcome})
         resp.raise_for_status()
-        if args.outcome == "rejected":
+        if args.outcome == "in-progress":
             resp = client.post(
                 f"/board/tasks/{task_name}/comments",
                 json={"author": args.agent_id, "text": args.message},
