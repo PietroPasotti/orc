@@ -5,6 +5,7 @@
 | `done` | You have implemented everything in the active plan and the CI is green |
 | `soft-blocked` | The spec is ambiguous or conflicts with an ADR — needs planner clarification, not human input |
 | `blocked` | You cannot proceed without human input |
+| `stuck` | You cannot proceed due to tooling, infrastructure, or permission constraints that no agent can resolve |
 
 ### Signalling `done`
 
@@ -24,3 +25,16 @@ Write **one** message to the **Telegram chat**, then stop. Use
 [coder](soft-blocked) YYYY-MM-DDTHH:MM:SSZ: <what needs clarification>
 [coder](blocked) YYYY-MM-DDTHH:MM:SSZ: <what you need from a human>
 ```
+
+### Signalling `stuck`
+
+Use `stuck` when you need a tool or capability that is unavailable due to MCP configuration, missing environment variables, infra outages, or other constraints that only a human operator can resolve — not spec ambiguity (use `blocked` for that).
+
+**Step 1:** Update the board and leave a detailed comment:
+
+```
+update_task_status(task_code="<code>", status="stuck")
+add_comment(task_code="<code>", comment="stuck: <exact reason — what tool/resource is missing and why it is needed>")
+```
+
+**Step 2:** Stop. The orchestrator will notify the human automatically — you do not need to send a Telegram message.

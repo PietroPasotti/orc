@@ -5,6 +5,7 @@
 | `done` | No Critical or Major issues found; work can proceed |
 | `in-progress` | One or more Critical or Major issues found; coder must fix before proceeding |
 | `blocked` | You cannot complete the review without human input |
+| `stuck` | You cannot complete the review due to tooling, infrastructure, or permission constraints that no agent can resolve |
 
 ### Signalling `done` or `in-progress`
 
@@ -44,3 +45,16 @@ add_comment(task_code="0003", comment="blocked: cannot verify auth behaviour —
 ```
 [qa](blocked) YYYY-MM-DDTHH:MM:SSZ: <what you need from a human>
 ```
+
+### Signalling `stuck`
+
+Use `stuck` when you cannot complete the review because a required tool or capability is unavailable due to MCP configuration, missing environment, or infra constraints — not missing spec (use `blocked` for that).
+
+**Step 1:** Update the board and leave a detailed comment:
+
+```
+update_task_status(task_code="<code>", status="stuck")
+add_comment(task_code="<code>", comment="stuck: <exact reason — what tool/resource is missing and why it is needed>")
+```
+
+**Step 2:** Stop. The orchestrator will notify the human automatically — you do not need to send a Telegram message.

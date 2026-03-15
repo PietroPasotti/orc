@@ -249,6 +249,8 @@ def _render_board() -> RenderableType:
                 label = f"{label} ({t.assigned_to})"
             in_progress_entries.append(label)
 
+    stuck_entries = [t.name for t in snap.tasks if t.status == TaskStatus.STUCK]
+
     review_entries = []
     for t in snap.tasks:
         if t.status == TaskStatus.IN_REVIEW:
@@ -269,13 +271,14 @@ def _render_board() -> RenderableType:
         show_lines=True,
         padding=(0, 1),
     )
-    for col_name in ("To refine", "To do", "In progress", "Awaiting review", "Done"):
+    for col_name in ("To refine", "To do", "In progress", "🔧 Stuck", "Awaiting review", "Done"):
         table.add_column(col_name, no_wrap=False)
 
     table.add_row(
         _cell(to_refine),
         _cell(planned),
         _cell(in_progress_entries),
+        _cell(stuck_entries),
         _cell(review_entries),
         _cell(done_entries),
     )

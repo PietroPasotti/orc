@@ -735,7 +735,7 @@ class TestRenderBoardWithData:
         result = _render_board()
         assert isinstance(result, rich.table.Table)
         rendered = self._render_to_str(result)
-        assert rendered.count("(empty)") == 5
+        assert rendered.count("(empty)") == 6
 
     def test_in_progress_statuses_covered(self, monkeypatch):
         """blocked tasks go into In progress column."""

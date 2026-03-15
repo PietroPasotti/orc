@@ -135,6 +135,7 @@ def _status(squad: str = "default") -> None:
     open_todos_and_fixmes = _ctx._scan_todos(_cfg.get().repo_root)
     open_PRs = _pending_reviews()
     blocked_task = next((t.name for t in open_tasks if t.status == "blocked"), None)
+    stuck_tasks = [t.name for t in open_tasks if t.status == "stuck"]
 
     # Load squad (best-effort — status should degrade gracefully)
     try:
@@ -149,6 +150,12 @@ def _status(squad: str = "default") -> None:
         _echo_wrapped(
             f"Squad: {squad_cfg.name}"
             f"  (1 planner · {coder_label} · {qa_label} · {squad_cfg.timeout_minutes} min)"
+        )
+
+    # --- Stuck task warning --------------------------------------------------
+    for stuck_name in stuck_tasks:
+        _echo_wrapped(
+            f"\n🔧 Stuck: task {stuck_name!r} needs human intervention (tooling/infra/permissions)."
         )
 
     # --- Blocked task warning -------------------------------------------------
@@ -187,6 +194,8 @@ def _status(squad: str = "default") -> None:
                 if open_visions
                 else f"ready to clarify block on {blocked_task}"
             )
+        elif stuck_tasks:
+            planner_note = "idle  (stuck tasks need human intervention, not planner)"
         else:
             planner_note = "idle"
 

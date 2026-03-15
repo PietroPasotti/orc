@@ -167,6 +167,7 @@ class Dispatcher:
         self.pool = AgentPool()
         self._id_counters: dict[str, int] = defaultdict(int)
         self._total_spawned = 0
+        self._stuck_notified: set[str] = set()  # task names already notified as stuck
 
         # Graceful shutdown: kill agents on SIGTERM/SIGINT.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -177,8 +178,17 @@ class Dispatcher:
     # ------------------------------------------------------------------
 
     def _any_work(self) -> bool:
-        """Return True if there is any work that could be dispatched."""
-        return not self.board.is_empty()
+        """Return True if there is any work that could be dispatched.
+
+        Tasks in ``stuck`` status require human intervention and are not
+        dispatchable — they don't count as pending work for the purposes of
+        this check, so orc can terminate cleanly when only stuck tasks remain.
+        """
+        tasks = self.board.get_tasks()
+        dispatchable_tasks = [t for t in tasks if t.status != TaskStatus.STUCK]
+        if dispatchable_tasks:
+            return True
+        return bool(self.board.get_pending_visions() or self.board.scan_todos())
 
     def _set_orc_status(self, status: str, task: str | None = None) -> None:
         """Update the orchestrator card via the optional callback."""
@@ -341,8 +351,27 @@ class Dispatcher:
             or self.board.get_blocked_tasks()
         )
 
-        # Blocked tasks need planner attention, not coder/QA.
-        assignable_tasks = [t for t in open_tasks if t.status != TaskStatus.BLOCKED]
+        # Stuck tasks need human intervention — no agent can help.
+        # Notify via Telegram once per task per dispatcher lifetime.
+        stuck_tasks = [t for t in open_tasks if t.status == TaskStatus.STUCK]
+        for stuck in stuck_tasks:
+            if stuck.name not in self._stuck_notified:
+                self._stuck_notified.add(stuck.name)
+                last_comment = next((c.text for c in reversed(stuck.comments or [])), None)
+                detail = f" — {last_comment}" if last_comment else ""
+                self.messaging.post_boot_message(
+                    "orc",
+                    f"Task {stuck.name!r} is stuck and needs human intervention{detail}",
+                )
+                self._echo(
+                    f"\n🔧 Task {stuck.name!r} is stuck — human intervention needed."
+                    + (f" {last_comment}" if last_comment else "")
+                )
+
+        # Blocked tasks need planner attention; stuck tasks need human intervention.
+        assignable_tasks = [
+            t for t in open_tasks if t.status not in (TaskStatus.BLOCKED, TaskStatus.STUCK)
+        ]
 
         if not assignable_tasks:
             if not has_planner_work:

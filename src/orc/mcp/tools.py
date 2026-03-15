@@ -89,14 +89,15 @@ def update_task_status(task_code: str, status: str) -> str:
     task_code:
         Four-digit zero-padded task number, e.g. ``"0002"``.
     status:
-        New status: ``planned``, ``in-progress``, ``in-review``, ``done``, or ``blocked``.
+        New status: ``planned``, ``in-progress``, ``in-review``, ``done``,
+        ``blocked``, or ``stuck``.
 
     Returns
     -------
     str
         Confirmation message.
     """
-    valid = {"planned", "in-progress", "in-review", "done", "blocked"}
+    valid = {"planned", "in-progress", "in-review", "done", "blocked", "stuck"}
     if status not in valid:
         raise ValueError(f"Invalid status {status!r}. Valid values: {', '.join(sorted(valid))}")
     with get_client() as client:
