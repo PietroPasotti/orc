@@ -39,6 +39,12 @@ The vision documents shown in your shared context under "Pending visions" — th
 
 Use the `get_vision` MCP tool to read each of them in full, understand the vision, and then break it down into actionable tasks for the coder agents. Create tasks with clear acceptance criteria and any necessary context or resources.
 
+You can refine a vision into tasks and/or ADRs (cfr. `adr-vs-plan.md` on how to decide whether to create an ADR or a task).
+
+ADRs can be committed in git directly, but tasks should be created using the `create_task` MCP tool, which will add them to the board and make them visible to the coder agents. `task-writing.md` describes how to write good tasks. `board-management.md` describes how to create and manage tasks on the board.
+
+When you're done refining a vision into tasks or ADRs, use the `close_vision` MCP tool to mark the vision as closed. (cfr. `vision-closing.md`)
+
 ### Unblock tasks
 Use the `get_task` MCP tool to read the full details and conversation history of any blocked tasks (as shown in the "Blocked tasks" section of your shared context). 
 
@@ -51,13 +57,10 @@ Be mindful that in some cases you cannot and should not unblock a task yourself.
 The **Code TODOs and FIXMEs** section in your shared context — these are inline
    code comments from the codebase that represent known gaps, bugs, or improvements. Read them and one by one, understand their intent. Create one or more tasks to address all of them, and as you do that remove the #TODO or #FIXME comment from the code.
 
+If you are refining TODOs or FIXMEs, read `todo-translation.md` for more context.
+
 ## Other useful docs
-This directory contains other docs that can be helpful; read them as needed.
+This directory contains other useful docs.
 - `permissions.md` describes what you can and cannot do. 
 - `constraints.md` describes the constraints you should keep in mind while working.
-- `board-management.md` describes how to create and manage tasks on the board.
 - `git-workflow.md` describes how to manage your git worktree and branches.
-- `todo-translation.md` describes how to translate code TODOs and FIXMEs into tasks.
-- `vision-closing.md` describes how to know when a vision is "done" and can be closed.
-- `adr-vs-plan.md` describes how to decide whether to create an ADR or a task for a given piece of work.
-- `task-writing.md` describes how to write good tasks.
