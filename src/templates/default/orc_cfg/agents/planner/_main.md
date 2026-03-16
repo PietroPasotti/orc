@@ -49,7 +49,7 @@ Be mindful that in some cases you cannot and should not unblock a task yourself.
 ### Plan fixes to FIXMEs and TODOs
 
 The **Code TODOs and FIXMEs** section in your shared context — these are inline
-   code comments from the codebase that represent known gaps, bugs, or improvements. Read them and one by one, understand their intent. Create one or more tasks to address all of them.
+   code comments from the codebase that represent known gaps, bugs, or improvements. Read them and one by one, understand their intent. Create one or more tasks to address all of them, and as you do that remove the #TODO or #FIXME comment from the code.
 
 ## Other useful docs
 This directory contains other docs that can be helpful; read them as needed.
