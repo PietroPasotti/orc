@@ -393,8 +393,10 @@ class Dispatcher:
         self._board_snapshots: dict[
             str, BoardSnapshot
         ] = {}  # pre-spawn snapshots for noop detection
+        self._shutting_down: bool = False
 
-        # Graceful shutdown: kill agents on SIGTERM/SIGINT.
+        # Graceful shutdown: two-stage signal handler.
+        # First signal enters drain mode; second signal force-kills.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
         signal.signal(signal.SIGINT, self._shutdown_handler)
 
@@ -455,11 +457,15 @@ class Dispatcher:
         agents already running are allowed to finish before the loop exits.
         Stops after *maxcalls* agent calls **or** when the pool is empty and
         there is nothing left to dispatch (workflow complete).
+
+        Shutdown is two-stage: the first SIGINT/SIGTERM enters drain mode
+        (no new agents dispatched; running agents finish), the second
+        force-kills all agents and exits with code 130.
         """
         try:
             self._loop(maxcalls)
         except _ShutdownSignal:
-            logger.info("dispatcher shutting down (signal received)")
+            logger.info("dispatcher force-shutting down (second signal)")
             self._kill_all_and_unassign()
             raise typer.Exit(code=130)
         except AgentNoopError as exc:
@@ -527,6 +533,9 @@ class Dispatcher:
             self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
+        if self._shutting_down:
+            logger.debug("dispatch skipped: draining")
+            return 0
         if call_budget > 0:
             self._echo("dispatching agents...")
             return self._dispatch(call_budget=call_budget)
@@ -578,6 +587,11 @@ class Dispatcher:
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
             if self.pool.is_empty():
+                if self._shutting_down:
+                    logger.info("drain complete, all agents finished")
+                    self._echo("\n✓ Drained. All agents finished.", final=True)
+                    break
+
                 if spawn_count == maxcalls:
                     logger.info("maxcalls reached, shutting down", maxcalls=maxcalls)
                     self._echo(f"\n↩ Reached --maxcalls {maxcalls}. Shutting down.", final=True)
@@ -947,7 +961,11 @@ class Dispatcher:
         self.pool.kill_all()
 
     def _shutdown_handler(self, signum: int, _frame: object) -> None:
-        raise _ShutdownSignal(signum)
+        if not self._shutting_down:
+            self._shutting_down = True
+            logger.info("drain mode activated (first signal)", signum=signum)
+        else:
+            raise _ShutdownSignal(signum)
 
 
 class _ShutdownSignal(BaseException):

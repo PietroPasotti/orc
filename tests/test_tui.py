@@ -490,3 +490,83 @@ class TestOrcAppMethods:
         app.query_one = lambda selector, widget_type: FakeStatic()
         app._refresh()
         assert updates
+
+
+class TestDrainIndicator:
+    """Tests for the drain-mode indicator in the TUI header."""
+
+    def test_header_includes_draining_when_active(self):
+        state = RunState(draining=True)
+        out = _render_to_str(state)
+        assert "⏳ draining…" in out
+
+    def test_header_excludes_draining_when_inactive(self):
+        state = RunState(draining=False)
+        out = _render_to_str(state)
+        assert "draining" not in out
+
+    def test_draining_default_is_false(self):
+        state = RunState()
+        assert state.draining is False
+
+
+class TestOrcAppDrain:
+    """Tests for the OrcApp drain callback on q press."""
+
+    def test_action_quit_calls_drain_callback(self):
+        """action_quit() calls the on_drain callback instead of exiting."""
+        drained = []
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t, on_drain=lambda: drained.append(True))
+        app.action_quit()
+        assert drained == [True]
+
+    def test_action_quit_exits_without_drain_callback(self):
+        """action_quit() falls back to self.exit() when no drain callback is set."""
+        exited = []
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        app.exit = lambda: exited.append(True)
+        app.action_quit()
+        assert exited == [True]
+
+    def test_orc_app_stores_on_drain(self):
+        """OrcApp stores the on_drain callback."""
+        cb = lambda: None  # noqa: E731
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t, on_drain=cb)
+        assert app._on_drain is cb
+
+    def test_orc_app_on_drain_default_none(self):
+        """OrcApp defaults on_drain to None."""
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        assert app._on_drain is None
+
+
+class TestRunTuiDrain:
+    """Tests for run_tui with drain callback."""
+
+    def test_run_tui_passes_drain_to_app(self):
+        """run_tui passes on_drain to OrcApp."""
+        drained = []
+
+        def run_fn() -> None:
+            pass
+
+        with patch.object(OrcApp, "run", return_value=None):
+            # We can't easily inspect the OrcApp instance, but we can
+            # verify the function doesn't crash with the new parameter.
+            run_tui(RunState(), run_fn, on_drain=lambda: drained.append(True))
+
+    def test_run_tui_without_drain_works(self):
+        """run_tui works without on_drain (backward compatible)."""
+        called = []
+
+        def run_fn() -> None:
+            called.append(True)
+
+        with patch.object(OrcApp, "run", return_value=None):
+            run_tui(RunState(), run_fn)
+
+        assert called == [True]

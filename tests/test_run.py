@@ -121,7 +121,7 @@ class TestNoTuiFlag:
         import orc.cli.tui as _tui_mod
 
         tui_called = []
-        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
+        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn, **kw: tui_called.append(True))
         _patch_run_deps(
             monkeypatch, tmp_path, mock_validate_env, mock_telegram, mock_rebase, mock_git
         )
@@ -138,7 +138,7 @@ class TestNoTuiFlag:
         import orc.cli.tui as _tui_mod
 
         tui_called = []
-        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn: tui_called.append(True))
+        monkeypatch.setattr(_tui_mod, "run_tui", lambda state, fn, **kw: tui_called.append(True))
         monkeypatch.setattr(
             sys,
             "stdout",
@@ -183,7 +183,7 @@ class TestTuiPath:
             captured_hooks.append(kw.get("hooks"))
             original_init(self, squad, **kw)
 
-        def fake_run_tui(state, run_fn):
+        def fake_run_tui(state, run_fn, **kw):
             tui_called.append(True)
             run_fn()  # execute dispatcher.run() synchronously in tests
 
@@ -285,7 +285,7 @@ class TestPlannerDetails:
             captured_hooks.append(kw.get("hooks"))
             original_init(self, squad, **kw)
 
-        def fake_run_tui(state, run_fn):
+        def fake_run_tui(state, run_fn, **kw):
             captured_state.append(state)
             run_fn()
 

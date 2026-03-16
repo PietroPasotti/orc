@@ -109,6 +109,9 @@ class RunState:
     run_started_at: float = 0.0
     """Monotonic timestamp when the run started (for overall elapsed)."""
 
+    draining: bool = False
+    """Whether the dispatcher is in drain mode (first signal received)."""
+
 
 # Role → display colour mapping.
 _ROLE_STYLE: dict[AgentRole, str] = {
@@ -185,6 +188,7 @@ def render(state: RunState) -> RenderableType:
 
     squad_str = f"  squad={state.squad_repr}" if state.squad_repr else ""
     runtime_str = f"  runtime {_elapsed(state.run_started_at)}" if state.run_started_at else ""
+    drain_str = "  ⏳ draining…" if state.draining else ""
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
         f"{state.features_done} features done  "
@@ -193,6 +197,7 @@ def render(state: RunState) -> RenderableType:
         f"{stuck_str}"
         f"{squad_str}"
         f"{runtime_str}"
+        f"{drain_str}"
     )
 
     planners = [r for r in state.agents if r.role == AgentRole.PLANNER]
@@ -228,10 +233,17 @@ class OrcApp(App[None]):
 
     BINDINGS = [Binding("q", "quit", "Quit")]
 
-    def __init__(self, state: RunState, worker: threading.Thread) -> None:
+    def __init__(
+        self,
+        state: RunState,
+        worker: threading.Thread,
+        *,
+        on_drain: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
         self._state = state
         self._worker = worker
+        self._on_drain = on_drain
 
     def compose(self) -> ComposeResult:
         yield Static(render(self._state), id="display")
@@ -239,18 +251,39 @@ class OrcApp(App[None]):
     def on_mount(self) -> None:
         self.set_interval(0.25, self._refresh)
 
+    def action_quit(self) -> None:
+        """Press ``q``: trigger drain instead of immediate exit.
+
+        If a drain callback is configured, call it and let the worker thread
+        finish naturally (the periodic refresh will call ``self.exit()`` once
+        the worker is done).  Without a callback, fall back to immediate exit.
+        """
+        if self._on_drain is not None:
+            self._on_drain()
+        else:
+            self.exit()
+
     def _refresh(self) -> None:
         self.query_one("#display", Static).update(render(self._state))
         if not self._worker.is_alive():
             self.exit()
 
 
-def run_tui(state: RunState, run_fn: Callable[[], None]) -> None:
+def run_tui(
+    state: RunState,
+    run_fn: Callable[[], None],
+    *,
+    on_drain: Callable[[], None] | None = None,
+) -> None:
     """Run *run_fn* in a background thread while displaying the Textual TUI.
 
     Blocks until *run_fn* completes (or the user presses ``q``).  Any
     exception raised by *run_fn* is re-raised in the calling thread after
     the TUI exits.
+
+    When *on_drain* is provided, pressing ``q`` triggers drain mode instead
+    of immediately exiting the TUI.  The app exits after the worker thread
+    completes.
     """
     exc_holder: list[BaseException] = []
 
@@ -262,7 +295,7 @@ def run_tui(state: RunState, run_fn: Callable[[], None]) -> None:
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
-    OrcApp(state, t).run()
+    OrcApp(state, t, on_drain=on_drain).run()
     t.join()
     if exc_holder:
         raise exc_holder[0]

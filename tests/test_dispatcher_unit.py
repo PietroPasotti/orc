@@ -318,11 +318,12 @@ class TestDispatcherInternalCoverage:
         assert "0001-foo.md" in unassigned
 
     def test_shutdown_handler_raises_signal(self, tmp_path):
-        """Line 499: _shutdown_handler raises _ShutdownSignal."""
+        """_shutdown_handler raises _ShutdownSignal on second call."""
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
+        d._shutdown_handler(15, None)  # first call: sets drain mode
         with pytest.raises(_disp._ShutdownSignal):
-            d._shutdown_handler(15, None)
+            d._shutdown_handler(15, None)  # second call: raises
 
     def test_cleanup_context_tmp_deletes_file(self, tmp_path):
         """Lines 515-517: _cleanup_context_tmp deletes the temp file."""
@@ -961,3 +962,107 @@ class TestOnlyRoleFiltering:
         d = make_dispatcher(minimal_squad(), svcs, only_role="coder")
         d.run(maxcalls=5)
         assert d._total_spawned == 0
+
+
+# ---------------------------------------------------------------------------
+# Two-stage graceful shutdown tests
+# ---------------------------------------------------------------------------
+
+
+class TestTwoStageShutdown:
+    """Tests for the two-stage signal handler and drain mode."""
+
+    def test_first_signal_sets_shutting_down(self, tmp_path):
+        """First signal sets _shutting_down=True without raising."""
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+        assert d._shutting_down is False
+
+        # First signal: should NOT raise, should set flag.
+        d._shutdown_handler(15, None)
+        assert d._shutting_down is True
+
+    def test_second_signal_raises_shutdown_signal(self, tmp_path):
+        """Second signal raises _ShutdownSignal."""
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        # First signal: sets flag.
+        d._shutdown_handler(15, None)
+        assert d._shutting_down is True
+
+        # Second signal: raises.
+        with pytest.raises(_disp._ShutdownSignal):
+            d._shutdown_handler(15, None)
+
+    def test_dispatch_agents_returns_zero_when_draining(self, tmp_path, monkeypatch):
+        """When _shutting_down is True, _dispatch_agents() returns 0 without spawning."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        spawned = []
+
+        def _spawn(ctx, cwd, model, log, **_kwargs):
+            spawned.append(True)
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [
+                TaskEntry(name="0001-foo.md", status="in-progress", assigned_to="coder-1")
+            ],
+            spawn_fn=_spawn,
+        )
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._shutting_down = True
+
+        result = d._dispatch_agents(call_budget=10)
+        assert result == 0
+        assert spawned == []
+
+    def test_loop_exits_cleanly_after_drain(self, tmp_path, monkeypatch):
+        """_loop() terminates with clean return (exit 0) when drain completes."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._shutting_down = True
+
+        # _loop should return normally (not raise) when pool is empty + draining.
+        d._loop(maxcalls=sys.maxsize)
+        # If we reach here without exception, the test passes.
+
+    def test_run_returns_cleanly_after_drain(self, tmp_path, monkeypatch):
+        """run() returns without raising when drain completes (exit code 0)."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: [],
+        )
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._shutting_down = True
+
+        # Should not raise (exit code 0).
+        d.run(maxcalls=sys.maxsize)
+
+    def test_run_force_shutdown_exits_130(self, tmp_path, monkeypatch):
+        """run() exits 130 when _ShutdownSignal is raised (second signal)."""
+        import click
+
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        def boom(maxcalls):
+            raise _disp._ShutdownSignal(2)
+
+        d._loop = boom
+        d._kill_all_and_unassign = MagicMock()
+        with pytest.raises(click.exceptions.Exit) as exc_info:
+            d.run()
+        assert exc_info.value.exit_code == 130
+        d._kill_all_and_unassign.assert_called_once()

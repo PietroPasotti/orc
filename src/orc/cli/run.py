@@ -161,6 +161,7 @@ def _run(
             assert state is not None
             state.features_done = _safe_features_done()
             state.stuck_tasks = sum(1 for t in _coord_state.get_tasks() if t.status == "stuck")
+            state.draining = dispatcher._shutting_down
 
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start,
@@ -187,7 +188,16 @@ def _run(
             only_role=only_role,
         )
         if use_tui and state is not None:
-            _tui.run_tui(state, lambda: dispatcher.run(maxcalls=maxcalls))
+
+            def _drain() -> None:
+                dispatcher._shutting_down = True
+                state.draining = True
+
+            _tui.run_tui(
+                state,
+                lambda: dispatcher.run(maxcalls=maxcalls),
+                on_drain=_drain,
+            )
         else:
             dispatcher.run(maxcalls=maxcalls)
     except KeyboardInterrupt:
