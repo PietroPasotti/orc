@@ -100,6 +100,15 @@ class RunState:
     max_calls: int = 0
     """Configured ``--maxcalls`` value (0 = unlimited)."""
 
+    squad_name: str = ""
+    """Squad profile name (e.g. ``"default"``)."""
+
+    squad_repr: str = ""
+    """Squad composition shorthand, e.g. ``"default (1-4-1)"``."""
+
+    run_started_at: float = 0.0
+    """Monotonic timestamp when the run started (for overall elapsed)."""
+
 
 # Role → display colour mapping.
 _ROLE_STYLE: dict[AgentRole, str] = {
@@ -130,9 +139,11 @@ def _agent_card(row: AgentData) -> rich.panel.Panel:
     return rich.panel.Panel(body, title=row.agent_id)
 
 
-def _orc_card(data: OrcData) -> rich.panel.Panel:
+def _orc_card(data: OrcData, *, squad_repr: str = "") -> rich.panel.Panel:
     """Render a single orc as a :class:`rich.panel.Panel`."""
     body = f"status:  {data.status}\ntask:    {data.task or '—'}\n"
+    if squad_repr:
+        body += f"squad:   {squad_repr}\n"
     return rich.panel.Panel(body, title=data.agent_id)
 
 
@@ -173,12 +184,16 @@ def render(state: RunState) -> RenderableType:
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
     stuck_str = f"  🔧 {state.stuck_tasks} stuck" if state.stuck_tasks > 0 else ""
+    squad_str = f"  squad={state.squad_name}" if state.squad_name else ""
+    runtime_str = f"  runtime {_elapsed(state.run_started_at)}" if state.run_started_at else ""
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
         f"{state.features_done} features done  "
         f"backend={state.backend}  "
         f"telegram={tg_str}"
         f"{stuck_str}"
+        f"{squad_str}"
+        f"{runtime_str}"
     )
 
     planners = [r for r in state.agents if r.role == AgentRole.PLANNER]
@@ -203,7 +218,7 @@ def render(state: RunState) -> RenderableType:
     )
     wrapper.add_column()
     if state.orc is not None:
-        wrapper.add_row(_orc_card(state.orc))
+        wrapper.add_row(_orc_card(state.orc, squad_repr=state.squad_repr))
     wrapper.add_row(workers_grid)
 
     return wrapper

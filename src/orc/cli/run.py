@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import os
 import sys
+import time
 from typing import Annotated
 
 import structlog
@@ -89,6 +90,9 @@ def _run(
             backend=os.environ.get("COLONY_AI_CLI", "copilot"),
             current_calls=0,
             max_calls=maxcalls,
+            squad_name=squad_cfg.name,
+            squad_repr=f"{squad_cfg.name} ({squad_cfg.planner}-{squad_cfg.coder}-{squad_cfg.qa})",
+            run_started_at=time.monotonic(),
         )
 
     typer.echo("⟳ Syncing dev on main…")
