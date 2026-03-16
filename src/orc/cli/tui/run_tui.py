@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+import rich.console
 import rich.panel
 import rich.table
 from rich.console import Group, RenderableType
@@ -268,6 +269,59 @@ class OrcApp(App[None]):
             self.exit()
 
 
+def _format_duration(seconds: float) -> str:
+    """Format *seconds* as ``"Xm Ys"``."""
+    total = int(seconds)
+    return f"{total // 60}m {total % 60}s"
+
+
+def format_exit_summary(
+    state: RunState,
+    elapsed_seconds: float,
+    error: BaseException | None = None,
+) -> str:
+    """Build a compact post-run summary string from *state*.
+
+    Returns a multi-line string suitable for printing to stdout after the
+    TUI exits.
+    """
+    status = "✗ error" if error else "✓ completed"
+    duration = _format_duration(elapsed_seconds)
+    max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
+
+    agents_seen: dict[str, set[str]] = {}
+    for agent in state.agents:
+        agents_seen.setdefault(agent.role, set()).add(agent.agent_id)
+    agent_parts = [f"{len(ids)} {role}" for role, ids in sorted(agents_seen.items())]
+    agents_str = ", ".join(agent_parts) if agent_parts else "none"
+
+    lines = [
+        f"  status:   {status}",
+        f"  duration: {duration}",
+        f"  calls:    {state.current_calls}/{max_calls_str}",
+        f"  agents:   {agents_str}",
+        f"  features: {state.features_done} done",
+    ]
+    if state.stuck_tasks > 0:
+        lines.append(f"  stuck:    {state.stuck_tasks}")
+    if error:
+        lines.append(f"  error:    {type(error).__name__}: {error}")
+
+    return "\n".join(lines)
+
+
+def _print_exit_summary(
+    state: RunState,
+    elapsed_seconds: float,
+    error: BaseException | None = None,
+) -> None:
+    """Print a formatted exit summary panel to stdout."""
+    body = format_exit_summary(state, elapsed_seconds, error)
+    console = rich.console.Console()
+    panel = rich.panel.Panel(body, title="orc run summary", expand=False)
+    console.print(panel)
+
+
 def run_tui(
     state: RunState,
     run_fn: Callable[[], None],
@@ -278,13 +332,15 @@ def run_tui(
 
     Blocks until *run_fn* completes (or the user presses ``q``).  Any
     exception raised by *run_fn* is re-raised in the calling thread after
-    the TUI exits.
+    the TUI exits.  A compact summary is printed to stdout before returning
+    (or re-raising).
 
     When *on_drain* is provided, pressing ``q`` triggers drain mode instead
     of immediately exiting the TUI.  The app exits after the worker thread
     completes.
     """
     exc_holder: list[BaseException] = []
+    start = time.monotonic()
 
     def _worker() -> None:
         try:
@@ -296,5 +352,10 @@ def run_tui(
     t.start()
     OrcApp(state, t, on_drain=on_drain).run()
     t.join()
+
+    elapsed = time.monotonic() - start
+    error = exc_holder[0] if exc_holder else None
+    _print_exit_summary(state, elapsed, error)
+
     if exc_holder:
         raise exc_holder[0]

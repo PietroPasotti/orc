@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from orc.cli.tui.run_tui import AgentData, OrcApp, OrcData, RunState, render, run_tui
+from orc.cli.tui.run_tui import (
+    AgentData,
+    OrcApp,
+    OrcData,
+    RunState,
+    format_exit_summary,
+    render,
+    run_tui,
+)
 from orc.cli.tui.status_tui import run_status_tui
 
 __all__ = [
@@ -10,6 +18,7 @@ __all__ = [
     "OrcApp",
     "OrcData",
     "RunState",
+    "format_exit_summary",
     "render",
     "run_tui",
     "run_status_tui",
