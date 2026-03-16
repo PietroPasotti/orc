@@ -629,6 +629,61 @@ class TestGitCoverage:
         assert "0002-bar" in text
         assert "def5678" in text
 
+    def test_merge_feature_commits_changelog(self, tmp_path, monkeypatch):
+        """_merge_feature_into_dev stages and commits orc-CHANGELOG.md after appending."""
+        import orc.config as _cfg
+        import orc.engine.workflow as _wf
+
+        orc_dir = tmp_path / ".orc"
+        work_dir = orc_dir / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        (work_dir / "board.yaml").write_text("counter: 1\ntasks:\n  - name: 0001-task.md\n")
+
+        feat_wt = tmp_path / "feat"
+        feat_wt.mkdir(exist_ok=True)
+        dev_wt = tmp_path / "dev"
+        dev_wt.mkdir(exist_ok=True)
+
+        monkeypatch.setattr(
+            _cfg,
+            "_config",
+            _replace(
+                _cfg.get(),
+                orc_dir=orc_dir,
+                repo_root=tmp_path,
+                work_dev_branch="dev",
+                dev_worktree=dev_wt,
+            ),
+        )
+        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, wt, br: None)
+        monkeypatch.setattr("orc.config.Config.feature_worktree_path", lambda self, t: feat_wt)
+
+        runs = []
+
+        def fake_run(cmd, **kw):
+            runs.append(cmd)
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = "abc1234\n"
+            return r
+
+        with patch("orc.git.subprocess.run", fake_run):
+            _wf._merge_feature_into_dev("0001-task.md")
+
+        cmds_str = [" ".join(c) for c in runs]
+        assert any("add" in c and "orc-CHANGELOG.md" in c for c in cmds_str), (
+            f"expected 'git add orc-CHANGELOG.md' in {cmds_str}"
+        )
+        assert any("commit" in c and "update changelog for 0001-task.md" in c for c in cmds_str), (
+            f"expected changelog commit in {cmds_str}"
+        )
+        # add must come before commit
+        add_idx = next(i for i, c in enumerate(cmds_str) if "add" in c and "orc-CHANGELOG.md" in c)
+        commit_idx = next(
+            i for i, c in enumerate(cmds_str) if "commit" in c and "update changelog" in c
+        )
+        assert add_idx < commit_idx, "git add must precede git commit"
+
     def test_is_worktree_dirty_true(self, tmp_path):
         def fake_run(cmd, **kw):
             r = MagicMock()
