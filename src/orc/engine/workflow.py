@@ -84,6 +84,25 @@ class ConflictResolver:
     Your task is to resolve the rebase conflicts and complete the rebase.
     """
 
+    @staticmethod
+    def _abort_if_in_progress(
+        git: Git, reason: typing.Literal["rebase", "merge"], branch: str
+    ) -> None:
+        """Abort a stuck merge or rebase so the worktree is left clean.
+
+        Best-effort: swallows exceptions so the caller's primary error is
+        never masked by a cleanup failure.
+        """
+        try:
+            if reason == "merge" and git.is_merge_in_progress():
+                logger.warning("aborting stuck merge after coder failure", branch=branch)
+                git.merge_abort()
+            elif reason == "rebase" and git.is_rebase_in_progress():
+                logger.warning("aborting stuck rebase after coder failure", branch=branch)
+                git.rebase_abort()
+        except Exception:
+            logger.warning("failed to abort in-progress %s (worktree may be dirty)", reason)
+
     def _merge_with_conflicts(
         self,
         branch: str,
@@ -103,24 +122,25 @@ class ConflictResolver:
         context += template.format(source_branch=branch, target_branch=target)
         rc = _ctx.invoke_agent(AgentRole.CODER, context, self._coder_model(), worktree=worktree)
 
+        git = Git(worktree)
+
         if rc != 0:
             logger.error(f"coder agent failed to resolve {reason} conflict", exit_code=rc)
             typer.echo(f"✗ Coder agent exited with code {rc} while resolving {reason} conflict.")
+            self._abort_if_in_progress(git, reason, branch)
             raise ConflictResolutionFailed(code=rc)
         match reason:
             case "rebase":
-                if Git(worktree).is_rebase_in_progress():
+                if git.is_rebase_in_progress():
                     logger.error("rebase still in progress after coder exited", branch=branch)
-                    typer.echo(
-                        "✗ Rebase still in progress after agent exit.  Manual intervention needed."
-                    )
+                    typer.echo("✗ Rebase still in progress after agent exit — aborting rebase.")
+                    git.rebase_abort()
                     raise ConflictResolutionFailed(code=1)
             case "merge":
-                if Git(worktree).is_merge_in_progress():
+                if git.is_merge_in_progress():
                     logger.error("merge still in progress after coder exited", branch=branch)
-                    typer.echo(
-                        "✗ Merge still in progress after agent exit.  Manual intervention needed."
-                    )
+                    typer.echo("✗ Merge still in progress after agent exit — aborting merge.")
+                    git.merge_abort()
                     raise ConflictResolutionFailed(code=1)
             case _:  # pragma: no cover
                 typing.assert_never(reason)

@@ -55,5 +55,6 @@ class TestMakeMergeFeatureFn:
         exc = MergeConflictError("feat/0001-foo", tmp_path, "UU src/foo.py")
         monkeypatch.setattr(_wf, "_merge_feature_into_dev", lambda t: (_ for _ in ()).throw(exc))
         monkeypatch.setattr("orc.git.Git.is_merge_in_progress", lambda self: True)
+        monkeypatch.setattr("orc.git.Git.merge_abort", lambda self: None)
         monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: "ctx")

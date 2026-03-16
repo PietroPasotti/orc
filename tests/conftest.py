@@ -105,6 +105,7 @@ class FakeBoard:
         self.assign_task = lambda task, agent: None
         self.unassign_task = lambda task: None
         self.delete_task = lambda task: None
+        self.set_task_status = lambda task, status: None
         self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
         self.get_pending_reviews = get_pending_reviews or (lambda: [])
         self.scan_todos = scan_todos or (lambda: [])

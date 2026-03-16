@@ -67,6 +67,10 @@ class BoardService(Protocol):
         """Remove *task_name* from the board and delete its task file."""
         ...
 
+    def set_task_status(self, task_name: str, status: str) -> None:
+        """Set the ``status`` field of *task_name* in board.yaml."""
+        ...
+
 
 @runtime_checkable
 class WorktreeService(Protocol):
