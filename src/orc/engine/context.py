@@ -161,8 +161,25 @@ def build_agent_context(
         agents_rel = Path(cfg.orc_dir.name)
 
     role_main_prompt_path = agents_rel / "agents" / role / "_main.md"
+    shared_main_prompt_path = agents_rel / "agents" / "_shared" / "_main.md"
 
-    context = f"""
+    # Check whether the shared instructions file exists (in either the
+    # project-level or package-level agents directory).
+    shared_exists = any(
+        (d / "_shared" / "_main.md").is_file() for d in (cfg.agents_dir, _cfg._PACKAGE_AGENTS_DIR)
+    )
+
+    if shared_exists:
+        context = f"""
+    Your ``agent ID`` is: **`{agent_id}`**.
+    Read these files before doing anything else,
+    consider them an extension of your prompt:
+    1. `{shared_main_prompt_path}` (shared instructions for all agents)
+    2. `{role_main_prompt_path}` (your role-specific instructions)
+    Reading those will clarify what to do with what follows.
+    """
+    else:
+        context = f"""
     Your ``agent ID`` is: **`{agent_id}`**.
     Read this file before doing anything else, 
     consider it an extension of your prompt: `{role_main_prompt_path}`.

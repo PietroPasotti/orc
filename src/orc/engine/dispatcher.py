@@ -92,6 +92,37 @@ _POLL_INTERVAL = 5.0
 _MAX_MERGE_RETRIES = 3
 
 
+# ---------------------------------------------------------------------------
+# Board snapshot for noop detection
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BoardSnapshot:
+    """Lightweight fingerprint of board state for noop detection.
+
+    Taken before spawning an agent and again after it exits.  If the two
+    snapshots are identical and the agent exited with code 0, the agent
+    produced no observable effect — a *noop*.
+    """
+
+    task_statuses: tuple[tuple[str, str], ...]
+    """Sorted ``(task_name, status)`` pairs from the board."""
+
+    pending_visions: tuple[str, ...]
+    """Sorted pending-vision filenames."""
+
+    blocked_tasks: tuple[str, ...]
+    """Sorted blocked-task names."""
+
+    task_state_token: str | None = None
+    """For coder/QA: the ``derive_task_state`` routing token for their task."""
+
+
+class AgentNoopError(RuntimeError):
+    """Raised when one or more agents exit without changing board state."""
+
+
 def _branch_to_task_name(branch: str) -> str:
     """Reverse-map a feature branch name to its task filename.
 
@@ -359,6 +390,9 @@ class Dispatcher:
         self._total_spawned = 0
         self._stuck_notified: set[str] = set()  # task names already notified as stuck
         self._merge_failures: dict[str, int] = {}  # consecutive merge failure count per task
+        self._board_snapshots: dict[
+            str, BoardSnapshot
+        ] = {}  # pre-spawn snapshots for noop detection
 
         # Graceful shutdown: kill agents on SIGTERM/SIGINT.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -428,16 +462,30 @@ class Dispatcher:
             logger.info("dispatcher shutting down (signal received)")
             self._kill_all_and_unassign()
             raise typer.Exit(code=130)
+        except AgentNoopError as exc:
+            logger.error("aborting: agent noop detected", details=str(exc))
+            self._echo(f"\n✗ {exc}", final=True)
+            self._kill_all_and_unassign()
+            raise typer.Exit(code=1)
 
     # ------------------------------------------------------------------
     # Internal loop
     # ------------------------------------------------------------------
 
     def _poll_completed_agents(self) -> None:
-        """Poll completed agents."""
-        if not self.pool.is_empty():
-            for agent, rc in self.pool.poll():
-                self._handle_completion(agent, rc)
+        """Poll completed agents and abort on noop detection."""
+        if self.pool.is_empty():
+            return
+        noops: list[str] = []
+        for agent, rc in self.pool.poll():
+            is_noop = self._handle_completion(agent, rc)
+            if is_noop:
+                noops.append(agent.agent_id)
+        if noops:
+            raise AgentNoopError(
+                f"Agent(s) exited without changing board state: {', '.join(noops)}. "
+                f"Aborting dispatch loop."
+            )
 
     def _kill_timed_out_agents(self) -> None:
         """Kill stuck agents."""
@@ -649,6 +697,35 @@ class Dispatcher:
         return dispatched
 
     # ------------------------------------------------------------------
+    # Board snapshot (noop detection)
+    # ------------------------------------------------------------------
+
+    def _take_board_snapshot(self, task_name: str | None = None) -> BoardSnapshot:
+        """Capture a lightweight fingerprint of the current board state.
+
+        For task-specific agents (coder / QA) the routing token produced by
+        ``derive_task_state`` is included so that git-level progress (new
+        commits, status changes) is also captured.
+        """
+        tasks = self.board.get_tasks()
+        task_statuses = tuple(sorted((t.name, t.status) for t in tasks))
+        pending_visions = tuple(sorted(self.board.get_pending_visions()))
+        blocked_tasks = tuple(sorted(self.board.get_blocked_tasks()))
+
+        task_state_token: str | None = None
+        if task_name:
+            task_data = next((t for t in tasks if t.name == task_name), None)
+            token, _ = self.workflow.derive_task_state(task_name, task_data)
+            task_state_token = token
+
+        return BoardSnapshot(
+            task_statuses=task_statuses,
+            pending_visions=pending_visions,
+            blocked_tasks=blocked_tasks,
+            task_state_token=task_state_token,
+        )
+
+    # ------------------------------------------------------------------
     # Agent spawn helpers
     # ------------------------------------------------------------------
 
@@ -673,6 +750,9 @@ class Dispatcher:
         model, context = self.agent.build_context(role, agent_id, task_name=task_name)
 
         self._total_spawned += 1
+
+        # Snapshot board state for noop detection after exit.
+        self._board_snapshots[agent_id] = self._take_board_snapshot(task_name)
 
         if self.dry_run:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
@@ -720,7 +800,12 @@ class Dispatcher:
     # Completion handling
     # ------------------------------------------------------------------
 
-    def _handle_completion(self, agent: AgentProcess, rc: int) -> None:
+    def _handle_completion(self, agent: AgentProcess, rc: int) -> bool:
+        """Process a completed agent.  Returns ``True`` if the run was a noop.
+
+        A *noop* is an agent that exited with code 0 but left the board state
+        unchanged — it consumed compute without producing useful work.
+        """
         logger.info(
             "agent exited",
             agent_id=agent.agent_id,
@@ -748,12 +833,33 @@ class Dispatcher:
             )
             if agent.task_name:
                 self.board.unassign_task(agent.task_name)
-            return
+            self._board_snapshots.pop(agent.agent_id, None)
+            return False
 
         self._echo(f"\n✓ {agent.agent_id} completed successfully.")
 
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
+
+        # Noop detection: compare board state before and after.
+        before = self._board_snapshots.pop(agent.agent_id, None)
+        if before is not None:
+            after = self._take_board_snapshot(agent.task_name)
+            if before == after:
+                logger.error(
+                    "agent noop detected — board state unchanged",
+                    agent_id=agent.agent_id,
+                    role=agent.role,
+                    task=agent.task_name,
+                    log=str(agent.log_path),
+                )
+                self._echo(
+                    f"\n✗ {agent.agent_id} exited without changing board state (noop)."
+                    f" See {agent.log_path} for details."
+                )
+                return True
+
+        return False
 
     # ------------------------------------------------------------------
     # Merge (serialized)
