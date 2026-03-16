@@ -302,10 +302,6 @@ def _boot_message_body(agent_id: str, board: BoardStateManager, task_name: str |
     if not open_tasks:
         return "no open tasks on board."
 
-    # FIXME: this is not nice. There's a disconnect between the message we're
-    #  sending over telegram and the status in the tui. We should ensure this method
-    #  has enough information to know what the agent is up to and give the
-    #  user an acccurate message.
     _DUNNO = "operating mysteriously."
 
     match role:
