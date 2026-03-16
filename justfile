@@ -21,7 +21,6 @@ lint:
 
 # Auto-fix lint and format
 fmt:
-    uv run ruff check --fix src/ tests/
     uv run ruff format src/ tests/
 
 # Create or force-update a release tag, then poll the CI release pipeline.

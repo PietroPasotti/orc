@@ -476,5 +476,5 @@ class AgentSvc:
             permissions=permissions,
         )
 
-    def boot_message_body(self, agent_id: str) -> str:
-        return _ctx._boot_message_body(agent_id, self._board)
+    def boot_message_body(self, agent_id: str, task_name: str | None) -> str:
+        return _ctx._boot_message_body(agent_id, self._board, task_name)

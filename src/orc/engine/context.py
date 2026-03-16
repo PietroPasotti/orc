@@ -294,33 +294,44 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
-def _boot_message_body(agent_id: str, board: BoardStateManager) -> str:
+def _boot_message_body(agent_id: str, board: BoardStateManager, task_name: str | None) -> str:
     """Build the role-specific body text for a boot message."""
     role, _ = _parse_agent_id(agent_id)
     open_tasks = board.get_tasks()
-    first_task = open_tasks[0].name if open_tasks else None
-
-    if role == AgentRole.PLANNER:
-        if first_task:
-            return f"planning {first_task}."
-        if board.get_pending_visions():
-            return "translating vision docs."
-        return "no open tasks on board."
-
-    if role == AgentRole.CODER:
-        if first_task:
-            return f"picking up work/{first_task}."
-        return "no open tasks on board."
-
-    if role == AgentRole.QA:
-        if first_task:
-            task_stem = re.sub(r"\.md$", "", first_task)
-            return f"reviewing feat/{task_stem}."
-        return "no open tasks on board."
-
     # Default fallback: list all open tasks
     if not open_tasks:
         return "no open tasks on board."
+
+    # FIXME: this is not nice. There's a disconnect between the message we're
+    #  sending over telegram and the status in the tui. We should ensure this method
+    #  has enough information to know what the agent is up to and give the
+    #  user an acccurate message.
+    _DUNNO = "operating mysteriously."
+
+    match role:
+        case AgentRole.PLANNER:
+            if task_name:
+                return f"planning {task_name}."
+
+            out = ""
+            if visions := board.get_pending_visions():
+                out += "refining vision docs: " + ", ".join(f"`{v}`" for v in visions) + ". "
+            else:
+                # We should be more specific here. We know what the planner is doing after all.
+                out += "no pending visions. Refining TODOs and READMEs/unblocking agents."
+            return _DUNNO
+
+        case AgentRole.CODER:
+            if task_name:
+                return f"picking up work/{task_name}."
+            return _DUNNO
+
+        case AgentRole.QA:
+            if task_name:
+                task_stem = re.sub(r"\.md$", "", task_name)
+                return f"reviewing feat/{task_stem}."
+            return _DUNNO
+
     names = [t.name for t in open_tasks]
     paths = ", ".join(f"work/{n}" for n in names)
     return f"picking up {paths}."

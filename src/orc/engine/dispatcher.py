@@ -758,7 +758,9 @@ class Dispatcher:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        self.messaging.post_boot_message(agent_id, self.agent.boot_message_body(agent_id))
+        self.messaging.post_boot_message(
+            agent_id, self.agent.boot_message_body(agent_id, task_name)
+        )
         contextvars.bind_contextvars(agent_id=agent_id)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"

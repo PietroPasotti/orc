@@ -144,6 +144,6 @@ class AgentService(Protocol):
         """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
         ...
 
-    def boot_message_body(self, agent_id: str) -> str:
+    def boot_message_body(self, agent_id: str, task_name: str | None) -> str:
         """Return the role-specific body text for a boot Telegram message."""
         ...
