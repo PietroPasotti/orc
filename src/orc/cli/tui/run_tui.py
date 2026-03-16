@@ -113,6 +113,15 @@ class RunState:
     draining: bool = False
     """Whether the dispatcher is in drain mode (first signal received)."""
 
+    planner_calls: int = 0
+    """Number of planner agent sessions invoked."""
+
+    coder_calls: int = 0
+    """Number of coder agent sessions invoked."""
+
+    qa_calls: int = 0
+    """Number of QA agent sessions invoked."""
+
 
 # Role → display colour mapping.
 _ROLE_STYLE: dict[AgentRole, str] = {
@@ -306,6 +315,33 @@ def format_exit_summary(
         lines.append(f"  stuck:    {state.stuck_tasks}")
     if error:
         lines.append(f"  error:    {type(error).__name__}: {error}")
+
+    return "\n".join(lines)
+
+
+def format_run_summary(state: RunState) -> str:
+    """Return a Rich-renderable summary string with final run statistics.
+
+    Includes: total runtime, total calls, per-role call breakdown,
+    features merged, stuck tasks remaining, squad name, and backend.
+    """
+    seconds = int(time.monotonic() - state.run_started_at)
+    runtime = f"{seconds // 60}m {seconds % 60}s"
+
+    lines = [
+        f"[bold]orc run complete[/bold]  —  {runtime}",
+        "",
+        f"  total calls:  {state.current_calls}",
+        f"    planner:    {state.planner_calls}",
+        f"    coder:      {state.coder_calls}",
+        f"    qa:         {state.qa_calls}",
+        "",
+        f"  features merged:  {state.features_done}",
+        f"  stuck tasks:      {state.stuck_tasks}",
+    ]
+    if state.squad_name:
+        lines.append(f"  squad:            {state.squad_name}")
+    lines.append(f"  backend:          {state.backend}")
 
     return "\n".join(lines)
 

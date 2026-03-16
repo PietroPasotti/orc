@@ -10,6 +10,7 @@ from typing import Annotated
 
 import structlog
 import typer
+from rich.console import Console
 
 import orc.cli.status as _status_mod
 import orc.config as _cfg
@@ -79,21 +80,21 @@ def _run(
 
     use_tui = not no_tui and sys.stdout.isatty()
 
-    state: _tui.RunState | None = None
-    if use_tui:
-        state = _tui.RunState(
-            agents=[],
-            orc=_tui.OrcData(agent_id="orc", status="running", task="booting"),
-            features_done=_safe_features_done(),
-            stuck_tasks=0,
-            telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
-            backend=os.environ.get("COLONY_AI_CLI", "copilot"),
-            current_calls=0,
-            max_calls=maxcalls,
-            squad_name=squad_cfg.name,
-            squad_repr=f"{squad_cfg.name} ({squad_cfg.planner}-{squad_cfg.coder}-{squad_cfg.qa})",
-            run_started_at=time.monotonic(),
-        )
+    state = _tui.RunState(
+        agents=[],
+        orc=_tui.OrcData(agent_id="orc", status="running", task="booting")
+        if use_tui
+        else None,
+        features_done=_safe_features_done(),
+        stuck_tasks=0,
+        telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
+        backend=os.environ.get("COLONY_AI_CLI", "copilot"),
+        current_calls=0,
+        max_calls=maxcalls,
+        squad_name=squad_cfg.name,
+        squad_repr=f"{squad_cfg.name} ({squad_cfg.planner}-{squad_cfg.coder}-{squad_cfg.qa})",
+        run_started_at=time.monotonic(),
+    )
 
     typer.echo("⟳ Syncing dev on main…")
     _wf.rebase_dev_on_main(squad_cfg)
@@ -113,12 +114,20 @@ def _run(
     agent_svc = _wf.AgentSvc(squad_cfg, board=_coord_state)
     worktree_svc = _wf.WorktreeManager()
 
+    def _on_agent_start(agent: AgentProcess) -> None:
+        state.current_calls += 1
+        if agent.role == AgentRole.PLANNER:
+            state.planner_calls += 1
+        elif agent.role == AgentRole.CODER:
+            state.coder_calls += 1
+        elif agent.role == AgentRole.QA:
+            state.qa_calls += 1
+
     hooks: _disp.DispatchHooks | None = None
     if use_tui:
 
-        def _on_agent_start(agent: AgentProcess) -> None:
-            assert state is not None
-            state.current_calls += 1
+        def _on_agent_start_tui(agent: AgentProcess) -> None:
+            _on_agent_start(agent)
             details: str | None = None
             if agent.role == AgentRole.PLANNER:
                 todos = _coord_state.scan_todos()
@@ -146,30 +155,28 @@ def _run(
             )
 
         def _on_agent_done(agent: AgentProcess, rc: int) -> None:
-            assert state is not None
             state.agents = [r for r in state.agents if r.agent_id != agent.agent_id]
 
         def _on_orc_status(task: str) -> None:
-            assert state is not None
             state.orc = _tui.OrcData(agent_id="orc", status="running", task=task)
 
         def _on_feature_merged() -> None:
-            assert state is not None
             state.features_done = _safe_features_done()
 
         def _on_cycle() -> None:
-            assert state is not None
             state.features_done = _safe_features_done()
             state.stuck_tasks = sum(1 for t in _coord_state.get_tasks() if t.status == "stuck")
             state.draining = dispatcher._shutting_down
 
         hooks = _disp.DispatchHooks(
-            on_agent_start=_on_agent_start,
+            on_agent_start=_on_agent_start_tui,
             on_agent_done=_on_agent_done,
             on_orc_status=_on_orc_status,
             on_feature_merged=_on_feature_merged,
             on_cycle=_on_cycle,
         )
+    else:
+        hooks = _disp.DispatchHooks(on_agent_start=_on_agent_start)
 
     if _coord_state.is_empty():
         typer.echo("No pending work. Go write some vision!")
@@ -187,7 +194,7 @@ def _run(
             dry_run=dry_run,
             only_role=only_role,
         )
-        if use_tui and state is not None:
+        if use_tui:
 
             def _drain() -> None:
                 dispatcher._shutting_down = True
@@ -200,6 +207,7 @@ def _run(
             )
         else:
             dispatcher.run(maxcalls=maxcalls)
+        Console().print(_tui.format_run_summary(state))
     except KeyboardInterrupt:
         _coord_server.stop()
         typer.echo(
