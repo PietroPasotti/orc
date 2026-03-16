@@ -9,6 +9,17 @@ enough to proceed to the next planning cycle.
 
 ---
 
+> **⚠️ Worktree data may be stale.**
+> You are running inside a git worktree that may not be up-to-date with `main`.
+> The `.orc/work/` and `.orc/vision/` directories in your worktree can be
+> missing files or contain outdated content.
+> **Always use MCP tools** (`get_task`, `get_vision`, `create_task`, etc.) to
+> read and write orchestration data — never rely on the local filesystem for
+> board, task, or vision files.
+> If an MCP tool call fails or returns unexpected results and you cannot
+> complete your work, exit with **stuck** status and explain what you could
+> not access.
+
 
 ## Before you start
 
