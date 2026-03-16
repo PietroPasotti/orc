@@ -83,7 +83,7 @@ def _run(
     if use_tui:
         state = _tui.RunState(
             agents=[],
-            orc=_tui.OrcData(agent_id="orc", status="running", task="rebasing dev on main"),
+            orc=_tui.OrcData(agent_id="orc", status="running", task="booting"),
             features_done=_safe_features_done(),
             stuck_tasks=0,
             telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),

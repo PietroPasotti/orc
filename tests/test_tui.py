@@ -165,16 +165,6 @@ class TestOrcCard:
         out = _panel_to_str(_orc_card(data))
         assert "—" in out
 
-    def test_squad_repr_shown_when_set(self):
-        data = OrcData(agent_id="orc-0", status="running", task="dispatching")
-        out = _panel_to_str(_orc_card(data, squad_repr="default (1-4-1)"))
-        assert "default (1-4-1)" in out
-
-    def test_squad_repr_absent_when_empty(self):
-        data = OrcData(agent_id="orc-0", status="running", task="dispatching")
-        out = _panel_to_str(_orc_card(data, squad_repr=""))
-        assert "squad" not in out
-
     def test_empty_rows_shows_idle(self):
         panel = _column_panel("Coder", [])
         out = _panel_to_str(panel)
@@ -249,12 +239,12 @@ class TestRenderZeroAgents:
         assert "✗" in out
 
     def test_header_squad_name(self):
-        state = RunState(squad_name="broad")
+        state = RunState(squad_repr="broad (1-4-1)")
         out = _render_to_str(state)
-        assert "squad=broad" in out
+        assert "squad=broad (1-4-1)" in out
 
     def test_header_no_squad_when_empty(self):
-        state = RunState(squad_name="")
+        state = RunState(squad_repr="")
         out = _render_to_str(state)
         assert "squad=" not in out
 
@@ -286,13 +276,10 @@ class TestRenderZeroAgents:
         out = _render_to_str(state)
         assert "orc-0" not in out
 
-    def test_orc_card_shows_squad_repr(self):
-        state = RunState(
-            orc=OrcData(agent_id="orc", status="running", task="dispatching"),
-            squad_repr="default (1-4-1)",
-        )
+    def test_header_shows_squad_repr(self):
+        state = RunState(squad_repr="default (1-4-1)")
         out = _render_to_str(state)
-        assert "default (1-4-1)" in out
+        assert "squad=default (1-4-1)" in out
 
     def test_one_planner_two_coders_one_qa(self):
         with patch("orc.cli.tui.run_tui.time") as mock_time:

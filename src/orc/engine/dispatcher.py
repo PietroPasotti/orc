@@ -816,10 +816,13 @@ class Dispatcher:
             exit_code=rc,
         )
         self.pool.remove(agent.agent_id)
-        self.pool.close_log(agent)
-        _cleanup_agent_temps(agent)
         if self.hooks.on_agent_done is not None:
             self.hooks.on_agent_done(agent, rc)
+        try:
+            self.pool.close_log(agent)
+            _cleanup_agent_temps(agent)
+        except Exception:
+            logger.warning("agent cleanup failed", agent_id=agent.agent_id, exc_info=True)
 
         if rc != 0:
             logger.error(
