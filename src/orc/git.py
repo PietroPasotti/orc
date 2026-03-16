@@ -140,6 +140,14 @@ class Git:
         gd = self._git_dir()
         return (gd / "rebase-merge").exists() or (gd / "rebase-apply").exists()
 
+    def merge_abort(self) -> None:
+        """Abort an in-progress merge (``git merge --abort``)."""
+        self._run_subprocess("merge", "--abort")
+
+    def rebase_abort(self) -> None:
+        """Abort an in-progress rebase (``git rebase --abort``)."""
+        self._run_subprocess("rebase", "--abort")
+
     def status_short(self) -> str:
         """Return the output of ``git status --short``."""
         return str(self._run_subprocess("status", "--short").stdout.strip())

@@ -44,6 +44,9 @@ class StubBoard:
     def delete_task(self, task_name: str) -> None:
         pass
 
+    def set_task_status(self, task_name: str, status: str) -> None:
+        pass
+
 
 class StubWorktree:
     def ensure_feature_worktree(self, task_name: str) -> Path:

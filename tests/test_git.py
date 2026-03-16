@@ -682,6 +682,30 @@ class TestGitCoverage:
         with patch("orc.git.subprocess.run", return_value=MagicMock(returncode=1)):
             assert Git(tmp_path).is_merged_into("feat/0001-foo", "dev") is False
 
+    def test_merge_abort(self, tmp_path):
+        """merge_abort runs ``git merge --abort``."""
+        cmds = []
+
+        def fake_run(cmd, **kw):
+            cmds.append(cmd)
+            return MagicMock(returncode=0)
+
+        with patch("orc.git.subprocess.run", fake_run):
+            Git(tmp_path).merge_abort()
+        assert any("merge" in c and "--abort" in c for c in cmds)
+
+    def test_rebase_abort(self, tmp_path):
+        """rebase_abort runs ``git rebase --abort``."""
+        cmds = []
+
+        def fake_run(cmd, **kw):
+            cmds.append(cmd)
+            return MagicMock(returncode=0)
+
+        with patch("orc.git.subprocess.run", fake_run):
+            Git(tmp_path).rebase_abort()
+        assert any("rebase" in c and "--abort" in c for c in cmds)
+
 
 # ---------------------------------------------------------------------------
 # _derive_task_state — board status routing

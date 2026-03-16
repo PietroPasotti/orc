@@ -385,6 +385,65 @@ class TestDispatcherInternalCoverage:
         d.run(maxcalls=1)
         assert "0001-foo.md" in merged
 
+    def test_do_merge_marks_stuck_after_max_retries(self, tmp_path, monkeypatch):
+        """_do_merge marks a task as stuck after _MAX_MERGE_RETRIES failures."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        monkeypatch.setattr(_disp, "_MAX_MERGE_RETRIES", 2)
+        status_updates = []
+        svcs = make_services(tmp_path)
+        svcs.workflow.merge_feature = lambda task: (_ for _ in ()).throw(RuntimeError("conflict"))
+        svcs.board.set_task_status = lambda task, status: status_updates.append((task, status))
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        d._do_merge("0001-foo.md")
+        assert status_updates == [], "not stuck after first failure"
+
+        d._do_merge("0001-foo.md")
+        assert ("0001-foo.md", "stuck") in status_updates
+
+    def test_do_merge_resets_failure_count_on_success(self, tmp_path, monkeypatch):
+        """Successful merge clears the failure counter for the task."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        monkeypatch.setattr(_disp, "_MAX_MERGE_RETRIES", 2)
+        svcs = make_services(tmp_path)
+
+        call_count = 0
+
+        def merge_fail_then_succeed(task):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                raise RuntimeError("conflict")
+
+        svcs.workflow.merge_feature = merge_fail_then_succeed
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        d._do_merge("0001-foo.md")  # fail 1
+        assert d._merge_failures.get("0001-foo.md") == 1
+
+        d._do_merge("0001-foo.md")  # succeed
+        assert "0001-foo.md" not in d._merge_failures
+
+    def test_drain_merge_queue_skips_already_merged(self, tmp_path, monkeypatch):
+        """_drain_merge_queue skips tasks whose branch is already merged into dev."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        merged = []
+        deleted = []
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
+        )
+        svcs.workflow.derive_task_state = lambda t, td=None: (
+            _disp.CLOSE_BOARD,
+            "already merged",
+        )
+        svcs.workflow.merge_feature = lambda t: merged.append(t)
+        svcs.board.delete_task = lambda t: deleted.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._drain_merge_queue()
+        assert merged == [], "merge should not have been attempted"
+        assert "0001-foo.md" in deleted
+
     def test_run_exits_workflow_complete_when_no_work(self, tmp_path, monkeypatch, capsys):
         """run() logs workflow-complete and exits when nothing to dispatch."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)

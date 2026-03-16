@@ -88,6 +88,9 @@ CLOSE_BOARD = "__close_board"
 # Seconds between poll cycles.
 _POLL_INTERVAL = 5.0
 
+# Maximum number of consecutive merge failures before marking a task as stuck.
+_MAX_MERGE_RETRIES = 3
+
 
 # ---------------------------------------------------------------------------
 # Pure dispatch planning
@@ -340,6 +343,7 @@ class Dispatcher:
         self._id_counters: dict[str, int] = defaultdict(int)
         self._total_spawned = 0
         self._stuck_notified: set[str] = set()  # task names already notified as stuck
+        self._merge_failures: dict[str, int] = {}  # consecutive merge failure count per task
 
         # Graceful shutdown: kill agents on SIGTERM/SIGINT.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -419,6 +423,17 @@ class Dispatcher:
     def _drain_merge_queue(self) -> None:
         """Merge tasks that have been QA-approved (board status ``done``)."""
         for task_name in self.board.query_tasks(status="done"):
+            # Skip tasks already merged (crash-recovery: board not cleaned up).
+            token, _reason = self.workflow.derive_task_state(task_name)
+            if token == CLOSE_BOARD:
+                logger.info(
+                    "task already merged into dev — cleaning up board",
+                    task=task_name,
+                )
+                self._echo(f"✓ {task_name} already merged — cleaning up board entry.")
+                self.board.delete_task(task_name)
+                self._merge_failures.pop(task_name, None)
+                continue
             self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
@@ -707,13 +722,25 @@ class Dispatcher:
         try:
             self.workflow.merge_feature(task_name)
             self.board.delete_task(task_name)
+            self._merge_failures.pop(task_name, None)
             logger.info("merge succeeded", task=task_name)
             self._echo(f"✓ {task_name} merged.")
             if self.hooks.on_feature_merged is not None:
                 self.hooks.on_feature_merged()
         except Exception as exc:
-            logger.error("merge failed", task=task_name, error=str(exc))
+            count = self._merge_failures.get(task_name, 0) + 1
+            self._merge_failures[task_name] = count
+            logger.error("merge failed", task=task_name, error=str(exc), attempt=count)
             self._echo(f"\n✗ Merge failed for {task_name}: {exc}")
+            if count >= _MAX_MERGE_RETRIES:
+                logger.warning(
+                    "merge retry limit reached — marking task as stuck",
+                    task=task_name,
+                    attempts=count,
+                )
+                self._echo(f"⚠ {task_name} failed to merge {count} times — marking as stuck.")
+                self.board.set_task_status(task_name, TaskStatus.STUCK)
+                self._merge_failures.pop(task_name, None)
 
     # ------------------------------------------------------------------
     # Watchdog
