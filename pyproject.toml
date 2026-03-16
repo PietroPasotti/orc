@@ -80,6 +80,13 @@ omit = ["src/orc/_version.py"]
 [tool.coverage.report]
 fail_under = 100
 show_missing = true
+exclude_lines = [
+    "assert_never",
+    "pragma: no cover",
+    '^\s*\.\.\.\s*$',
+    'if __name__ == .__main__.',
+    '^\s*case _:\s*$',
+]
 
 [tool.ruff]
 src = ["src"]

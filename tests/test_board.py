@@ -215,3 +215,95 @@ class TestFileBoardManagerCoverage:
         )
         with pytest.raises(ValidationError):
             mgr.read_board()
+
+    def test_list_task_files_returns_sorted_md_files(self, tmp_path):
+        """list_task_files returns sorted .md files excluding README.md."""
+        mgr = self._mgr(tmp_path)
+        work = tmp_path / "cache" / "work"
+        (work / "0002-beta.md").write_text("beta")
+        (work / "0001-alpha.md").write_text("alpha")
+        (work / "README.md").write_text("readme")
+        result = mgr.list_task_files()
+        names = [p.name for p in result]
+        assert "README.md" not in names
+        assert names == sorted(names)
+
+    def test_board_to_dict_includes_commit_tag_and_timestamp(self, tmp_path):
+        """_board_to_dict serialises commit_tag and timestamp when present."""
+        from orc.coordination.models import TaskEntry
+
+        entry = TaskEntry(name="0001-x.md", commit_tag="abc123", timestamp="2024-01-01T10:00:00Z")
+        board = Board(counter=1, tasks=[entry])
+        d = _bm._board_to_dict(board)
+        task = d["tasks"][0]
+        assert task["commit_tag"] == "abc123"
+        assert task["timestamp"] == "2024-01-01T10:00:00Z"
+
+    def test_board_from_dict_coerces_non_list_tasks(self):
+        """_board_from_dict treats non-list 'tasks' as empty."""
+        board = _bm._board_from_dict({"counter": 1, "tasks": "not-a-list"})
+        assert board.tasks == []
+
+
+class TestBoardModuleFunctions:
+    """Cover module-level functions in _board.py."""
+
+    def test_delete_task_removes_entry_and_file(self, tmp_path):
+        """delete_task removes the entry from board.yaml and deletes the task file."""
+        work_dir = _work_dir(tmp_path)
+        _board_file(tmp_path).write_text(
+            "counter: 1\ntasks:\n  - name: 0001-foo.md\n    status: planned\n"
+        )
+        (work_dir / "0001-foo.md").write_text("# task body")
+        _board.delete_task("0001-foo.md")
+        board = yaml.safe_load(_board_file(tmp_path).read_text())
+        assert board["tasks"] == []
+        assert not (work_dir / "0001-foo.md").exists()
+
+    def test_read_work_includes_assigned_to(self, tmp_path):
+        """_read_work includes the assigned_to field when present."""
+        _board_file(tmp_path).write_text(
+            "counter: 1\ntasks:\n"
+            "  - name: 0001-foo.md\n    status: in-progress\n    assigned_to: coder-1\n"
+        )
+        result = _board._read_work()
+        assert "assigned_to: coder-1" in result
+
+    def test_create_task_delegates_to_manager(self, tmp_path):
+        """create_task passes through to FileBoardManager.create_task."""
+        from orc.coordination.models import TaskBody
+
+        _board_file(tmp_path).write_text("counter: 1\ntasks: []\n")
+        body = TaskBody(
+            overview="Implement X",
+            in_scope=["feature X"],
+            out_of_scope=["feature Y"],
+            steps=["step 1"],
+        )
+        name, path = _board_impl.create_task("Feature X", "feature-x.md", body)
+        assert name.endswith(".md")
+        assert path.exists()
+        board = yaml.safe_load(_board_file(tmp_path).read_text())
+        assert len(board["tasks"]) == 1
+
+    def test_get_manager_reinits_when_orc_dir_changes(self, tmp_path, monkeypatch):
+        """_get_manager creates a new manager when orc_dir changes."""
+        from dataclasses import replace as _replace
+
+        import orc.config as _cfg
+
+        # First call — creates manager
+        _board_impl._manager = None
+        _board_impl._get_manager()
+        first = _board_impl._manager
+
+        # Change orc_dir
+        new_orc = tmp_path / "other-orc"
+        (new_orc / "work").mkdir(parents=True)
+        (new_orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), orc_dir=new_orc))
+
+        second = _board_impl._get_manager()
+        assert second is not first
+        # Reset
+        _board_impl._manager = None

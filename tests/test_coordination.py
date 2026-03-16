@@ -897,3 +897,38 @@ class TestGetBoardSnapshot:
 
         result = get_board_snapshot()
         assert result is None
+
+    def test_returns_none_when_config_raises(self, monkeypatch):
+        """get_board_snapshot returns None when orc.config.get() raises."""
+        import orc.config as _cfg
+        from orc.coordination.client import get_board_snapshot
+
+        monkeypatch.setattr(_cfg, "get", lambda: (_ for _ in ()).throw(RuntimeError("no config")))
+        result = get_board_snapshot()
+        assert result is None
+
+
+class TestStateManagerReadBoardCoverage:
+    """Tests for uncovered BoardStateManager methods."""
+
+    def test_read_work_summary_returns_no_work_when_board_empty_and_no_file(self, tmp_path):
+        """read_work_summary returns '_No active work._' for empty board and missing file."""
+        orc = tmp_path / "noorc"
+        (orc / "work").mkdir(parents=True)
+        # Write an empty board then remove it to trigger the no-file path.
+        (orc / "work" / "board.yaml").write_text("counter: 0\ntasks: []\n")
+        s = _state(orc)
+        (orc / "work" / "board.yaml").unlink()
+        result = s.read_work_summary()
+        assert result == "_No active work._"
+
+    def test_read_board_returns_board_object(self, tmp_path):
+        """_read_board returns the Board object from the manager."""
+        orc = _orc_dir(tmp_path)
+        (orc / "work" / "board.yaml").write_text(
+            "counter: 3\ntasks:\n  - name: 0001-t.md\n    status: planned\n"
+        )
+        s = _state(orc)
+        board = s._read_board()
+        assert board.counter == 3
+        assert len(board.tasks) == 1

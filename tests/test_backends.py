@@ -217,3 +217,40 @@ class TestClaudeBackend:
         with patch("subprocess.run", return_value=MagicMock(returncode=1)):
             rc = b.invoke("context", cwd=tmp_path, permissions=PermissionConfig(mode="yolo"))
         assert rc == 1
+
+    def test_invoke_generates_mcp_config_when_confined(self, monkeypatch, tmp_path):
+        """invoke creates and cleans up an MCP config file for non-yolo permissions."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("ORC_API_SOCKET", "/tmp/fake.sock")
+        b = ClaudeBackend()
+        perm = PermissionConfig(mode="confined", allow_tools=("orc",))
+        created_files: list[str] = []
+
+        original_build = b._build_command
+
+        def tracking_build(prompt_file, model, mcp_config, permissions):
+            if mcp_config:
+                created_files.append(mcp_config)
+            return original_build(prompt_file, model, mcp_config, permissions)
+
+        b._build_command = tracking_build
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+            rc = b.invoke(
+                "context",
+                cwd=tmp_path,
+                agent_id="coder-1",
+                role="coder",
+                permissions=perm,
+            )
+        assert rc == 0
+        assert len(created_files) == 1
+        # MCP config should have been cleaned up
+        from pathlib import Path
+
+        assert not Path(created_files[0]).exists()
+
+    def test_permission_flags_empty_when_no_allow_tools(self):
+        """_permission_flags returns [] for confined mode with no allow_tools."""
+        b = ClaudeBackend()
+        perm = PermissionConfig(mode="confined")
+        assert b._permission_flags(perm) == []

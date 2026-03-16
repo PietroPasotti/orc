@@ -239,6 +239,9 @@ class TestTuiPath:
         # _on_cycle refreshes features_done and stuck_tasks
         hooks.on_cycle()
 
+        # _on_feature_merged refreshes the feature counter
+        hooks.on_feature_merged()
+
     def test_no_tui_flag_in_cli(self, tmp_path, monkeypatch):
         """CLI --no-tui flag passes no_tui=True to _run."""
         import orc.main as _main

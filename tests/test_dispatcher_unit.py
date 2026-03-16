@@ -56,6 +56,31 @@ class TestDispatcherCoverage:
         d = make_dispatcher(minimal_squad(), svcs)
         d._do_merge("0001-foo.md")  # should not raise
 
+    def test_do_merge_calls_on_feature_merged_hook(self, tmp_path, monkeypatch):
+        """_do_merge fires the on_feature_merged hook on success."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        merged: list[bool] = []
+        svcs = make_services(tmp_path)
+        hooks = _disp.DispatchHooks(on_feature_merged=lambda: merged.append(True))
+        d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
+        d._do_merge("0001-foo.md")
+        assert merged == [True]
+
+    def test_classify_tasks_blocked_skipped(self):
+        """classify_tasks drops blocked tasks from assignable and coder_bound."""
+        tasks = [
+            TaskEntry(name="a.md", status="blocked"),
+            TaskEntry(name="b.md", status="planned"),
+            TaskEntry(name="c.md", status="in-review"),
+        ]
+        stuck, assignable, coder_bound = _disp.classify_tasks(tasks)
+        assert stuck == []
+        names = [t.name for t in assignable]
+        assert "a.md" not in names
+        assert "b.md" in names and "c.md" in names
+        coder_names = [t.name for t in coder_bound]
+        assert coder_names == ["b.md"]
+
     def test_handle_watchdog_kills_agent(self, tmp_path, monkeypatch):
         """_handle_watchdog kills the agent and unassigns its task."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)

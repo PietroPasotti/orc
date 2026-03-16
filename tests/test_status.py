@@ -241,6 +241,22 @@ class TestStatusCoverage:
         assert "idle" in result.output
         assert "ready (visions pending)" not in result.output
 
+    def test_status_planner_ready_when_todos_pending(self, tmp_path, monkeypatch):
+        """Planner note is 'ready (TODOs/FIXMEs pending)' when TODOs exist but no visions."""
+        squad = SquadConfig(
+            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+        )
+        self._setup(
+            monkeypatch,
+            squad_cfg=squad,
+            open_visions=[],
+            open_todos=[TodoItem(file="src/foo.py", line=10, tag="TODO", text="fix me")],
+            ahead=0,
+        )
+        result = runner.invoke(m.app, ["status"])
+        assert result.exit_code == 0
+        assert "ready (TODOs/FIXMEs pending)" in result.output
+
     def test_status_merge_pending(self, tmp_path, monkeypatch):
         """Lines 86, 126: qa-passed token → merge_pending populated and printed."""
         squad = SquadConfig(

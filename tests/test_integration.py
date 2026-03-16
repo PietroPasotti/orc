@@ -24,11 +24,10 @@ Reusable fixtures
     ``tg._get_telegram_updates`` to return an empty list.
 
 ``scripted_spawn``
-    Patches ``inv.spawn`` with a deterministic four-step script:
-    planner-1 → coder-1 → qa-1 → planner-2.  Each step performs the git /
-    board side-effects the real agent would perform, then returns a
-    :class:`~conftest.FakePopen` that completes immediately.
-    Returns the list of recorded spawn calls for assertions.
+    Patches ``inv.spawn`` with a role-based handler map so that each agent
+    role receives the correct scripted behaviour regardless of dispatch
+    order: planner (×2), coder (×1), qa (×1).  Returns the list of
+    recorded spawn calls for assertions.
 """
 
 from __future__ import annotations
@@ -289,14 +288,20 @@ def _idle_planner_handler():
 
 @pytest.fixture()
 def scripted_spawn(orc_env, mock_telegram, monkeypatch):
-    """Replace ``inv.spawn`` with a deterministic four-step script.
+    """Replace ``inv.spawn`` with a deterministic role-based script.
 
-    Script (in order):
-      1. planner-1 — writes a task to the board and commits it to dev.
-      2. coder-1   — creates a feature commit on the feature branch.
-      3. qa-1      — commits a structured ``chore(qa-1.approve.0001):`` verdict
-         on the feature branch.
-      4. planner-2 — posts a ready message (loop-back to design, no new tasks).
+    Handlers are dispatched **by role**, not by sequential call order.  This
+    is important because the dispatcher may spawn agents of different roles
+    in the same cycle (e.g. planner-2 alongside qa-1 when the coder pipeline
+    needs filling).
+
+    Role → handler queues:
+
+    * **planner** (two calls):
+      1. Creates a task on the board and signals ready.
+      2. Signals ready with no new tasks (loop-back to design).
+    * **coder** (one call): Creates a feature commit and marks the task in-review.
+    * **qa** (one call): Commits a QA-passed verdict.
 
     Each step returns a :class:`~conftest.FakePopen` that reports immediate
     success (``returncode=0``), so the dispatcher moves on without waiting.
@@ -305,30 +310,33 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
 
     Returns a list of dicts recording each spawn call::
 
-        [{"idx": 0, "cwd": Path(...), "model": "..."},  ...]
+        [{"role": "planner", "cwd": Path(...), "model": "..."},  ...]
     """
-    handlers = [
-        _planner_handler(_TASK_NAME),
-        _coder_handler(),
-        _qa_handler(),
-        _idle_planner_handler(),
-    ]
+    from orc.squad import AgentRole
+
+    role_handlers: dict[str, list] = {
+        AgentRole.PLANNER: [_planner_handler(_TASK_NAME), _idle_planner_handler()],
+        AgentRole.CODER: [_coder_handler()],
+        AgentRole.QA: [_qa_handler()],
+    }
+    role_call_counts: dict[str, int] = {r: 0 for r in role_handlers}
 
     call_records: list[dict] = []
-    idx_box = [0]  # mutable container so the closure can mutate it
 
     def _fake_spawn(
         context: str,
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
-        **_kwargs,
+        **kwargs,
     ) -> SpawnResult:
-        idx = idx_box[0]
-        call_records.append({"idx": idx, "cwd": cwd, "model": model})
+        role = kwargs.get("role", "")
+        call_records.append({"role": role, "cwd": cwd, "model": model})
+        idx = role_call_counts.get(role, 0)
+        handlers = role_handlers.get(role, [])
         if idx < len(handlers):
             handlers[idx](context, cwd, model, log_path)
-        idx_box[0] += 1
+        role_call_counts[role] = idx + 1
         return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 
     monkeypatch.setattr(inv, "spawn", _fake_spawn)
@@ -413,13 +421,16 @@ class TestFullWorkflowLoop:
         assert ("qa-1", "passed") in terminal, terminal
         assert ("planner-2", "ready") in terminal, terminal
 
-        # The first occurrence of each agent must follow the expected order
+        # The first occurrence of each agent must follow the expected order.
+        # Note: planner-2 and qa-1 may be dispatched in the same cycle (the
+        # dispatcher parallelises planner pipeline-fill alongside QA review),
+        # so we only assert the strictly causal ordering constraints.
         def _first(target: str) -> int:
             return next(i for i, (n, _) in enumerate(parsed) if n == target)
 
         assert _first("planner-1") < _first("coder-1"), "planner must precede coder"
         assert _first("coder-1") < _first("qa-1"), "coder must precede qa"
-        assert _first("qa-1") < _first("planner-2"), "qa must precede second planner"
+        assert _first("coder-1") < _first("planner-2"), "coder must precede second planner"
 
         # ── Board state after merge ──────────────────────────────────────────
         orc_dir = orc_env / ".orc"

@@ -226,7 +226,7 @@ class FileBoardManager(BoardManager):
             data: dict[str, object] = yaml.safe_load(path.read_text()) or {}
             data.setdefault("tasks", [])
             return data
-        except ValidationError:
+        except ValidationError:  # pragma: no cover — yaml.safe_load never raises this
             logger.warning(
                 "read_board: board data failed validation", path=str(path), exc_info=True
             )

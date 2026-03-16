@@ -401,6 +401,48 @@ class TestContextCoverage:
         ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
         assert "external-orc/agents/planner/_main.md" in ctx
 
+    def test_build_agent_context_plain_returns_base_only(self, tmp_path, monkeypatch):
+        """plain=True returns only the base context without role-specific sections."""
+        self._setup_context(monkeypatch, tmp_path)
+        from orc.coordination.state import BoardStateManager
+
+        board = BoardStateManager(_cfg.get().orc_dir)
+        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0", plain=True)
+        assert "planner-0" in ctx
+        assert "Additional Context" not in ctx
+
+    def test_build_agent_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
+        """Planner context includes feature branch when task_name is provided."""
+        self._setup_context(monkeypatch, tmp_path)
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        from orc.coordination.state import BoardStateManager
+
+        ctx = _ctx.build_agent_context(
+            "planner",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="planner-0",
+            task_name="0001-task.md",
+        )
+        assert "feat/0001-task" in ctx
+
+    def test_build_agent_context_planner_with_blocked_tasks(self, tmp_path, monkeypatch):
+        """Planner context includes blocked task section with tool hint."""
+        self._setup_context(
+            monkeypatch,
+            tmp_path,
+            board_content="counter: 1\ntasks:\n  - name: 0001-stuck.md\n    status: blocked\n",
+        )
+        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
+        from orc.coordination.state import BoardStateManager
+
+        board = BoardStateManager(_cfg.get().orc_dir)
+        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
+        assert "Blocked tasks" in ctx
+        assert "0001-stuck.md" in ctx
+        assert "get_task" in ctx
+
 
 # ---------------------------------------------------------------------------
 # _scan_todos
