@@ -1,131 +1,169 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="orc" width="180"/>
+
 # orc
 
-<p align="center">
-  <img src="assets/icon.png" alt="orc icon" width="200"/>
-</p>
+**A multi-agent orchestrator that turns product visions into code.**
 
-**orc** is an agent-driven orchestrator that turns high-level user-provided visions into implementation code.
+[![CI](https://github.com/PietroPasotti/orc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PietroPasotti/orc/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/qorc?color=blue)](https://pypi.org/project/qorc/)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/PietroPasotti/orc)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-3776AB?logo=python&logoColor=white)](https://python.org)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/PietroPasotti/orc/blob/main/LICENSE)
 
-## How it works
+</div>
 
-![orc diagram](assets/orc.drawio.svg)
+---
 
-Inter-agent synchronisation happens over the **board** (a YAML file in the
-project).
-The orchestrator reads board task-status fields to determine which agent(s)
-to run next.  Git is used only for branch management and code merging.
+Write a vision document. Run `orc run`. Walk away.
 
-Agents interact with the board exclusively through a **per-agent MCP server** that `orc run` starts automatically. The server enforces strict isolation: each agent is scoped to its own role, cannot access other agents' state, and all board mutations go through authenticated MCP tool calls — no direct file access or shell scripts.
+orc reads your high-level feature descriptions, breaks them into tasks, assigns them to AI agents (planner → coder → QA), and merges the results — all on a separate `dev` branch so you can keep working on `main`.
 
-Orc's work happens on a `dev` branch, so that you can keep working on `main` independently.
-Any time control goes to the orchestrator, it will rebase `dev` on `main`.
-Whenever you're ready to merge `dev` into `main`, run `orc merge` to delegate conflict resolution to an agent.
+<div align="center">
 
-If the dev worktree is dirty when a feature branch is being merged (e.g. from a previously interrupted run), orc automatically resets it to `HEAD` before retrying.  If the merge itself produces conflicts, a coder agent is spawned to resolve them before the run continues.
+![How orc works](assets/orc.drawio.svg)
 
-> **Tip:** the integration branch name (`dev`) is configurable via `orc-dev-branch` in `.orc/config.yaml`.
-> **Tip:** all orc-owned feature branches can be namespaced with a prefix via `orc-branch-prefix` in `.orc/config.yaml` (e.g. `orc-branch-prefix: orc` produces branches like `.orc/feat/0001-foo`).
+</div>
 
-## Installation
+## ✨ Highlights
+
+- **Board-driven workflow** — a YAML kanban board is the single source of truth; agents read and write it through a per-agent MCP server.
+- **Parallel squads** — scale from 1 coder to many, each in its own git worktree, with configurable tool permissions.
+- **Git-native** — every decision is a commit. The full audit trail lives in your repo.
+- **Sandboxed by default** — agents run in `confined` mode with explicit tool allow-lists. Opt in to `yolo` when you trust the environment.
+- **Backend-agnostic** — works with GitHub Copilot CLI or Anthropic Claude.
+- **Telegram integration** — optional real-time notifications and human-in-the-loop unblocking.
+
+---
+
+## 📦 Installation
 
 ```bash
 pip install qorc
-# or with uv:
+
+# or, with uv:
 uv add qorc
 ```
 
-## Quick start
+> Requires **Python 3.13+**.
+
+---
+
+## 🚀 Quick start
 
 ```bash
-# 1. Scaffold the orc/ config directory in your project
 cd your-project/
-uv run orc bootstrap
-
-# 2. Edit orc/roles/*.md to customise agent instructions (optional)
-# 3. Add vision documents to orc/vision/
-# 4. Copy .env.example → .env and fill in credentials
-# 5. Add to your root justfile (optional):
-#       mod orc 'orc/justfile'
-# 6. Run
-just orc run  # or: uv run orc run, if you don't have just
+orc bootstrap          # scaffold .orc/ config directory
+$EDITOR .env           # fill in credentials (see below)
+orc run                # let the orchestra play
 ```
 
-## bootstrap
+That's it. orc will plan tasks, write code, run QA, and merge passing work into your `dev` branch.
 
-`orc bootstrap` scaffolds the `.orc/` configuration directory in your project:
+### Key commands
+
+| Command | What it does |
+|---|---|
+| `orc bootstrap` | Scaffold the `.orc/` directory with roles, squads, and vision templates |
+| `orc run` | Run one dispatch cycle (plan → code → QA → merge) |
+| `orc run --maxloops 0` | Loop until all visions are implemented |
+| `orc run --squad broad` | Use a custom squad profile |
+| `orc status` | Print current board state |
+| `orc merge` | Rebase `dev` on `main` and fast-forward merge |
+
+---
+
+## 🏗️ How it works
+
+orc is stateless. On every cycle it reads the **board** (`.orc/work/board.yaml`) and applies a simple dispatch table:
+
+```
+no open tasks              → planner
+open task, no branch       → coder
+open task, coder commits   → qa
+qa approved                → merge + loop
+qa rejected                → coder (retry)
+```
+
+All agent ↔ board communication goes through a **per-agent MCP server** that `orc run` starts automatically. Each agent is scoped to its own role — no direct file access, no cross-agent state leaks.
+
+Work happens on a `dev` branch. You keep working on `main`. When you're ready, `orc merge` brings everything together (with automatic conflict resolution by a coder agent if needed).
+
+> **Tip:** configure the integration branch name via `orc-dev-branch` in `.orc/config.yaml`.
+> **Tip:** namespace all orc branches with `orc-branch-prefix` (e.g. `orc` → `.orc/feat/0001-foo`).
+
+---
+
+## 🗂️ Project layout after bootstrap
 
 ```
 your-project/
-  .orc/                     ← work/ and vision/ are gitignored automatically
-    roles/              ← bundled generic role templates (edit to suit your needs)
-      planner/
-      coder/
-      qa/
+  .orc/
+    roles/                  ← agent role templates (planner, coder, qa)
     squads/
-      default.yaml      ← 1 planner, 1 coder, 1 QA
-    config.yaml         ← project settings
-    justfile            ← run / status / merge recipes
-    vision/
-      README.md         ← explanation of what vision docs are and how to write them
+      default.yaml          ← 1 planner · 1 coder · 1 QA
+    config.yaml             ← project settings
+    justfile                ← convenience recipes
+    vision/                 ← your feature descriptions go here
     work/
-      board.yaml        ← kanban board (managed by orc; you shouldn't need to touch this)
-  .env.example          ← credential template; copy to .env and fill in
+      board.yaml            ← kanban board (managed by orc)
+  .env.example              ← credential template
 ```
-
-See `orc bootstrap --help` for more options.
 
 Existing files are **never overwritten** unless `--force` is passed.
 
-After bootstrapping, the only things left to do are:
+---
 
-1. Customise `.orc/roles/*/` for your project's purposes.
-2. Drop vision documents into `.orc/vision/`, describing features you want implemented.
-3. Fill in `.env`.
+## ⚙️ Configuration
 
-### .env
+### Credentials (`.env`)
 
-Copy `.env.example` to `.env` and fill in:
+Copy `.env.example` → `.env` and fill in:
 
 ```bash
-COLONY_AI_CLI=copilot          # or "claude"
-COLONY_TELEGRAM_TOKEN=...
-COLONY_TELEGRAM_CHAT_ID=...
-GH_TOKEN=...                   # for copilot backend
+COLONY_AI_CLI=copilot          # "copilot" or "claude"
+GH_TOKEN=...                   # for copilot backend (or use `gh auth login`)
+# ANTHROPIC_API_KEY=...        # for claude backend
 ```
 
-## Running
+### Environment variables
 
-```bash
-# Run one dispatch cycle (default) — may spawn a full squad in parallel
-orc run
+| Variable | Default | Description |
+|---|---|---|
+| `COLONY_AI_CLI` | — | **Required.** AI backend: `copilot` or `claude`. |
+| `GH_TOKEN` | — | GitHub token (copilot backend). Can omit if already authed via `gh`. |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (claude backend). |
+| `COLONY_TELEGRAM_TOKEN` | — | Telegram bot token for notifications. |
+| `COLONY_TELEGRAM_CHAT_ID` | — | Telegram chat ID. Required when token is set. |
+| `ORC_DIR` | `.orc/` | Override config directory path. |
+| `ORC_LOG_LEVEL` | `INFO` | `DEBUG` · `INFO` · `WARNING` · `ERROR` |
+| `ORC_LOG_FORMAT` | `console` | `console` or `json` |
+| `ORC_LOG_FILE` | `.orc/logs/orc.log` | Log file path. Empty string disables file logging. |
 
-# Run until there's no more work to do (all visions are implemented in the dev branch and passing QA)
-orc run --maxloops 0
+### Config file (`.orc/config.yaml`)
 
-# Use a custom squad profile
-orc run --squad broad
+| Key | Default | Description |
+|---|---|---|
+| `orc-dev-branch` | `dev` | Integration branch name. |
+| `orc-branch-prefix` | _(empty)_ | Optional prefix for orc-owned branches. |
+| `orc-worktree-base` | `.orc/worktrees` | Base directory for git worktrees. |
 
-# Print current workflow state
-orc status
+---
 
-# Rebase dev on main and merge
-orc merge
-```
+## 🎻 Squad profiles
 
-## Squad profiles
-
-Squad profiles live in `.orc/squads/{name}.yaml` (project-level) or are provided by the package (built-in `default`). They define how many agents of each role may run in parallel and what tools they are permitted to use:
+Squads define the composition and permissions of your agent team. They live in `.orc/squads/{name}.yaml`.
 
 ```yaml
 name: broad
 description: High-throughput squad for large projects.
 
-# Tool permissions (applied to all roles unless overridden per-role)
 permissions:
-  mode: confined       # "confined" (default) or "yolo"
-  allow_tools:         # extra tools beyond orc defaults (orc MCP, read, write, shell(git:*))
+  mode: confined             # "confined" (default) or "yolo"
+  allow_tools:
     - "shell(just:*)"
-  deny_tools:          # tools explicitly denied for all roles
+  deny_tools:
     - "shell(git push:*)"
 
 composition:
@@ -136,79 +174,65 @@ composition:
     count: 4
     model: claude-sonnet-4.6
     permissions:
-      allow_tools:     # coders additionally get npm and cargo
+      allow_tools:
         - "shell(npm:*)"
         - "shell(cargo:*)"
   - role: qa
     count: 2
     model: claude-sonnet-4.6
-    review-threshold: HIGH  # CRITICAL, HIGH, MID, or LOW (default: LOW)
+    review-threshold: HIGH
 
 timeout_minutes: 180
 ```
 
-**Permission modes:**
+### Permission modes
 
-- `confined` (default) — agents may only use approved tools: `orc` MCP tools, `read`, `write`, `shell(git:*)`, plus any `allow_tools` you add. This runs agents without `--yolo`.
-- `yolo` — unrestricted tool access (equivalent to the pre-MCP behaviour). Use for trusted environments or debugging.
+| Mode | Behaviour |
+|---|---|
+| `confined` | Agents may only use orc MCP tools, `read`, `write`, `shell(git:*)`, plus explicit `allow_tools`. Default. |
+| `yolo` | Unrestricted tool access. Use for trusted environments or debugging. |
 
-**Orc MCP tools** are always available in confined mode and cover all board operations (get/create/close tasks, review, comment, etc.) via the built-in MCP server that `orc run` starts automatically per agent.
+### QA review threshold
 
-**QA review threshold:**
+Controls which severity of issues causes QA to reject work back to coders:
 
-The `review-threshold` option (QA role only) controls which severity of issues cause QA to reject work back to coders:
+| Threshold | Rejects on |
+|---|---|
+| `CRITICAL` | Critical failures only (most lenient) |
+| `HIGH` | High-severity and above |
+| `MID` | Medium-severity and above |
+| `LOW` | Any issue (strictest, **default**) |
 
-- `CRITICAL` — only reject on critical failures (most lenient).
-- `HIGH` — reject on high-severity issues and above.
-- `MID` — reject on medium-severity issues and above.
-- `LOW` — reject on any issue (strictest, default).
+> The planner count must always be `1`. Scale throughput by adding coders and QA reviewers.
 
-The `planner` count must always be `1`. Scale throughput by adding coders and QA reviewers.
+---
 
-Built-in profiles:
-- `default` – 1 planner, 1 coder, 1 QA (sequential, confined mode)
+## 📱 Telegram notifications
 
-## (optional) Agent monitoring and unblocking over Telegram channel
+Optionally monitor your agents in real time via Telegram. Set up a bot through [@BotFather](https://t.me/BotFather), add it to a group, and configure `COLONY_TELEGRAM_TOKEN` + `COLONY_TELEGRAM_CHAT_ID`.
 
-All agents can send regular updates through a Telegram bot. Set up a bot via `@BotFather`, add it to a group or channel, and fill in `COLONY_TELEGRAM_TOKEN` and `COLONY_TELEGRAM_CHAT_ID`.
+Agents post structured status updates:
 
-Agents post structured messages:
 ```
 [coder-1](done) 2026-03-01T12:45:00Z: Implemented task 0002.
 [qa-1](passed) 2026-03-01T13:00:00Z: No issues found.
+[coder-2](blocked) 2026-03-01T14:00:00Z: Need clarification on auth flow…
 ```
 
-Occasionally the agents may get stuck working on something, and they'll notify you by sending a message like:
+---
+
+## 🤝 Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the development workflow, commit conventions, and test-first policy.
+
+```bash
+git clone https://github.com/PietroPasotti/orc.git && cd orc
+just install   # deps + git hooks
+just test      # run the suite
 ```
-[coder-2](blocked) 2026-03-01T14:00:00Z: I'm having trouble implementing task 0003 because I cannot inject the sql in the booper...
-```
-Future work: ability to reply to telegram chat messages, and the orchestrator will pick up your response and send it back to the agent as additional context.
 
-## Configuration
+---
 
-### Environment variables
-You can configure the orchestrator via environment variables.
-These are the supported variables, their defaults, and what they do:
+## 📜 License
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `COLONY_AI_CLI` | — | ✅ | AI backend to use. `copilot` (GitHub Copilot CLI) or `claude` (Anthropic). |
-| `GH_TOKEN` | — | When `COLONY_AI_CLI=copilot` | GitHub personal access token. Can be omitted if already authenticated via `gh auth login` or `copilot /login`. |
-| `ANTHROPIC_API_KEY` | — | When `COLONY_AI_CLI=claude` | Anthropic API key. |
-| `COLONY_TELEGRAM_TOKEN` | — | Optional | Telegram bot token. When set, enables Telegram notifications and human-in-the-loop replies. |
-| `COLONY_TELEGRAM_CHAT_ID` | — | Optional | Telegram chat ID the bot posts to. Required when `COLONY_TELEGRAM_TOKEN` is set. |
-| `ORC_DIR` | `.orc/` in CWD | Optional | Override the path to the orc configuration directory. Useful when the config lives outside the project root. |
-| `ORC_LOG_LEVEL` | `INFO` | Optional | Minimum log level. Standard values: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
-| `ORC_LOG_FORMAT` | `console` | Optional | Log output format. `console` for human-readable output, `json` for structured logs. |
-| `ORC_LOG_FILE` | `.orc/logs/orc.log` | Optional | Path to the orchestrator log file. Set to an empty string to disable file logging. |
-| `ORC_LOG_DIR` | — | Optional | Override the log directory. Sets the log file to `$ORC_LOG_DIR/orc.log` when `ORC_LOG_FILE` is not set. |
-
-### Config file
-
-`.orc/config.yaml` contains additional configuration options, their defaults and what they do:
-
-| Key | Default | Description |
-|---|---|---|
-| `orc-dev-branch` | `dev` | Integration branch name. Feature branches are merged here after QA passes; `orc merge` fast-forwards it into `main`. |
-| `orc-branch-prefix` | _(empty)_ | Optional prefix for all orc-owned branches. E.g. `orc` produces `.orc/feat/0001-foo` instead of `feat/0001-foo`. |
-| `orc-worktree-base` | `.orc/worktrees` | Base directory for git worktrees. Worktrees are placed at `<base>/<task>`, e.g. `.orc/worktrees/0001-foo`. |
+[Apache 2.0](https://github.com/PietroPasotti/orc/blob/main/LICENSE)
