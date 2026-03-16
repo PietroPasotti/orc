@@ -8,5 +8,7 @@ on the board:
   same component, module, or concern.  Do not create one task per comment
   unless each comment is truly independent.
 - **Cite the source** in the task's Notes section (file and line number).
-- A task that resolves a TODO/FIXME should instruct the coder to **remove the
-  comment** once the work is done.
+- **Remove the `#TODO` / `#FIXME` comment from the code yourself** as soon as
+  you have created (or confirmed the existence of) the corresponding task.
+  Do not leave removal to the coder — the comment's purpose is fulfilled once
+  a task tracks the work.
