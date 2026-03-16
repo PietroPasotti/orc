@@ -18,7 +18,10 @@ from orc.cli.tui.run_tui import (
     _agent_card,
     _column_panel,
     _elapsed,
+    _format_duration,
     _orc_card,
+    _print_exit_summary,
+    format_exit_summary,
     render,
     run_tui,
 )
@@ -570,3 +573,114 @@ class TestRunTuiDrain:
             run_tui(RunState(), run_fn)
 
         assert called == [True]
+
+
+class TestFormatDuration:
+    @pytest.mark.parametrize(
+        "seconds,expected",
+        [
+            (0, "0m 0s"),
+            (59, "0m 59s"),
+            (60, "1m 0s"),
+            (90.7, "1m 30s"),
+            (3661, "61m 1s"),
+        ],
+    )
+    def test_format_duration(self, seconds, expected):
+        assert _format_duration(seconds) == expected
+
+
+class TestFormatExitSummary:
+    def test_completed_no_agents(self):
+        state = RunState(current_calls=5, max_calls=10, features_done=2)
+        out = format_exit_summary(state, elapsed_seconds=90.0)
+        assert "✓ completed" in out
+        assert "1m 30s" in out
+        assert "5/10" in out
+        assert "2 done" in out
+        assert "agents:   none" in out
+
+    def test_error_summary(self):
+        state = RunState()
+        err = RuntimeError("dispatch failed")
+        out = format_exit_summary(state, elapsed_seconds=5.0, error=err)
+        assert "✗ error" in out
+        assert "RuntimeError" in out
+        assert "dispatch failed" in out
+
+    def test_unlimited_max_calls(self):
+        state = RunState(current_calls=3, max_calls=0)
+        out = format_exit_summary(state, elapsed_seconds=0.0)
+        assert "3/∞" in out
+
+    def test_agents_counted_by_role(self):
+        state = RunState(
+            agents=[
+                _row(agent_id="coder-1", role="coder"),
+                _row(agent_id="coder-2", role="coder"),
+                _row(agent_id="qa-1", role="qa"),
+            ],
+        )
+        out = format_exit_summary(state, elapsed_seconds=0.0)
+        assert "2 coder" in out
+        assert "1 qa" in out
+
+    def test_stuck_shown_when_nonzero(self):
+        state = RunState(stuck_tasks=3)
+        out = format_exit_summary(state, elapsed_seconds=0.0)
+        assert "stuck:    3" in out
+
+    def test_stuck_hidden_when_zero(self):
+        state = RunState(stuck_tasks=0)
+        out = format_exit_summary(state, elapsed_seconds=0.0)
+        assert "stuck" not in out
+
+    def test_features_done_shown(self):
+        state = RunState(features_done=7)
+        out = format_exit_summary(state, elapsed_seconds=0.0)
+        assert "7 done" in out
+
+
+class TestPrintExitSummary:
+    def test_prints_panel_to_stdout(self, capsys):
+        state = RunState(current_calls=2, max_calls=5, features_done=1)
+        _print_exit_summary(state, elapsed_seconds=60.0)
+        captured = capsys.readouterr()
+        assert "orc run summary" in captured.out
+        assert "✓ completed" in captured.out
+
+    def test_prints_error_panel(self, capsys):
+        state = RunState()
+        _print_exit_summary(state, elapsed_seconds=0.0, error=ValueError("boom"))
+        captured = capsys.readouterr()
+        assert "✗ error" in captured.out
+        assert "boom" in captured.out
+
+
+class TestRunTuiSummary:
+    def test_run_tui_prints_summary_on_success(self, capsys):
+        """run_tui prints exit summary after successful run."""
+
+        def run_fn() -> None:
+            pass
+
+        with patch.object(OrcApp, "run", return_value=None):
+            run_tui(RunState(current_calls=3, max_calls=10), run_fn)
+
+        captured = capsys.readouterr()
+        assert "orc run summary" in captured.out
+        assert "✓ completed" in captured.out
+
+    def test_run_tui_prints_summary_on_error(self, capsys):
+        """run_tui prints exit summary even when run_fn raises."""
+
+        def boom() -> None:
+            raise RuntimeError("dispatch failed")
+
+        with patch.object(OrcApp, "run", return_value=None):
+            with pytest.raises(RuntimeError, match="dispatch failed"):
+                run_tui(RunState(), boom)
+
+        captured = capsys.readouterr()
+        assert "orc run summary" in captured.out
+        assert "✗ error" in captured.out
