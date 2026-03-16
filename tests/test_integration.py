@@ -77,7 +77,7 @@ def git_project(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Minimal git setup
-    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(["git", "init", "-b", "main", str(tmp_path)], check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "orc-test@example.com"],
         cwd=tmp_path,
