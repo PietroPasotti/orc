@@ -160,7 +160,7 @@ def build_agent_context(
     except ValueError:
         agents_rel = Path(cfg.orc_dir.name)
 
-    role_main_prompt_path = (agents_rel / "agents" / role / "_main.md").absolute()
+    role_main_prompt_path = agents_rel / "agents" / role / "_main.md"
 
     context = f"""
     Your ``agent ID`` is: **`{agent_id}`**.
