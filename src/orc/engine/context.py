@@ -217,7 +217,7 @@ def build_agent_context(
                     for name in blocked_tasks
                 )
                 planner_ctx += f"### Blocked tasks\n\n{items}\n\n"
-            todos = _scan_todos(cfg.repo_root)
+            todos = _scan_todos(cfg.dev_worktree)
             planner_ctx += f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
             context += planner_ctx
 

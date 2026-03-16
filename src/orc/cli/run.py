@@ -42,7 +42,7 @@ class _BoardSvc(BoardStateManager, BoardService):
         return _status_mod._pending_reviews()
 
     def scan_todos(self) -> list[TodoItem]:
-        return _ctx._scan_todos(_cfg.get().repo_root)
+        return _ctx._scan_todos(_cfg.get().dev_worktree)
 
     def is_empty(self) -> bool:
         return not (
