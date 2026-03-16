@@ -22,6 +22,7 @@ from orc.cli.tui.run_tui import (
     _orc_card,
     _print_exit_summary,
     format_exit_summary,
+    format_run_summary,
     render,
     run_tui,
 )
@@ -684,3 +685,137 @@ class TestRunTuiSummary:
         captured = capsys.readouterr()
         assert "orc run summary" in captured.out
         assert "✗ error" in captured.out
+
+
+def _summary_to_str(state: RunState) -> str:
+    """Render format_run_summary output to a plain string."""
+    buf = io.StringIO()
+    console = rich.console.Console(file=buf, width=120, highlight=False)
+    console.print(format_run_summary(state))
+    return buf.getvalue()
+
+
+class TestFormatRunSummary:
+    """Tests for the post-exit run summary."""
+
+    def test_fully_populated_state(self):
+        """Summary contains all expected fields for a fully-populated RunState."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 190.0
+            state = RunState(
+                current_calls=7,
+                max_calls=10,
+                features_done=3,
+                stuck_tasks=1,
+                backend="copilot",
+                squad_name="broad",
+                run_started_at=10.0,
+                planner_calls=2,
+                coder_calls=4,
+                qa_calls=1,
+            )
+            out = _summary_to_str(state)
+
+        assert "3m 0s" in out
+        assert "7" in out  # total calls
+        assert "planner" in out.lower()
+        assert "coder" in out.lower()
+        assert "qa" in out.lower()
+        assert "2" in out  # planner calls
+        assert "4" in out  # coder calls
+        assert "1" in out  # qa calls (and stuck tasks)
+        assert "3" in out  # features merged
+        assert "broad" in out
+        assert "copilot" in out
+
+    def test_minimal_state(self):
+        """Summary works for default/empty RunState."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState()
+            out = _summary_to_str(state)
+
+        assert "0m 0s" in out
+        assert "0" in out
+
+    def test_per_role_counters_shown(self):
+        """Per-role call counters appear in the summary output."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 60.0
+            state = RunState(
+                run_started_at=0.0,
+                planner_calls=5,
+                coder_calls=10,
+                qa_calls=3,
+                current_calls=18,
+            )
+            out = _summary_to_str(state)
+
+        assert "5" in out
+        assert "10" in out
+        assert "3" in out
+        assert "18" in out
+
+    def test_returns_string(self):
+        """format_run_summary returns a string (Rich-renderable)."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            result = format_run_summary(RunState())
+        assert isinstance(result, str)
+
+    def test_features_merged_shown(self):
+        """Features merged count appears in the summary."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(features_done=5)
+            out = _summary_to_str(state)
+        assert "5" in out
+
+    def test_stuck_tasks_shown(self):
+        """Stuck tasks count appears in the summary."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(stuck_tasks=2)
+            out = _summary_to_str(state)
+        assert "2" in out
+
+    def test_squad_name_shown(self):
+        """Squad name appears in the summary."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(squad_name="default")
+            out = _summary_to_str(state)
+        assert "default" in out
+
+    def test_backend_shown(self):
+        """Backend name appears in the summary."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 0.0
+            state = RunState(backend="claude")
+            out = _summary_to_str(state)
+        assert "claude" in out
+
+
+class TestRunStatePerRoleFields:
+    """Verify RunState has the per-role counter fields."""
+
+    def test_default_values_are_zero(self):
+        state = RunState()
+        assert state.planner_calls == 0
+        assert state.coder_calls == 0
+        assert state.qa_calls == 0
+
+    def test_fields_can_be_set(self):
+        state = RunState(planner_calls=1, coder_calls=2, qa_calls=3)
+        assert state.planner_calls == 1
+        assert state.coder_calls == 2
+        assert state.qa_calls == 3
+
+    def test_fields_are_mutable(self):
+        state = RunState()
+        state.planner_calls += 1
+        state.coder_calls += 5
+        state.qa_calls += 3
+        assert state.planner_calls == 1
+        assert state.coder_calls == 5
+        assert state.qa_calls == 3
