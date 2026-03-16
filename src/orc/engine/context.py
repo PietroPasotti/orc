@@ -186,6 +186,13 @@ def build_agent_context(
             """
             if feature_branch:
                 planner_ctx += f"\nActive feature branch: `{feature_branch}` (coder's branch)"
+            if pending_visions := board.get_pending_visions():
+                items = "\n".join(
+                    f"- `{name}` — call the `get_vision` MCP tool with"
+                    f" `vision_filename={name!r}` to read the full document"
+                    for name in pending_visions
+                )
+                planner_ctx += f"### Pending visions\n\n{items}\n\n"
             if blocked_tasks := board.get_blocked_tasks():
                 items = "\n".join(
                     f"- `{name}` — call the `get_task` MCP tool with `task_filename={name!r}`"
