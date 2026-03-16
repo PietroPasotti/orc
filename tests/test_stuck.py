@@ -89,6 +89,7 @@ class TestDispatcherStuck:
         board.get_pending_visions.return_value = []
         board.scan_todos.return_value = []
         board.get_blocked_tasks.return_value = []
+        board.get_pending_reviews.return_value = []
         board.query_tasks.return_value = []
         board.is_empty.return_value = False
 

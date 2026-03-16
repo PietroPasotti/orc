@@ -375,12 +375,14 @@ class TestDispatcherInternalCoverage:
         """_drain_merge_queue is called each loop cycle, merging done tasks."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         merged = []
+        tasks = [TaskEntry(name="0001-foo.md", status="done")]
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
+            get_tasks=lambda: list(tasks),
             get_pending_visions=lambda: [],
         )
         svcs.workflow.merge_feature = lambda t: merged.append(t)
+        svcs.board.delete_task = lambda t: tasks.clear()
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=1)
         assert "0001-foo.md" in merged
@@ -457,6 +459,83 @@ class TestDispatcherInternalCoverage:
         d.run(maxcalls=sys.maxsize)
         out = capsys.readouterr().out
         assert "Workflow complete" in out
+
+    def test_classify_tasks_done_excluded(self):
+        """classify_tasks excludes done tasks from assignable and coder_bound."""
+        tasks = [
+            TaskEntry(name="a.md", status="done"),
+            TaskEntry(name="b.md", status="planned"),
+        ]
+        stuck, assignable, coder_bound = _disp.classify_tasks(tasks)
+        assert stuck == []
+        names = [t.name for t in assignable]
+        assert "a.md" not in names
+        assert "b.md" in names
+        coder_names = [t.name for t in coder_bound]
+        assert coder_names == ["b.md"]
+
+    def test_done_tasks_do_not_block_planner(self, tmp_path, monkeypatch):
+        """Done tasks should not prevent the planner from being spawned."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        tasks = [TaskEntry(name="0001-foo.md", status="done")]
+
+        def _spawn(ctx, cwd, model, log, **kw):
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: list(tasks),
+            get_pending_visions=lambda: ["new-feature.md"],
+            spawn_fn=_spawn,
+        )
+        svcs.workflow.merge_feature = lambda t: None
+        svcs.board.delete_task = lambda t: tasks.clear()
+
+        plan = _disp.plan_dispatch(
+            assignable=[],
+            coder_bound=[],
+            has_planner_work=True,
+            only_role=None,
+            coder_capacity=1,
+            planner_running=False,
+            role_counts={"coder": 0, "qa": 0},
+            role_limits={"coder": 1, "qa": 1},
+            derive_task_state=svcs.workflow.derive_task_state,
+        )
+        assert any(s.role == "planner" for s in plan.spawns), "planner should be spawned"
+
+    def test_drain_merge_queue_handles_orphaned_branches(self, tmp_path, monkeypatch):
+        """_drain_merge_queue merges orphaned feature branches with no board entry."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        merged = []
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: ["feat/0002-orphan"],
+        )
+        svcs.workflow.merge_feature = lambda t: merged.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._drain_merge_queue()
+        assert "0002-orphan.md" in merged
+
+    def test_any_work_returns_true_for_pending_reviews(self, tmp_path, monkeypatch):
+        """_any_work() returns True when there are unmerged feature branches."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [],
+            get_pending_visions=lambda: [],
+            get_pending_reviews=lambda: ["feat/0001-foo"],
+        )
+        d = make_dispatcher(minimal_squad(), svcs)
+        assert d._any_work() is True
+
+    def test_branch_to_task_name(self):
+        """_branch_to_task_name correctly reverses feature_branch()."""
+        assert _disp._branch_to_task_name("feat/0001-foo") == "0001-foo.md"
+        assert _disp._branch_to_task_name("myprefix/feat/0001-foo") == "0001-foo.md"
+        assert _disp._branch_to_task_name("feat/0001-foo.bar") == "0001-foo.bar.md"
 
 
 class TestDispatchCallbacksOptional:

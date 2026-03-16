@@ -92,6 +92,16 @@ _POLL_INTERVAL = 5.0
 _MAX_MERGE_RETRIES = 3
 
 
+def _branch_to_task_name(branch: str) -> str:
+    """Reverse-map a feature branch name to its task filename.
+
+    ``feat/0001-foo`` → ``0001-foo.md``
+    ``prefix/feat/0001-foo`` → ``0001-foo.md``
+    """
+    slug = branch.rsplit("feat/", 1)[-1] if "feat/" in branch else branch
+    return f"{slug}.md"
+
+
 # ---------------------------------------------------------------------------
 # Pure dispatch planning
 # ---------------------------------------------------------------------------
@@ -134,8 +144,13 @@ def classify_tasks(
     """Partition *tasks* into ``(stuck, assignable, coder_bound)``.
 
     * ``stuck`` — status is ``stuck``, needs human intervention.
-    * ``assignable`` — not blocked and not stuck.
+    * ``assignable`` — not blocked, not stuck, and not done.
     * ``coder_bound`` — assignable tasks that route to coders (not in-review).
+
+    Tasks with status ``done`` are excluded from ``assignable`` because they
+    are handled exclusively by :meth:`Dispatcher._drain_merge_queue` — they
+    never spawn an agent.  Keeping them in ``assignable`` would inflate the
+    coder-bound count and could prevent the planner from being spawned.
     """
     stuck: list[TaskEntry] = []
     assignable: list[TaskEntry] = []
@@ -143,8 +158,8 @@ def classify_tasks(
     for t in tasks:
         if t.status == TaskStatus.STUCK:
             stuck.append(t)
-        elif t.status == TaskStatus.BLOCKED:
-            continue  # blocked tasks need planner, not dispatch
+        elif t.status in (TaskStatus.BLOCKED, TaskStatus.DONE):
+            continue  # blocked → planner; done → merge queue
         else:
             assignable.append(t)
             if t.status != TaskStatus.IN_REVIEW:
@@ -359,12 +374,22 @@ class Dispatcher:
         Tasks in ``stuck`` status require human intervention and are not
         dispatchable — they don't count as pending work for the purposes of
         this check, so orc can terminate cleanly when only stuck tasks remain.
+
+        Tasks in ``done`` status are handled by :meth:`_drain_merge_queue` and
+        keep the loop alive so merge retries can occur.
+
+        Unmerged feature branches (pending reviews) are also considered work
+        so the loop stays consistent with the initial ``is_empty()`` gate.
         """
         tasks = self.board.get_tasks()
         dispatchable_tasks = [t for t in tasks if t.status != TaskStatus.STUCK]
         if dispatchable_tasks:
             return True
-        return bool(self.board.get_pending_visions() or self.board.scan_todos())
+        return bool(
+            self.board.get_pending_visions()
+            or self.board.scan_todos()
+            or self.board.get_pending_reviews()
+        )
 
     def _set_orc_task(self, task: str) -> None:
         """Update the orchestrator card via the optional callback."""
@@ -421,7 +446,15 @@ class Dispatcher:
             self._handle_watchdog(agent)
 
     def _drain_merge_queue(self) -> None:
-        """Merge tasks that have been QA-approved (board status ``done``)."""
+        """Merge tasks that have been QA-approved (board status ``done``).
+
+        Also handles *orphaned* feature branches — branches that exist in git
+        and are not merged into dev but have no corresponding board entry
+        (e.g. after a crash between merge and board cleanup).  Orphaned
+        branches whose task is not tracked on the board are merged directly.
+        """
+        # 1. Board-tracked done tasks.
+        board_task_names = {t.name for t in self.board.get_tasks()}
         for task_name in self.board.query_tasks(status="done"):
             # Skip tasks already merged (crash-recovery: board not cleaned up).
             token, _reason = self.workflow.derive_task_state(task_name)
@@ -434,6 +467,15 @@ class Dispatcher:
                 self.board.delete_task(task_name)
                 self._merge_failures.pop(task_name, None)
                 continue
+            self._do_merge(task_name)
+
+        # 2. Orphaned branches — unmerged feature branches with no board entry.
+        for branch in self.board.get_pending_reviews():
+            task_name = _branch_to_task_name(branch)
+            if task_name in board_task_names:
+                continue  # tracked by board — handled above or by dispatch
+            logger.info("orphaned feature branch detected — merging", branch=branch, task=task_name)
+            self._echo(f"\n⟳ Merging orphaned branch {branch} into dev…")
             self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
