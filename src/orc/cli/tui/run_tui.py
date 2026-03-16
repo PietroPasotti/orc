@@ -231,6 +231,9 @@ class OrcApp(App[None]):
             self.exit()
 
 
+# TODO: on exit, we could display a summary print-out with final stats
+#    - total runtime
+#    - number of calls per agent role
 def run_tui(state: RunState, run_fn: Callable[[], None]) -> None:
     """Run *run_fn* in a background thread while displaying the Textual TUI.
 
