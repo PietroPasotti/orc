@@ -81,3 +81,11 @@
 **Task:** tui-squad-and-runtime.md
 
 **Merge commit:** ae9f01d
+
+## 0031-remove-stale-tui-todos (merged 2026-03-16T14:32:12Z)
+
+**Branch:** feat/0031-remove-stale-tui-todos
+
+**Task:** 0031-remove-stale-tui-todos.md
+
+**Merge commit:** 015e93c
