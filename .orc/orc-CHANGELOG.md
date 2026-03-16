@@ -73,3 +73,11 @@
 **Task:** 0024-remove-git-tree-tab-from-status-tui.md
 
 **Merge commit:** 76573e4
+
+## tui-squad-and-runtime (merged 2026-03-16T09:44:57Z)
+
+**Branch:** feat/tui-squad-and-runtime
+
+**Task:** tui-squad-and-runtime.md
+
+**Merge commit:** ae9f01d

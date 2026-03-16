@@ -161,6 +161,10 @@ def _column_panel(role: str, rows: list[AgentData]) -> rich.panel.Panel:
     return rich.panel.Panel(body, title=title)
 
 
+# TODO: add to header the squad name (if any) and an overall
+#  elapsed counter (e.g. "runtime 1m 10s").
+# TODO: add to the 'orc' card the current squad repr
+#  ("squad: default (1-4-1)")
 def render(state: RunState) -> RenderableType:
     """Build a grid Rich layout from *state*.
 

@@ -120,6 +120,8 @@ def _run(
                 todos = _coord_state.scan_todos()
                 visions = _coord_state.get_pending_visions()
                 vision_names = [v.removesuffix(".md") for v in visions]
+
+                # todo: make this dict[str,str] and display as key: value pairs in the TUI
                 parts: list[str] = []
                 if todos:
                     parts.append(f"{len(todos)} todo(s)")
