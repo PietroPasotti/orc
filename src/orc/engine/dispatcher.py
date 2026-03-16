@@ -668,6 +668,14 @@ class Dispatcher:
 
         return self._execute_plan(plan, call_budget)
 
+    # TODO: we should be able to prioritize the work in a natural order.
+    #  Right now things tend to get 'stuck' in the merge queue or in the 'in review' column.
+    #  Priority should be:
+    #  1. Merger: rebase dev on main
+    #  2. Merger: merge all 'done' feature branches to dev
+    #  3. QAs
+    #  4. Coders
+    #  5. Planners
     def _execute_plan(self, plan: DispatchPlan, budget: int) -> int:
         """Execute a :class:`DispatchPlan`, respecting *budget*. Returns spawned count."""
         dispatched = 0
