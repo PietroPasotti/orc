@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Annotated
@@ -14,6 +15,10 @@ import orc.config as _cfg
 from orc import logger as _obs
 
 logger = structlog.get_logger(__name__)
+
+# Maps -v count to a Python log-level name.  Counts beyond the last
+# entry are clamped to the final (most verbose) level.
+_VERBOSITY_LEVELS: tuple[str, ...] = ("WARNING", "INFO", "DEBUG")
 
 app = typer.Typer(name="orc", help="orc multi-agent orchestrator.", no_args_is_help=True)
 
@@ -44,6 +49,16 @@ def _app_entry(
             show_default=False,
         ),
     ] = None,
+    verbose: Annotated[
+        int,
+        typer.Option(
+            "--verbose",
+            "-v",
+            count=True,
+            help="Increase log verbosity. -v → INFO, -vv → DEBUG.",
+            show_default=False,
+        ),
+    ] = 0,
 ) -> None:
     """Bootstrap observability and resolve the config directory."""
     if project_dir is not None:
@@ -64,12 +79,22 @@ def _app_entry(
         found = _cfg.find_config_dir()
         _cfg.init(found if found is not None else Path.cwd() / ".orc")
 
+    # Resolve log level: -v flags override ORC_LOG_LEVEL / default.
+    log_level: str | None = None
+    if verbose > 0:
+        idx = min(verbose, len(_VERBOSITY_LEVELS) - 1)
+        log_level = _VERBOSITY_LEVELS[idx]
+
     cfg = _cfg.get()
     load_dotenv(cfg.env_file)
     if cfg.orc_dir.is_dir():
-        _obs.setup(default_log_file=cfg.log_dir / "orc.log")
+        _obs.setup(log_level=log_level, default_log_file=cfg.log_dir / "orc.log")
     else:
-        _obs.setup()
+        _obs.setup(log_level=log_level)
+
+    if verbose > 0:
+        resolved = log_level or logging.getLevelName(logging.root.level)
+        logger.debug("verbosity set", verbose=verbose, log_level=resolved)
 
 
 def _check_env_or_exit() -> None:

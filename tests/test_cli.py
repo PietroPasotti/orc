@@ -1,5 +1,6 @@
 """Tests for orc/cli/__init__.py."""
 
+import logging
 from dataclasses import replace as _replace
 from pathlib import Path
 from unittest.mock import patch
@@ -8,8 +9,53 @@ from typer.testing import CliRunner
 
 import orc.config as _cfg
 import orc.main as m
+from orc.cli import _VERBOSITY_LEVELS
 
 runner = CliRunner()
+
+
+class TestVerboseFlag:
+    """Tests for the global -v / --verbose flag."""
+
+    def test_single_v_sets_info(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        with patch("orc.logger.setup") as mock_setup:
+            result = runner.invoke(m.app, ["-v", "version"])
+        assert result.exit_code == 0
+        mock_setup.assert_called_once()
+        assert mock_setup.call_args.kwargs.get("log_level") == "INFO"
+
+    def test_double_v_sets_debug(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        with patch("orc.logger.setup") as mock_setup:
+            result = runner.invoke(m.app, ["-vv", "version"])
+        assert result.exit_code == 0
+        assert mock_setup.call_args.kwargs.get("log_level") == "DEBUG"
+
+    def test_triple_v_clamps_to_debug(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        with patch("orc.logger.setup") as mock_setup:
+            result = runner.invoke(m.app, ["-vvv", "version"])
+        assert result.exit_code == 0
+        assert mock_setup.call_args.kwargs.get("log_level") == "DEBUG"
+
+    def test_no_v_uses_default(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        with patch("orc.logger.setup") as mock_setup:
+            result = runner.invoke(m.app, ["version"])
+        assert result.exit_code == 0
+        assert mock_setup.call_args.kwargs.get("log_level") is None
+
+    def test_long_form_verbose(self, monkeypatch):
+        monkeypatch.setattr(_cfg, "validate_env", lambda: [])
+        with patch("orc.logger.setup") as mock_setup:
+            result = runner.invoke(m.app, ["--verbose", "version"])
+        assert result.exit_code == 0
+        assert mock_setup.call_args.kwargs.get("log_level") == "INFO"
+
+    def test_verbosity_levels_tuple_is_ordered(self):
+        numeric = [getattr(logging, lv) for lv in _VERBOSITY_LEVELS]
+        assert numeric == sorted(numeric, reverse=True)
 
 
 class TestCliInitCoverage:
