@@ -89,3 +89,11 @@
 **Task:** 0031-remove-stale-tui-todos.md
 
 **Merge commit:** 015e93c
+
+## 0036-commit-changelog-after-merge (merged 2026-03-16T16:10:02Z)
+
+**Branch:** feat/0036-commit-changelog-after-merge
+
+**Task:** 0036-commit-changelog-after-merge.md
+
+**Merge commit:** 35d8110

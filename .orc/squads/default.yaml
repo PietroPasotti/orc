@@ -18,7 +18,7 @@ composition:
     count: 1
     model: claude-sonnet-4.6
   - role: coder
-    count: 5
+    count: 1
     model: claude-sonnet-4.6
     # permissions:     # uncomment to give coders extra tools, e.g.:
     #   allow_tools:
