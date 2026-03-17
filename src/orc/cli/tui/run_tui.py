@@ -477,7 +477,7 @@ def run_tui(
     finally:
         elapsed = time.monotonic() - start
         error = exc_holder[0] if exc_holder else None
-        rich.Console().print(state.rich_summary(error=error, elapsed_seconds=elapsed))
+        rich.console.Console().print(state.rich_summary(error=error, elapsed_seconds=elapsed))
 
     if exc_holder:
         raise exc_holder[0]
