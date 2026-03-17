@@ -14,6 +14,7 @@ from orc.cli.tui.run_tui import (
     AgentData,
     OrcApp,
     OrcData,
+    QuitModal,
     RunState,
     _agent_card,
     _column_panel,
@@ -438,15 +439,17 @@ class TestOrcAppMethods:
     """Unit-test OrcApp internals without a live event loop."""
 
     def test_compose_yields_static(self):
-        """compose() yields a Static widget with the initial render."""
+        """compose() yields a Static widget with the initial render and a footer."""
         from textual.widgets import Static
 
         t = threading.Thread(target=lambda: None)
         app = OrcApp(RunState(), t)
         widgets = list(app.compose())
-        assert len(widgets) == 1
+        assert len(widgets) == 2
         assert isinstance(widgets[0], Static)
         assert widgets[0].id == "display"
+        assert isinstance(widgets[1], Static)
+        assert widgets[1].id == "footer-bar"
 
     def test_on_mount_sets_interval(self):
         """on_mount() calls set_interval."""
@@ -515,24 +518,68 @@ class TestDrainIndicator:
 
 
 class TestOrcAppDrain:
-    """Tests for the OrcApp drain callback on q press."""
+    """Tests for the OrcApp quit modal and drain/abort callbacks."""
 
-    def test_action_quit_calls_drain_callback(self):
-        """action_quit() calls the on_drain callback instead of exiting."""
-        drained = []
+    def test_action_request_quit_opens_modal_when_drain_configured(self):
+        """action_request_quit() pushes QuitModal when on_drain is set."""
+        screens_pushed: list = []
         t = threading.Thread(target=lambda: None)
-        app = OrcApp(RunState(), t, on_drain=lambda: drained.append(True))
-        app.action_quit()
-        assert drained == [True]
+        app = OrcApp(RunState(), t, on_drain=lambda: None)
+        app.push_screen = lambda screen, callback=None: screens_pushed.append((screen, callback))
+        app.action_request_quit()
+        assert len(screens_pushed) == 1
+        assert isinstance(screens_pushed[0][0], QuitModal)
 
-    def test_action_quit_exits_without_drain_callback(self):
-        """action_quit() falls back to self.exit() when no drain callback is set."""
+    def test_action_request_quit_exits_without_drain_callback(self):
+        """action_request_quit() falls back to self.exit() when no drain callback."""
         exited = []
         t = threading.Thread(target=lambda: None)
         app = OrcApp(RunState(), t)
         app.exit = lambda: exited.append(True)
-        app.action_quit()
+        app.action_request_quit()
         assert exited == [True]
+
+    def test_handle_quit_choice_drain(self):
+        """_handle_quit_choice('drain') calls on_drain."""
+        drained = []
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t, on_drain=lambda: drained.append(True))
+        app._handle_quit_choice("drain")
+        assert drained == [True]
+
+    def test_handle_quit_choice_abort(self):
+        """_handle_quit_choice('abort') calls on_abort and exits."""
+        aborted = []
+        exited = []
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(
+            RunState(),
+            t,
+            on_drain=lambda: None,
+            on_abort=lambda: aborted.append(True),
+        )
+        app.exit = lambda: exited.append(True)
+        app._handle_quit_choice("abort")
+        assert aborted == [True]
+        assert exited == [True]
+
+    def test_handle_quit_choice_cancel(self):
+        """_handle_quit_choice('') (cancel) does nothing."""
+        drained = []
+        aborted = []
+        exited = []
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(
+            RunState(),
+            t,
+            on_drain=lambda: drained.append(True),
+            on_abort=lambda: aborted.append(True),
+        )
+        app.exit = lambda: exited.append(True)
+        app._handle_quit_choice("")
+        assert drained == []
+        assert aborted == []
+        assert exited == []
 
     def test_orc_app_stores_on_drain(self):
         """OrcApp stores the on_drain callback."""
@@ -541,15 +588,76 @@ class TestOrcAppDrain:
         app = OrcApp(RunState(), t, on_drain=cb)
         assert app._on_drain is cb
 
+    def test_orc_app_stores_on_abort(self):
+        """OrcApp stores the on_abort callback."""
+        cb = lambda: None  # noqa: E731
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t, on_abort=cb)
+        assert app._on_abort is cb
+
     def test_orc_app_on_drain_default_none(self):
         """OrcApp defaults on_drain to None."""
         t = threading.Thread(target=lambda: None)
         app = OrcApp(RunState(), t)
         assert app._on_drain is None
 
+    def test_orc_app_on_abort_default_none(self):
+        """OrcApp defaults on_abort to None."""
+        t = threading.Thread(target=lambda: None)
+        app = OrcApp(RunState(), t)
+        assert app._on_abort is None
+
+
+class TestQuitModal:
+    """Tests for the QuitModal screen."""
+
+    def test_is_modal_screen(self):
+        """QuitModal is a ModalScreen."""
+        from textual.screen import ModalScreen
+
+        modal = QuitModal()
+        assert isinstance(modal, ModalScreen)
+
+    def test_dismiss_drain_on_button(self):
+        """Pressing drain button dismisses with 'drain'."""
+        dismissed = []
+        modal = QuitModal()
+        modal.dismiss = lambda result: dismissed.append(result)
+
+        from textual.widgets import Button
+
+        event = Button.Pressed(Button("", id="btn-drain"))
+        modal.on_button_pressed(event)
+        assert dismissed == ["drain"]
+
+    def test_dismiss_abort_on_button(self):
+        """Pressing abort button dismisses with 'abort'."""
+        dismissed = []
+        modal = QuitModal()
+        modal.dismiss = lambda result: dismissed.append(result)
+
+        from textual.widgets import Button
+
+        event = Button.Pressed(Button("", id="btn-abort"))
+        modal.on_button_pressed(event)
+        assert dismissed == ["abort"]
+
+    def test_cancel_dismisses_empty(self):
+        """Pressing escape dismisses with empty string."""
+        dismissed = []
+        modal = QuitModal()
+        modal.dismiss = lambda result: dismissed.append(result)
+        modal.action_cancel()
+        assert dismissed == [""]
+
+    def test_has_escape_binding(self):
+        """QuitModal has an escape binding for cancel."""
+        bindings = {b.key for b in QuitModal.BINDINGS}
+        assert "escape" in bindings
+
 
 class TestRunTuiDrain:
-    """Tests for run_tui with drain callback."""
+    """Tests for run_tui with drain/abort callbacks."""
 
     def test_run_tui_passes_drain_to_app(self):
         """run_tui passes on_drain to OrcApp."""
@@ -562,6 +670,21 @@ class TestRunTuiDrain:
             # We can't easily inspect the OrcApp instance, but we can
             # verify the function doesn't crash with the new parameter.
             run_tui(RunState(), run_fn, on_drain=lambda: drained.append(True))
+
+    def test_run_tui_passes_abort_to_app(self):
+        """run_tui passes on_abort to OrcApp."""
+        aborted = []
+
+        def run_fn() -> None:
+            pass
+
+        with patch.object(OrcApp, "run", return_value=None):
+            run_tui(
+                RunState(),
+                run_fn,
+                on_drain=lambda: None,
+                on_abort=lambda: aborted.append(True),
+            )
 
     def test_run_tui_without_drain_works(self):
         """run_tui works without on_drain (backward compatible)."""

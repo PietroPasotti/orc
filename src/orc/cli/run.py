@@ -82,9 +82,7 @@ def _run(
 
     state = _tui.RunState(
         agents=[],
-        orc=_tui.OrcData(agent_id="orc", status="running", task="booting")
-        if use_tui
-        else None,
+        orc=_tui.OrcData(agent_id="orc", status="running", task="booting") if use_tui else None,
         features_done=_safe_features_done(),
         stuck_tasks=0,
         telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
@@ -200,10 +198,14 @@ def _run(
                 dispatcher._shutting_down = True
                 state.draining = True
 
+            def _abort() -> None:
+                dispatcher._kill_all_and_unassign()
+
             _tui.run_tui(
                 state,
                 lambda: dispatcher.run(maxcalls=maxcalls),
                 on_drain=_drain,
+                on_abort=_abort,
             )
         else:
             dispatcher.run(maxcalls=maxcalls)

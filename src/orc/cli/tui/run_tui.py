@@ -25,7 +25,8 @@ import rich.table
 from rich.console import Group, RenderableType
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static
+from textual.screen import ModalScreen
+from textual.widgets import Button, Static
 
 from orc.squad import AgentRole
 
@@ -110,6 +111,7 @@ class RunState:
     run_started_at: float = 0.0
     """Monotonic timestamp when the run started (for overall elapsed)."""
 
+    # FIXME: We should surface this as an orc task, instead of a separate top-level state.
     draining: bool = False
     """Whether the dispatcher is in drain mode (first signal received)."""
 
@@ -192,12 +194,14 @@ def render(state: RunState) -> RenderableType:
         - Top section: orchestrator status
         - Bottom section has three columns: Planner | Coder | QA.
     """
+    # TODO: add some nicer formatting and colors to the header labels.
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
     stuck_str = f"  🔧 {state.stuck_tasks} stuck" if state.stuck_tasks > 0 else ""
     squad_str = f"  squad={state.squad_repr}" if state.squad_repr else ""
     runtime_str = f"  runtime {_elapsed(state.run_started_at)}" if state.run_started_at else ""
     drain_str = "  ⏳ draining…" if state.draining else ""
+    # TODO: add a visual separator between all these labels.
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
         f"{state.features_done} features done  "
@@ -237,10 +241,83 @@ def render(state: RunState) -> RenderableType:
     return wrapper
 
 
+class QuitModal(ModalScreen[str]):
+    """Modal dialog shown when the user presses Ctrl+Q.
+
+    Offers two choices: drain pending tasks (recommended) or abort immediately.
+    Returns ``"drain"`` or ``"abort"`` to the parent app.
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=False)]
+
+    CSS = """
+    QuitModal {
+        align: center middle;
+    }
+    #quit-dialog {
+        width: 60;
+        height: auto;
+        border: thick $error;
+        background: $surface;
+        padding: 1 2;
+    }
+    #quit-dialog Static {
+        width: 100%;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+    #quit-dialog Button {
+        width: 100%;
+        margin-top: 1;
+    }
+    #btn-drain {
+        background: $success;
+    }
+    #btn-abort {
+        background: $error;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        from textual.containers import Vertical
+
+        with Vertical(id="quit-dialog"):
+            yield Static("⏹  Stop orc run?")
+            yield Button(
+                "⏳ Drain — finish running agents, then exit (Recommended)",
+                id="btn-drain",
+                variant="success",
+            )
+            yield Button(
+                "⚠  Abort — kill all agents immediately (DANGEROUS)",
+                id="btn-abort",
+                variant="error",
+            )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-drain":
+            self.dismiss("drain")
+        elif event.button.id == "btn-abort":
+            self.dismiss("abort")
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+
 class OrcApp(App[None]):
     """Full-screen Textual dashboard for ``orc run``."""
 
-    BINDINGS = [Binding("q", "quit", "Quit")]
+    BINDINGS = [Binding("ctrl+q", "request_quit", "Ctrl+Q Exit", priority=True)]
+
+    CSS = """
+    #footer-bar {
+        dock: bottom;
+        height: 1;
+        background: $surface;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
 
     def __init__(
         self,
@@ -248,28 +325,39 @@ class OrcApp(App[None]):
         worker: threading.Thread,
         *,
         on_drain: Callable[[], None] | None = None,
+        on_abort: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self._state = state
         self._worker = worker
         self._on_drain = on_drain
+        self._on_abort = on_abort
 
     def compose(self) -> ComposeResult:
         yield Static(render(self._state), id="display")
+        yield Static(" Ctrl+Q to exit", id="footer-bar")
 
     def on_mount(self) -> None:
         self.set_interval(0.25, self._refresh)
 
-    def action_quit(self) -> None:
-        """Press ``q``: trigger drain instead of immediate exit.
+    def action_request_quit(self) -> None:
+        """Press Ctrl+Q: show the quit modal.
 
-        If a drain callback is configured, call it and let the worker thread
-        finish naturally (the periodic refresh will call ``self.exit()`` once
-        the worker is done).  Without a callback, fall back to immediate exit.
+        If a drain callback is configured, present a choice between draining
+        and aborting.  Without a callback, fall back to immediate exit.
         """
         if self._on_drain is not None:
-            self._on_drain()
+            self.push_screen(QuitModal(), callback=self._handle_quit_choice)
         else:
+            self.exit()
+
+    def _handle_quit_choice(self, choice: str | None) -> None:
+        if choice == "drain":
+            if self._on_drain is not None:
+                self._on_drain()
+        elif choice == "abort":
+            if self._on_abort is not None:
+                self._on_abort()
             self.exit()
 
     def _refresh(self) -> None:
@@ -363,16 +451,18 @@ def run_tui(
     run_fn: Callable[[], None],
     *,
     on_drain: Callable[[], None] | None = None,
+    on_abort: Callable[[], None] | None = None,
 ) -> None:
     """Run *run_fn* in a background thread while displaying the Textual TUI.
 
-    Blocks until *run_fn* completes (or the user presses ``q``).  Any
+    Blocks until *run_fn* completes (or the user presses ``Ctrl+Q``).  Any
     exception raised by *run_fn* is re-raised in the calling thread after
     the TUI exits.  A compact summary is printed to stdout before returning
     (or re-raising).
 
-    When *on_drain* is provided, pressing ``q`` triggers drain mode instead
-    of immediately exiting the TUI.  The app exits after the worker thread
+    When *on_drain* is provided, pressing ``Ctrl+Q`` opens a modal offering
+    a choice between draining (letting running agents finish) and aborting
+    (killing agents immediately).  The app exits after the worker thread
     completes.
     """
     exc_holder: list[BaseException] = []
@@ -386,7 +476,7 @@ def run_tui(
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
-    OrcApp(state, t, on_drain=on_drain).run()
+    OrcApp(state, t, on_drain=on_drain, on_abort=on_abort).run()
     t.join()
 
     elapsed = time.monotonic() - start
