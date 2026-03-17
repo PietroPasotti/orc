@@ -162,8 +162,19 @@ def build_agent_context(
     except ValueError:
         agents_rel = Path(cfg.orc_dir.name)
 
-    role_main_prompt_path = agents_rel / "agents" / role / "_main.md"
-    shared_main_prompt_path = agents_rel / "agents" / "_shared" / "_main.md"
+    # Anchor instruction-file paths to the agent's own worktree so the AI
+    # process (which is sandboxed to that worktree) can resolve them without
+    # falling back to the main worktree (which it has no access to).
+    feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
+    if role == AgentRole.PLANNER:
+        agent_wt = dev_worktree
+    elif feature_wt is not None:
+        agent_wt = feature_wt
+    else:
+        agent_wt = dev_worktree
+
+    role_main_prompt_path = agent_wt / agents_rel / "agents" / role / "_main.md"
+    shared_main_prompt_path = agent_wt / agents_rel / "agents" / "_shared" / "_main.md"
 
     # Check whether the shared instructions file exists (in either the
     # project-level or package-level agents directory).
@@ -192,7 +203,6 @@ def build_agent_context(
     context += "# Additional Context:\n\n"
 
     feature_branch = cfg.feature_branch(task_name) if task_name else None
-    feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
 
     match role:
         case AgentRole.PLANNER:

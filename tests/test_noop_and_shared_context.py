@@ -340,7 +340,7 @@ class TestSharedContext:
         board = self._make_board(orc_dir)
 
         ctx = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
-        assert "_shared" not in ctx
+        assert "_shared/_main.md" not in ctx
 
     def test_shared_path_before_role_path(self, tmp_path, monkeypatch):
         """Shared instructions path appears before role-specific path."""
