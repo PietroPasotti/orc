@@ -52,7 +52,7 @@ class AgentData:
     agent_id: str
     """Unique agent identifier, e.g. ``coder-1``."""
 
-    role: str
+    role: AgentRole
     """Agent role: ``planner``, ``coder``, or ``qa``."""
 
     model: str
@@ -115,6 +115,7 @@ class RunState:
     draining: bool = False
     """Whether the dispatcher is in drain mode (first signal received)."""
 
+    # TODO group the three below into a single AgentCalls typed dict, keyed by AgentRole.
     planner_calls: int = 0
     """Number of planner agent sessions invoked."""
 
@@ -123,6 +124,72 @@ class RunState:
 
     qa_calls: int = 0
     """Number of QA agent sessions invoked."""
+
+    def _agents_table(self, agents_by_role: dict[AgentRole, list[str] | int]) -> rich.table.Table:
+        """Render the live agents as a Rich table."""
+        agents_live_table = rich.table.Table(box=None, show_header=False, expand=False)
+        for role in AgentRole:
+            ids = agents_by_role.get(role)
+            match ids:
+                case int() as count:
+                    ids_str = str(count)
+                case list() as ids:
+                    ids_str = ", ".join(sorted(ids)) if ids else "(none)"
+                case _:
+                    ids_str = "(n/a)"
+            role_style = _ROLE_STYLE.get(role, "white")
+            role_str = f"[{role_style}]{role.capitalize()}[/{role_style}]"
+            agents_live_table.add_row(role_str, ids_str)
+        return agents_live_table
+
+    def _summary(
+        self, error: BaseException | None = None, elapsed_seconds: int = 0
+    ) -> dict[str, str | RenderableType]:
+        max_calls_str = str(self.max_calls) if self.max_calls > 0 else "∞"
+
+        agents_live: dict[AgentRole, list[str]] = {}
+        for agent in self.agents:
+            agents_live.setdefault(agent.role, list()).append(agent.agent_id)
+
+        agent_calls: dict[AgentRole, int] = {
+            AgentRole.PLANNER: self.planner_calls,
+            AgentRole.CODER: self.coder_calls,
+            AgentRole.QA: self.qa_calls,
+        }
+
+        labels = {
+            "status": f"✗ error ({error.__class__.__name__})" if error else "✓ ok",
+            "draining": "yes" if self.draining else "no",
+            "backend": self.backend,
+            "duration": _format_duration(elapsed_seconds),
+            "calls": f"{self.current_calls}/{max_calls_str}",
+            "live agents": self._agents_table(agents_live),
+            "agent calls": self._agents_table(agent_calls),
+            "completed features": self.features_done,
+        }
+        if self.stuck_tasks > 0:
+            labels["stuck"] = self.stuck_tasks
+        if error:
+            labels["error"] = f"{type(error).__name__}: {error}"
+        if self.squad_name:
+            labels["squad"] = self.squad_repr
+
+        for k, v in labels.items():
+            if isinstance(v, int | float | bool):
+                labels[k] = str(v)
+        return labels
+
+    def rich_summary(
+        self, error: BaseException | None = None, elapsed_seconds: int = 0
+    ) -> RenderableType:
+        """Return a Rich-renderable summary string with current run statistics."""
+        labels = self._summary(error=error, elapsed_seconds=elapsed_seconds)
+
+        table = rich.table.Table(box=None, show_header=False, expand=False)
+        for key, value in labels.items():
+            key_str = f"[bold cyan]{key}[/]"
+            table.add_row(key_str, value if isinstance(value, str) else value)
+        return table
 
 
 # Role → display colour mapping.
@@ -372,80 +439,6 @@ def _format_duration(seconds: float) -> str:
     return f"{total // 60}m {total % 60}s"
 
 
-def format_exit_summary(
-    state: RunState,
-    elapsed_seconds: float,
-    error: BaseException | None = None,
-) -> str:
-    """Build a compact post-run summary string from *state*.
-
-    Returns a multi-line string suitable for printing to stdout after the
-    TUI exits.
-    """
-    status = "✗ error" if error else "✓ completed"
-    duration = _format_duration(elapsed_seconds)
-    max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
-
-    agents_seen: dict[str, set[str]] = {}
-    for agent in state.agents:
-        agents_seen.setdefault(agent.role, set()).add(agent.agent_id)
-    agent_parts = [f"{len(ids)} {role}" for role, ids in sorted(agents_seen.items())]
-    agents_str = ", ".join(agent_parts) if agent_parts else "none"
-
-    lines = [
-        f"  status:   {status}",
-        f"  duration: {duration}",
-        f"  calls:    {state.current_calls}/{max_calls_str}",
-        f"  agents:   {agents_str}",
-        f"  features: {state.features_done} done",
-    ]
-    if state.stuck_tasks > 0:
-        lines.append(f"  stuck:    {state.stuck_tasks}")
-    if error:
-        lines.append(f"  error:    {type(error).__name__}: {error}")
-
-    return "\n".join(lines)
-
-
-def format_run_summary(state: RunState) -> str:
-    """Return a Rich-renderable summary string with final run statistics.
-
-    Includes: total runtime, total calls, per-role call breakdown,
-    features merged, stuck tasks remaining, squad name, and backend.
-    """
-    seconds = int(time.monotonic() - state.run_started_at)
-    runtime = f"{seconds // 60}m {seconds % 60}s"
-
-    lines = [
-        f"[bold]orc run complete[/bold]  —  {runtime}",
-        "",
-        f"  total calls:  {state.current_calls}",
-        f"    planner:    {state.planner_calls}",
-        f"    coder:      {state.coder_calls}",
-        f"    qa:         {state.qa_calls}",
-        "",
-        f"  features merged:  {state.features_done}",
-        f"  stuck tasks:      {state.stuck_tasks}",
-    ]
-    if state.squad_name:
-        lines.append(f"  squad:            {state.squad_name}")
-    lines.append(f"  backend:          {state.backend}")
-
-    return "\n".join(lines)
-
-
-def _print_exit_summary(
-    state: RunState,
-    elapsed_seconds: float,
-    error: BaseException | None = None,
-) -> None:
-    """Print a formatted exit summary panel to stdout."""
-    body = format_exit_summary(state, elapsed_seconds, error)
-    console = rich.console.Console()
-    panel = rich.panel.Panel(body, title="orc run summary", expand=False)
-    console.print(panel)
-
-
 def run_tui(
     state: RunState,
     run_fn: Callable[[], None],
@@ -474,14 +467,15 @@ def run_tui(
         except BaseException as exc:  # noqa: BLE001
             exc_holder.append(exc)
 
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
-    OrcApp(state, t, on_drain=on_drain, on_abort=on_abort).run()
-    t.join()
-
-    elapsed = time.monotonic() - start
-    error = exc_holder[0] if exc_holder else None
-    _print_exit_summary(state, elapsed, error)
+    try:
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        OrcApp(state, t, on_drain=on_drain, on_abort=on_abort).run()
+        t.join()
+    finally:
+        elapsed = time.monotonic() - start
+        error = exc_holder[0] if exc_holder else None
+        rich.Console().print(state.rich_summary(error=error, elapsed_seconds=elapsed))
 
     if exc_holder:
         raise exc_holder[0]

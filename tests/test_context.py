@@ -29,56 +29,6 @@ class TestBootMessageBody:
 
         return BoardStateManager(_cfg.get().orc_dir)
 
-    @pytest.mark.parametrize(
-        "agent_id,board_content,expected",
-        [
-            (
-                "orc",
-                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
-                "picking up work/0002-foo.md.",
-            ),
-            (
-                "orc",
-                "counter: 3\ntasks:\n  - name: 0002-foo.md\n  - name: 0003-bar.md\n",
-                "picking up work/0002-foo.md, work/0003-bar.md.",
-            ),
-            ("orc", "counter: 2\ntasks: []\n", "no open tasks on board."),
-            ("orc", None, "no open tasks on board."),  # missing board
-            (
-                "planner-1",
-                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
-                "planning 0002-foo.md.",
-            ),
-            ("planner-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
-            (
-                "coder-1",
-                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
-                "picking up work/0002-foo.md.",
-            ),
-            ("coder-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
-            (
-                "qa-1",
-                "counter: 2\ntasks:\n  - name: 0002-foo.md\n",
-                "reviewing feat/0002-foo.",
-            ),
-            ("qa-1", "counter: 2\ntasks: []\n", "no open tasks on board."),
-        ],
-    )
-    def test_boot_message_body(self, agent_id, board_content, expected):
-        if board_content is not None:
-            self._write_board(board_content)
-        assert _ctx._boot_message_body(agent_id, self._make_board()) == expected
-
-    def test_boot_message_body_planner_with_vision(self):
-        """Planner with no tasks but a pending vision → 'translating vision docs.'"""
-        self._write_board("counter: 2\ntasks: []\n")
-        vision_ready = _cfg.get().orc_dir / "vision" / "ready"
-        vision_ready.mkdir(parents=True, exist_ok=True)
-        (vision_ready / "my-feature.md").write_text("# Vision\n")
-        assert (
-            _ctx._boot_message_body("planner-1", self._make_board()) == "translating vision docs."
-        )
-
 
 # ---------------------------------------------------------------------------
 # wait_for_human_reply
@@ -179,8 +129,6 @@ class TestWaitForHumanReply:
         assert sleeps == [5.0, 10.0, 10.0, 10.0]
 
     def test_raises_timeout_error(self, monkeypatch):
-        import pytest
-
         self._patch_configured(monkeypatch)
         snapshot: list[ChatMessage] = []
         monkeypatch.setattr(tg, "_get_messages", lambda limit=100: snapshot)
@@ -191,7 +139,6 @@ class TestWaitForHumanReply:
 
     def test_sleep_trimmed_to_deadline(self, monkeypatch):
         """Sleep must not overshoot the deadline."""
-        import pytest
 
         self._patch_configured(monkeypatch)
         snapshot: list[ChatMessage] = []
@@ -205,7 +152,6 @@ class TestWaitForHumanReply:
 
     def test_not_configured_raises_timeout_immediately(self, monkeypatch):
         """Without Telegram, wait_for_human_reply raises TimeoutError immediately."""
-        import pytest
 
         monkeypatch.setattr(tg, "_is_configured", lambda: False)
         with pytest.raises(TimeoutError, match="not configured"):

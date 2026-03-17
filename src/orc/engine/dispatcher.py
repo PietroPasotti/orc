@@ -50,9 +50,11 @@ workflow is hard-blocked".
 
 from __future__ import annotations
 
+import re
 import signal
 import sys
 import time
+import typing
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -762,6 +764,9 @@ class Dispatcher:
         task_name: str | None,
     ) -> None:
         """Build context and spawn an agent subprocess (or print for dry-run)."""
+        contextvars.bind_contextvars(agent_id=agent_id)
+        self._total_spawned += 1
+
         if role == AgentRole.PLANNER:
             worktree = self.worktree.ensure_dev_worktree()
         elif task_name:
@@ -771,19 +776,14 @@ class Dispatcher:
 
         model, context = self.agent.build_context(role, agent_id, task_name=task_name)
 
-        self._total_spawned += 1
-
-        # Snapshot board state for noop detection after exit.
-        self._board_snapshots[agent_id] = self._take_board_snapshot(task_name)
-
         if self.dry_run:
             typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
             return
 
-        self.messaging.post_boot_message(
-            agent_id, self.agent.boot_message_body(agent_id, task_name)
-        )
-        contextvars.bind_contextvars(agent_id=agent_id)
+        # Snapshot board state for noop detection after exit.
+        self._board_snapshots[agent_id] = self._take_board_snapshot(task_name)
+
+        self._log_spawn_boot(role, agent_id, task_name)
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
         spawn_result = self.agent.spawn(
@@ -843,7 +843,7 @@ class Dispatcher:
         try:
             self.pool.close_log(agent)
             _cleanup_agent_temps(agent)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.warning("agent cleanup failed", agent_id=agent.agent_id, exc_info=True)
 
         if rc != 0:
@@ -966,6 +966,25 @@ class Dispatcher:
             logger.info("drain mode activated (first signal)", signum=signum)
         else:
             raise _ShutdownSignal(signum)
+
+    def _log_spawn_boot(self, role: AgentRole, agent_id: str, task_name: str):
+        match role:
+            case AgentRole.PLANNER:
+                out = ""
+                if visions := self.board.get_pending_visions():
+                    out += "refining vision docs: " + ", ".join(f"`{v}`" for v in visions) + ". "
+                else:
+                    # We should be more specific here. We know what the planner is doing after all.
+                    out += "no pending visions. Refining TODOs and READMEs/unblocking agents."
+            case AgentRole.CODER:
+                if task_name:
+                    self.messaging.post_boot_message(agent_id, f"picking up work/{task_name}.")
+            case AgentRole.QA:
+                if task_name:
+                    task_stem = re.sub(r"\.md$", "", task_name)
+                    self.messaging.post_boot_message(agent_id, f"reviewing feat/{task_stem}.")
+            case _:
+                typing.assert_never(role)
 
 
 class _ShutdownSignal(BaseException):

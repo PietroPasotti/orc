@@ -159,7 +159,9 @@ class FakeAgent:
 
         self.build_context = lambda role, agent_id, task_name=None: ("model", "ctx")
         self.spawn = spawn_fn or _default_spawn
-        self.boot_message_body = lambda agent_id: f"working on something ({agent_id})"
+        self.boot_message_body = lambda agent_id, task_name=None: (
+            f"working on something ({agent_id})"
+        )
 
 
 # ---------------------------------------------------------------------------

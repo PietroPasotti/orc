@@ -10,7 +10,6 @@ from typing import Annotated
 
 import structlog
 import typer
-from rich.console import Console
 
 import orc.cli.status as _status_mod
 import orc.config as _cfg
@@ -209,7 +208,6 @@ def _run(
             )
         else:
             dispatcher.run(maxcalls=maxcalls)
-        Console().print(_tui.format_run_summary(state))
     except KeyboardInterrupt:
         _coord_server.stop()
         typer.echo(

@@ -8,8 +8,6 @@ from orc.cli.tui.run_tui import (
     OrcData,
     QuitModal,
     RunState,
-    format_exit_summary,
-    format_run_summary,
     render,
     run_tui,
 )
@@ -21,8 +19,6 @@ __all__ = [
     "OrcData",
     "QuitModal",
     "RunState",
-    "format_exit_summary",
-    "format_run_summary",
     "render",
     "run_tui",
     "run_status_tui",

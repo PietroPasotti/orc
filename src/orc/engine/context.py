@@ -23,9 +23,6 @@ from orc.messaging.messages import (
 from orc.messaging.messages import (
     is_agent_message as _is_agent_message,
 )
-from orc.messaging.messages import (
-    parse_agent_id as _parse_agent_id,
-)
 from orc.squad import AgentRole, ReviewThreshold
 
 logger = structlog.get_logger(__name__)
@@ -170,8 +167,8 @@ def build_agent_context(
         agent_wt = dev_worktree
     elif feature_wt is not None:
         agent_wt = feature_wt
-    else:
-        agent_wt = dev_worktree
+    else:  # pragma: no cover
+        raise RuntimeError(f"{role} must always have a feature worktree")
 
     role_main_prompt_path = agent_wt / agents_rel / "agents" / role / "_main.md"
     shared_main_prompt_path = agent_wt / agents_rel / "agents" / "_shared" / "_main.md"
@@ -306,48 +303,7 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
-def _boot_message_body(agent_id: str, board: BoardStateManager, task_name: str | None) -> str:
-    """Build the role-specific body text for a boot message."""
-    role, _ = _parse_agent_id(agent_id)
-    open_tasks = board.get_tasks()
-    # Default fallback: list all open tasks
-    if not open_tasks:
-        return "no open tasks on board."
-
-    _DUNNO = "operating mysteriously."
-
-    match role:
-        case AgentRole.PLANNER:
-            if task_name:
-                return f"planning {task_name}."
-
-            out = ""
-            if visions := board.get_pending_visions():
-                out += "refining vision docs: " + ", ".join(f"`{v}`" for v in visions) + ". "
-            else:
-                # We should be more specific here. We know what the planner is doing after all.
-                out += "no pending visions. Refining TODOs and READMEs/unblocking agents."
-            return _DUNNO
-
-        case AgentRole.CODER:
-            if task_name:
-                return f"picking up work/{task_name}."
-            return _DUNNO
-
-        case AgentRole.QA:
-            if task_name:
-                task_stem = re.sub(r"\.md$", "", task_name)
-                return f"reviewing feat/{task_stem}."
-            return _DUNNO
-
-    names = [t.name for t in open_tasks]
-    paths = ", ".join(f"work/{n}" for n in names)
-    return f"picking up {paths}."
-
-
-def invoke_agent(
-    role: str, context: str, model: str, worktree: Path | None = None
-) -> int:  # pragma: no cover
+def invoke_agent(context: str, model: str, worktree: Path | None = None) -> int:  # pragma: no cover
     """Invoke the configured AI CLI with the agent's full context prompt."""
     cfg = _cfg.get()
     _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)

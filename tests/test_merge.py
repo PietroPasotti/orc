@@ -113,11 +113,11 @@ class TestMergeCommand:
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
 
         invocations: list[str] = []
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda ctx, mdl, **kw: 0)
         monkeypatch.setattr(
-            _ctx, "invoke_agent", lambda name, ctx, mdl, **kw: invocations.append(name) or 0
-        )
-        monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+            _ctx,
+            "build_agent_context",
+            lambda role, board=None, agent_id=None, **kw: invocations.append(role) or "ctx",
         )
         completed: list[bool] = []
         monkeypatch.setattr(
@@ -156,7 +156,7 @@ class TestMergeCommand:
         monkeypatch.setattr(
             _ctx,
             "invoke_agent",
-            lambda name, ctx, mdl, **kw: received_contexts.append(ctx) or 0,
+            lambda ctx, mdl, **kw: received_contexts.append(ctx) or 0,
         )
 
         runner.invoke(m.app, ["merge"])
@@ -178,7 +178,7 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 2)
+        monkeypatch.setattr(_ctx, "invoke_agent", lambda ctx, mdl, **kw: 2)
         monkeypatch.setattr(
             _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
         )

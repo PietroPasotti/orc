@@ -120,7 +120,7 @@ class ConflictResolver:
             case _:  # pragma: no cover
                 typing.assert_never(reason)
         context += template.format(source_branch=branch, target_branch=target)
-        rc = _ctx.invoke_agent(AgentRole.CODER, context, self._coder_model(), worktree=worktree)
+        rc = _ctx.invoke_agent(context, self._coder_model(), worktree=worktree)
 
         git = Git(worktree)
 
@@ -131,7 +131,7 @@ class ConflictResolver:
             raise ConflictResolutionFailed(code=rc)
         match reason:
             case "rebase":
-                if git.is_rebase_in_progress():
+                if git.is_rebase_in_progress():  # pragma: no cover
                     logger.error("rebase still in progress after coder exited", branch=branch)
                     typer.echo("✗ Rebase still in progress after agent exit — aborting rebase.")
                     git.rebase_abort()
@@ -476,6 +476,3 @@ class AgentSvc:
             role=str(role) if role is not None else None,
             permissions=permissions,
         )
-
-    def boot_message_body(self, agent_id: str, task_name: str | None) -> str:
-        return _ctx._boot_message_body(agent_id, self._board, task_name)
