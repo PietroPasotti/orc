@@ -130,6 +130,18 @@ def _role_symbol(role: str) -> str:
     return ""
 
 
+def _extract_steps_section(task_md: str) -> str:
+    """Extract and return the raw content of the ``## Steps`` section from *task_md*.
+
+    Returns an empty string when the section is absent.
+    """
+    match = re.search(r"## Steps\n\n(.*?)(?=\n## |\Z)", task_md, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+
 def build_agent_context(
     role: AgentRole,
     board: BoardStateManager,
@@ -244,6 +256,18 @@ def build_agent_context(
             The orchestrator will merge your branch into 
             `{dev_branch}` after QA passes.    
             """
+
+            if task_name:
+                try:
+                    task_md = board.read_task_content(task_name)
+                    steps = _extract_steps_section(task_md)
+                    if steps:
+                        context += (
+                            f"\n## Steps\n\n{steps}\n\n"
+                            "Mark each step `- [x]` in the task file as you complete it.\n"
+                        )
+                except FileNotFoundError:
+                    pass
 
         case AgentRole.QA:
             assert feature_branch is not None
