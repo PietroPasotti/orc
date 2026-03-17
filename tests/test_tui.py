@@ -546,21 +546,22 @@ class TestRunStatePerRoleFields:
 
     def test_default_values_are_zero(self):
         state = RunState()
-        assert state.planner_calls == 0
-        assert state.coder_calls == 0
-        assert state.qa_calls == 0
+        assert state.agent_calls[AgentRole.PLANNER] == 0
+        assert state.agent_calls[AgentRole.CODER] == 0
+        assert state.agent_calls[AgentRole.QA] == 0
 
     def test_fields_can_be_set(self):
-        state = RunState(planner_calls=1, coder_calls=2, qa_calls=3)
-        assert state.planner_calls == 1
-        assert state.coder_calls == 2
-        assert state.qa_calls == 3
+        calls = {AgentRole.PLANNER: 1, AgentRole.CODER: 2, AgentRole.QA: 3}
+        state = RunState(agent_calls=calls)
+        assert state.agent_calls[AgentRole.PLANNER] == 1
+        assert state.agent_calls[AgentRole.CODER] == 2
+        assert state.agent_calls[AgentRole.QA] == 3
 
     def test_fields_are_mutable(self):
         state = RunState()
-        state.planner_calls += 1
-        state.coder_calls += 5
-        state.qa_calls += 3
-        assert state.planner_calls == 1
-        assert state.coder_calls == 5
-        assert state.qa_calls == 3
+        state.agent_calls[AgentRole.PLANNER] += 1
+        state.agent_calls[AgentRole.CODER] += 5
+        state.agent_calls[AgentRole.QA] += 3
+        assert state.agent_calls[AgentRole.PLANNER] == 1
+        assert state.agent_calls[AgentRole.CODER] == 5
+        assert state.agent_calls[AgentRole.QA] == 3

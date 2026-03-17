@@ -113,12 +113,7 @@ def _run(
 
     def _on_agent_start(agent: AgentProcess) -> None:
         state.current_calls += 1
-        if agent.role == AgentRole.PLANNER:
-            state.planner_calls += 1
-        elif agent.role == AgentRole.CODER:
-            state.coder_calls += 1
-        elif agent.role == AgentRole.QA:
-            state.qa_calls += 1
+        state.agent_calls[agent.role] += 1
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:
