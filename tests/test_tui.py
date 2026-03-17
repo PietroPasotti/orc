@@ -270,6 +270,55 @@ class TestRenderZeroAgents:
         out = _render_to_str(state)
         assert "5 features" in out
 
+    def test_header_separators_between_labels(self):
+        state = RunState(
+            current_calls=3,
+            max_calls=10,
+            features_done=2,
+            backend="copilot",
+            telegram_ok=True,
+        )
+        out = _render_to_str(state)
+        assert "│" in out
+
+    def test_header_separator_count_matches_labels(self):
+        """Four always-present labels → three separators between them."""
+        state = RunState(
+            current_calls=1,
+            max_calls=5,
+            features_done=0,
+            backend="copilot",
+            telegram_ok=False,
+            squad_repr="",
+            run_started_at=0.0,
+            stuck_tasks=0,
+            draining=False,
+        )
+        out = _render_to_str(state)
+        # Count │ only in header lines (before the panel borders start with ╭)
+        header = out.split("╭")[0]
+        assert header.count("│") == 3
+
+    def test_header_separator_with_optional_labels(self):
+        """Conditional labels add extra separators when present."""
+        with patch("orc.cli.tui.run_tui.time") as mock_time:
+            mock_time.monotonic.return_value = 130.0
+            state = RunState(
+                current_calls=1,
+                max_calls=5,
+                features_done=0,
+                backend="copilot",
+                telegram_ok=False,
+                squad_repr="default (1-4-1)",
+                run_started_at=60.0,
+                stuck_tasks=2,
+                draining=True,
+            )
+            out = _render_to_str(state)
+        # 4 always-present + 4 conditional = 8 labels → 7 separators
+        header = out.split("╭")[0]
+        assert header.count("│") == 7
+
     def test_orc_card_shown_when_present(self):
         state = RunState(orc=OrcData(agent_id="orc-0", status="running", task="orchestrating"))
         out = _render_to_str(state)

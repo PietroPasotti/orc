@@ -194,21 +194,26 @@ def render(state: RunState) -> RenderableType:
         - Bottom section has three columns: Planner | Coder | QA.
     """
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
-    tg_str = "✓" if state.telegram_ok else "✗"
-    stuck_str = f"  🔧 {state.stuck_tasks} stuck" if state.stuck_tasks > 0 else ""
-    squad_str = f"  squad={state.squad_repr}" if state.squad_repr else ""
-    runtime_str = f"  runtime {_elapsed(state.run_started_at)}" if state.run_started_at else ""
-    drain_str = "  ⏳ draining…" if state.draining else ""
-    header = (
-        f"calls {state.current_calls}/{max_calls_str}  "
-        f"{state.features_done} features done  "
-        f"backend={state.backend}  "
-        f"telegram={tg_str}"
-        f"{stuck_str}"
-        f"{squad_str}"
-        f"{runtime_str}"
-        f"{drain_str}"
-    )
+    tg_icon = "✓" if state.telegram_ok else "✗"
+    tg_style = "green" if state.telegram_ok else "red"
+
+    sep = " [dim]│[/dim] "
+    parts: list[str] = [
+        f"[bold]calls[/bold] {state.current_calls}/{max_calls_str}",
+        f"[green]{state.features_done} features done[/green]",
+        f"[dim]backend={state.backend}[/dim]",
+        f"telegram=[{tg_style}]{tg_icon}[/{tg_style}]",
+    ]
+    if state.stuck_tasks > 0:
+        parts.append(f"[bold red]🔧 {state.stuck_tasks} stuck[/bold red]")
+    if state.squad_repr:
+        parts.append(f"[dim]squad={state.squad_repr}[/dim]")
+    if state.run_started_at:
+        parts.append(f"[dim]runtime {_elapsed(state.run_started_at)}[/dim]")
+    if state.draining:
+        parts.append("[bold yellow]⏳ draining…[/bold yellow]")
+
+    header = sep.join(parts)
 
     planners = [r for r in state.agents if r.role == AgentRole.PLANNER]
     coders = [r for r in state.agents if r.role == AgentRole.CODER]
