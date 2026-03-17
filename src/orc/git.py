@@ -283,3 +283,11 @@ class Git:
         result = self._run_subprocess(*args, check=False)
         if result.returncode != 0:
             raise RebaseConflictError(self.root, self.status_short())
+
+    def add(self, path: Path) -> None:
+        """Stage *path* for commit (``git add <path>``)."""
+        self._run_subprocess("add", str(path))
+
+    def commit(self, message: str) -> None:
+        """Create a commit with *message* (``git commit -m <message>``)."""
+        self._run_subprocess("commit", "-m", message)

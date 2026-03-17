@@ -242,7 +242,9 @@ def _merge_feature_into_dev(task_name: str) -> None:
     merge_sha = git_dev.merge_no_ff(branch, f"Merge {branch} into {cfg.work_dev_branch}")
 
     _append_changelog_entry(task_name, branch, merge_sha, cfg.orc_dir)
-    # TODO: we should commit the changelog!
+    changelog_path = cfg.orc_dir / "orc-CHANGELOG.md"
+    git_dev.add(changelog_path)
+    git_dev.commit(f"chore: update changelog for {task_name}")
     logger.info("feature merged", task=task_name, commit_tag=merge_sha)
 
     if wt_path.exists():

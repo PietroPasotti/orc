@@ -524,6 +524,38 @@ class TestFormatTodos:
 
 
 # ---------------------------------------------------------------------------
+# _extract_steps_section
+# ---------------------------------------------------------------------------
+
+
+class TestExtractStepsSection:
+    def test_extracts_steps_from_task_markdown(self):
+        md = (
+            "## Overview\n\nDo thing.\n\n"
+            "## Steps\n\n"
+            "- [ ] 1. first step\n"
+            "- [ ] 2. second step\n\n"
+            "## Notes\n\nNone.\n"
+        )
+        result = _ctx._extract_steps_section(md)
+        assert "- [ ] 1. first step" in result
+        assert "- [ ] 2. second step" in result
+
+    def test_returns_empty_when_no_steps_section(self):
+        md = "## Overview\n\nNo steps here.\n\n## Notes\n\nNone.\n"
+        assert _ctx._extract_steps_section(md) == ""
+
+    def test_returns_empty_on_empty_string(self):
+        assert _ctx._extract_steps_section("") == ""
+
+    def test_preserves_ticked_checkboxes(self):
+        md = "## Steps\n\n- [x] 1. done\n- [ ] 2. pending\n\n## Notes\n\n"
+        result = _ctx._extract_steps_section(md)
+        assert "- [x] 1. done" in result
+        assert "- [ ] 2. pending" in result
+
+
+# ---------------------------------------------------------------------------
 # build_agent_context includes todos for planner only
 # ---------------------------------------------------------------------------
 
@@ -584,6 +616,78 @@ class TestBuildContextTodos:
             task_name="0001-task.md",
         )
         assert "Code TODOs and FIXMEs" not in ctx
+
+    def test_coder_context_includes_steps_as_checkboxes(self, tmp_path, monkeypatch):
+        """Coder context injects task steps as checkbox items when task file has steps."""
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-x")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        work_dir = tmp_path / ".orc" / "work"
+        (work_dir / "board.yaml").write_text(
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
+        )
+        (work_dir / "0001-task.md").write_text(
+            "# 0001-my-task\n\n"
+            "## Overview\n\nDo the thing.\n\n"
+            "## Steps\n\n"
+            "- [ ] 1. first step\n"
+            "- [ ] 2. second step\n\n"
+            "## Notes\n\nNone.\n"
+        )
+        from orc.coordination.state import BoardStateManager
+
+        ctx = _ctx.build_agent_context(
+            "coder",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="coder-0",
+            task_name="0001-task.md",
+        )
+        assert "- [ ] 1. first step" in ctx
+        assert "- [ ] 2. second step" in ctx
+        assert "- [x]" in ctx  # instruction mentions -[x]
+
+    def test_coder_context_includes_tick_instruction(self, tmp_path, monkeypatch):
+        """Coder context tells the agent to mark each step done with -[x]."""
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-x")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        work_dir = tmp_path / ".orc" / "work"
+        (work_dir / "board.yaml").write_text(
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
+        )
+        (work_dir / "0001-task.md").write_text(
+            "## Steps\n\n- [ ] 1. do something\n\n## Notes\n\nNone.\n"
+        )
+        from orc.coordination.state import BoardStateManager
+
+        ctx = _ctx.build_agent_context(
+            "coder",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="coder-0",
+            task_name="0001-task.md",
+        )
+        assert "Mark each step" in ctx
+        assert "`- [x]`" in ctx
+
+    def test_coder_context_no_steps_section_when_task_file_missing(self, tmp_path, monkeypatch):
+        """Coder context omits steps section gracefully when task file is absent."""
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-x")
+        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
+        work_dir = tmp_path / ".orc" / "work"
+        (work_dir / "board.yaml").write_text(
+            "tasks:\n  - name: 0001-task.md\n    assigned_to: null\n"
+        )
+        # task file intentionally not created
+        from orc.coordination.state import BoardStateManager
+
+        ctx = _ctx.build_agent_context(
+            "coder",
+            board=BoardStateManager(_cfg.get().orc_dir),
+            agent_id="coder-0",
+            task_name="0001-task.md",
+        )
+        assert "## Steps" not in ctx
 
 
 # ---------------------------------------------------------------------------
