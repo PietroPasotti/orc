@@ -111,7 +111,10 @@ class ConflictResolver:
         reason: typing.Literal["rebase"] | typing.Literal["merge"],
     ) -> None:
         board = BoardStateManager(_cfg.get().orc_dir)
-        context = _ctx.build_agent_context(AgentRole.CODER, board, "merger-0", plain=True)
+        # task_name is used to get the worktree.
+        context = _ctx.build_agent_context(
+            AgentRole.CODER, board, "merger-0", plain=True, task_name="dev"
+        )
         match reason:
             case "rebase":
                 template = self._REBASE_RESOLVER_CONTEXT

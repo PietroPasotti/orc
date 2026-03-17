@@ -32,6 +32,10 @@ Scan the project for a 'docs' folder, and keep it in mind for later reference if
 
 Call the `get_task` MCP tool to fetch the full task description and any prior conversation (QA rejection comments, notes). This is always required before you start implementing. Use: `get_task(task_filename="<task-filename>")`.
 
+When you're done with the task (and/or addressed all comments), call the `close_task` MCP tool to signal completion. 
+Use: `close_task(task_code="<code>", message="<message>")` and read `exit-states.md` for more details.
+Even if there's nothing else to do, you should still call `close_task` to report your exit status and any relevant information.
+
 If you need to, inspect the other documents in this directory.
 - `permissions.md` describes what you can and cannot do.
 - `git-workflow.md` describes how to manage your git worktree and branches.
