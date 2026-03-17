@@ -21,8 +21,10 @@ from orc.cli.tui.run_tui import (
     _elapsed,
     _format_duration,
     _orc_card,
+    render,
     run_tui,
 )
+from orc.engine.dispatcher import DispatcherPhase
 from orc.squad import AgentRole
 
 
@@ -51,6 +53,13 @@ def _render_to_str(state: RunState, error: bool = False, elapsed_seconds: int = 
     buf = io.StringIO()
     console = rich.console.Console(file=buf, width=120, highlight=False)
     console.print(state.rich_summary(error, elapsed_seconds))
+    return buf.getvalue()
+
+
+def _render_tui_to_str(state: RunState) -> str:
+    buf = io.StringIO()
+    console = rich.console.Console(file=buf, width=120, highlight=False)
+    console.print(render(state))
     return buf.getvalue()
 
 
@@ -292,6 +301,31 @@ class TestOrcAppMethods:
         app.query_one = lambda selector, widget_type: FakeStatic()
         app._refresh()
         assert updates
+
+
+class TestDrainIndicator:
+    """Tests for the drain-mode indicator in the TUI header."""
+
+    def test_header_includes_draining_when_active(self):
+        state = RunState(dispatcher_phase=DispatcherPhase.DRAINING)
+        out = _render_tui_to_str(state)
+        assert "⏳ draining…" in out
+
+    def test_header_excludes_draining_when_inactive(self):
+        state = RunState(dispatcher_phase=DispatcherPhase.RUNNING)
+        out = _render_tui_to_str(state)
+        assert "draining" not in out
+
+    def test_draining_default_is_false(self):
+        state = RunState()
+        assert state.draining is False
+
+    def test_draining_derived_from_dispatcher_phase(self):
+        """draining property reflects dispatcher_phase."""
+        state = RunState()
+        assert state.draining is False
+        state.dispatcher_phase = DispatcherPhase.DRAINING
+        assert state.draining is True
 
 
 class TestOrcAppDrain:
