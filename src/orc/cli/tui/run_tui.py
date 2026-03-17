@@ -28,6 +28,7 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from orc.engine.dispatcher import DispatcherPhase
 from orc.squad import AgentRole
 
 
@@ -111,9 +112,8 @@ class RunState:
     run_started_at: float = 0.0
     """Monotonic timestamp when the run started (for overall elapsed)."""
 
-    # FIXME: We should surface this as an orc task, instead of a separate top-level state.
-    draining: bool = False
-    """Whether the dispatcher is in drain mode (first signal received)."""
+    dispatcher_phase: DispatcherPhase = DispatcherPhase.RUNNING
+    """Current lifecycle phase of the dispatcher."""
 
     planner_calls: int = 0
     """Number of planner agent sessions invoked."""
@@ -123,6 +123,11 @@ class RunState:
 
     qa_calls: int = 0
     """Number of QA agent sessions invoked."""
+
+    @property
+    def draining(self) -> bool:
+        """Whether the dispatcher is in drain mode (derived from :attr:`dispatcher_phase`)."""
+        return self.dispatcher_phase is DispatcherPhase.DRAINING
 
 
 # Role → display colour mapping.

@@ -33,13 +33,15 @@ recoverable work.
 
 | Stage | Trigger | Behaviour |
 |-------|---------|-----------|
-| **Drain** (stage 1) | First `SIGINT`/`SIGTERM`, or TUI `q` key | Set `_shutting_down` flag. **Stop dispatching new agents.** Let every running agent finish naturally. Let any in-progress merge complete. |
+| **Drain** (stage 1) | First `SIGINT`/`SIGTERM`, or TUI `q` key | Transition `Dispatcher.phase` to `DispatcherPhase.DRAINING`. **Stop dispatching new agents.** Let every running agent finish naturally. Let any in-progress merge complete. |
 | **Kill** (stage 2) | Second signal while draining, **or** a configurable timeout (default: the squad `timeout_minutes`) | Kill all remaining agents immediately, unassign their tasks, exit. |
 
 ### Implementation sketch
 
-1. **`Dispatcher._shutting_down: bool`** — checked at the top of `_dispatch_agents()`;
-   when `True`, skip all dispatch and return `0`.
+1. **`Dispatcher.phase: DispatcherPhase`** — an enum (`RUNNING` / `DRAINING`)
+   checked at the top of `_dispatch_agents()`; when `DRAINING`, skip all
+   dispatch and return `0`. `RunState.draining` is a derived property that
+   reads from `RunState.dispatcher_phase`.
 
 2. **`_shutdown_handler`** — on first call, set the flag and log
    `"drain requested — waiting for running agents"`. On second call (or if
@@ -50,11 +52,12 @@ recoverable work.
    needed for stage 1. The loop naturally terminates once the last agent
    completes and no new agents are dispatched.
 
-4. **TUI feedback** — when `_shutting_down` is set, the header shows
+4. **TUI feedback** — `RunState.draining` is a derived `@property` that returns
+   `True` when `dispatcher_phase is DispatcherPhase.DRAINING`; the header shows
    `"⏳ draining…"` so the user knows the system is winding down.
 
-5. **`run_tui`** — the TUI `q` binding calls a callback that sets
-   `_shutting_down` on the dispatcher instead of exiting the app
+5. **`run_tui`** — the TUI `q` binding calls a callback that transitions
+   `Dispatcher.phase` to `DRAINING` instead of exiting the app
    immediately.
 
 ### Recovery semantics

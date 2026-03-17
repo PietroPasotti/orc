@@ -85,6 +85,27 @@ logger = structlog.get_logger(__name__)
 QA_PASSED = "__qa_passed"
 CLOSE_BOARD = "__close_board"
 
+# ---------------------------------------------------------------------------
+# Dispatcher lifecycle phase
+# ---------------------------------------------------------------------------
+
+
+class DispatcherPhase(Enum):
+    """High-level phase of the dispatcher's lifecycle.
+
+    Used by the TUI and other observers to derive whether the dispatcher
+    is actively scheduling agents or gracefully winding down.
+    """
+
+    RUNNING = auto()
+    """Normal operation — dispatching and polling agents."""
+
+    DRAINING = auto()
+    """Drain mode — no new agents will be dispatched; waiting for
+    running agents to finish (triggered by first SIGINT/SIGTERM or
+    user-initiated drain via the TUI quit modal)."""
+
+
 # Seconds between poll cycles.
 _POLL_INTERVAL = 5.0
 
@@ -393,12 +414,21 @@ class Dispatcher:
         self._board_snapshots: dict[
             str, BoardSnapshot
         ] = {}  # pre-spawn snapshots for noop detection
-        self._shutting_down: bool = False
+        self.phase: DispatcherPhase = DispatcherPhase.RUNNING
 
         # Graceful shutdown: two-stage signal handler.
         # First signal enters drain mode; second signal force-kills.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
         signal.signal(signal.SIGINT, self._shutdown_handler)
+
+    @property
+    def _shutting_down(self) -> bool:
+        """Whether the dispatcher is draining (backward-compat helper)."""
+        return self.phase is DispatcherPhase.DRAINING
+
+    @_shutting_down.setter
+    def _shutting_down(self, value: bool) -> None:
+        self.phase = DispatcherPhase.DRAINING if value else DispatcherPhase.RUNNING
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -533,7 +563,7 @@ class Dispatcher:
             self._do_merge(task_name)
 
     def _dispatch_agents(self, call_budget: int) -> int:
-        if self._shutting_down:
+        if self.phase is DispatcherPhase.DRAINING:
             logger.debug("dispatch skipped: draining")
             return 0
         if call_budget > 0:
@@ -587,7 +617,7 @@ class Dispatcher:
             # agents finish, then stop.  This avoids orphaning agents that were
             # already in-flight when the limit was hit.
             if self.pool.is_empty():
-                if self._shutting_down:
+                if self.phase is DispatcherPhase.DRAINING:
                     logger.info("drain complete, all agents finished")
                     self._echo("\n✓ Drained. All agents finished.", final=True)
                     break
@@ -961,8 +991,8 @@ class Dispatcher:
         self.pool.kill_all()
 
     def _shutdown_handler(self, signum: int, _frame: object) -> None:
-        if not self._shutting_down:
-            self._shutting_down = True
+        if self.phase is not DispatcherPhase.DRAINING:
+            self.phase = DispatcherPhase.DRAINING
             logger.info("drain mode activated (first signal)", signum=signum)
         else:
             raise _ShutdownSignal(signum)

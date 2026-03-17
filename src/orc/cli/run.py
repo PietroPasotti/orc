@@ -164,7 +164,7 @@ def _run(
         def _on_cycle() -> None:
             state.features_done = _safe_features_done()
             state.stuck_tasks = sum(1 for t in _coord_state.get_tasks() if t.status == "stuck")
-            state.draining = dispatcher._shutting_down
+            state.dispatcher_phase = dispatcher.phase
 
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start_tui,
@@ -195,8 +195,8 @@ def _run(
         if use_tui:
 
             def _drain() -> None:
-                dispatcher._shutting_down = True
-                state.draining = True
+                dispatcher.phase = _disp.DispatcherPhase.DRAINING
+                state.dispatcher_phase = dispatcher.phase
 
             def _abort() -> None:
                 dispatcher._kill_all_and_unassign()

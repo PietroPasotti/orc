@@ -27,6 +27,7 @@ from orc.cli.tui.run_tui import (
     render,
     run_tui,
 )
+from orc.engine.dispatcher import DispatcherPhase
 
 
 def _row(
@@ -503,18 +504,25 @@ class TestDrainIndicator:
     """Tests for the drain-mode indicator in the TUI header."""
 
     def test_header_includes_draining_when_active(self):
-        state = RunState(draining=True)
+        state = RunState(dispatcher_phase=DispatcherPhase.DRAINING)
         out = _render_to_str(state)
         assert "⏳ draining…" in out
 
     def test_header_excludes_draining_when_inactive(self):
-        state = RunState(draining=False)
+        state = RunState(dispatcher_phase=DispatcherPhase.RUNNING)
         out = _render_to_str(state)
         assert "draining" not in out
 
     def test_draining_default_is_false(self):
         state = RunState()
         assert state.draining is False
+
+    def test_draining_derived_from_dispatcher_phase(self):
+        """draining property reflects dispatcher_phase."""
+        state = RunState()
+        assert state.draining is False
+        state.dispatcher_phase = DispatcherPhase.DRAINING
+        assert state.draining is True
 
 
 class TestOrcAppDrain:
