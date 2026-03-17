@@ -130,8 +130,6 @@ def _role_symbol(role: str) -> str:
     return ""
 
 
-# TODO: consider using itemized [ ] lists for tasks; perhaps instructing agents to tick them
-#  off as they go; to prevent them from forgetting things.
 def build_agent_context(
     role: AgentRole,
     board: BoardStateManager,

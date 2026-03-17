@@ -111,7 +111,6 @@ class RunState:
     run_started_at: float = 0.0
     """Monotonic timestamp when the run started (for overall elapsed)."""
 
-    # FIXME: We should surface this as an orc task, instead of a separate top-level state.
     draining: bool = False
     """Whether the dispatcher is in drain mode (first signal received)."""
 
@@ -194,14 +193,12 @@ def render(state: RunState) -> RenderableType:
         - Top section: orchestrator status
         - Bottom section has three columns: Planner | Coder | QA.
     """
-    # TODO: add some nicer formatting and colors to the header labels.
     max_calls_str = str(state.max_calls) if state.max_calls > 0 else "∞"
     tg_str = "✓" if state.telegram_ok else "✗"
     stuck_str = f"  🔧 {state.stuck_tasks} stuck" if state.stuck_tasks > 0 else ""
     squad_str = f"  squad={state.squad_repr}" if state.squad_repr else ""
     runtime_str = f"  runtime {_elapsed(state.run_started_at)}" if state.run_started_at else ""
     drain_str = "  ⏳ draining…" if state.draining else ""
-    # TODO: add a visual separator between all these labels.
     header = (
         f"calls {state.current_calls}/{max_calls_str}  "
         f"{state.features_done} features done  "
