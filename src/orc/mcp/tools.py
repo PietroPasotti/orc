@@ -1,7 +1,9 @@
-"""MCP tool implementations for the orc board operations.
+"""Board tool implementations used by agents and orchestrator operations.
 
-Each function in this module corresponds to one MCP tool.  They are registered
-against the FastMCP server in :mod:`orc.mcp.server` with role-based filtering.
+Each function corresponds to one board operation (get task, create task, etc.).
+They are called in-process by the agent's :class:`~orc.ai.tools.ToolExecutor`
+via ``_orc_tool()``.  The HTTP client in :mod:`orc.mcp.client` handles
+communication with the coordination API.
 
 All tools that perform git commits set ``GIT_AUTHOR_NAME`` / ``GIT_COMMITTER_NAME``
 from the ``ORC_AGENT_ID`` environment variable, matching the behaviour of the

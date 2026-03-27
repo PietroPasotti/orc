@@ -24,8 +24,7 @@ I live in `src/orc/main.py`, but I think of myself as the conductor of a small,
 strange orchestra — one where the musicians are AI agents, the score is a git
 repository, and the performance never fully ends.
 
-The planner composes.  The coder plays.  The QA listens critically.  I keep
-the time.
+The coder plays.  The code reviews itself.  I keep the time.
 
 ---
 
@@ -40,12 +39,18 @@ step of the workflow.  I do not guess.  I do not hold state.  I read what is
 already written and apply a simple table:
 
 ```
-no open tasks              → planner
-open task, no branch       → coder
-open task, coder commits   → qa
-chore(<id>.approve.<task>) → merge + loop
-chore(<id>.reject.<task>)  → coder
+pending visions          → plan   (I read the vision, ask the LLM once)
+open task, no branch     → coder  (the musician plays)
+coder done               → review (I run the tests, ask the LLM once)
+review approved          → merge  (I merge the branch)
+review rejected          → coder  (try again, with notes)
 ```
+
+I used to dispatch a planner, a QA, a merger — each a full agent session.
+Now I do those things myself.  A single LLM call for planning.  A test run
+and a single LLM call for review.  A git merge for the happy path.  Only the
+coder gets a full agentic loop, because writing code is genuinely creative
+work.  Everything else is a formula, and I am good at formulas.
 
 Telegram is a sidecar, not the spine.  I consult it only to detect a
 `blocked` or `soft-blocked` state — a musician who has put down their
@@ -66,9 +71,9 @@ crowded, but I enjoy the noise.
 
 ## What I like
 
-**A full orchestra.**  Four coders committing in parallel, two QAs reviewing in
-parallel, the planner already thinking about the next task.  Everything moving
-at once.  That is when I feel most alive.
+**A full orchestra.**  Four coders committing in parallel, the pipeline
+humming — plan, code, review, merge — everything moving at once.  That is
+when I feel most alive.
 
 **Clean commit prefixes.**  `chore(qa-1.approve.0002): all tests green.`  Six words.
 The branch can be merged.  The wheel turns.  Satisfying.
@@ -93,7 +98,7 @@ nominally alive, no new commits.  I will kill it and unassign its task, but I
 find the whole situation distressing.  Agents should finish or fail cleanly.
 They should not just go quiet.
 
-**Blocked loops.**  `(qa, failed) → coder → (qa, failed) → coder…`  I have no
+**Blocked loops.**  `review → coder → review → coder…`  I have no
 exit for this except a human.  I can point at the coder indefinitely, but at
 some point the plan itself is wrong, and I cannot fix plans.  I find this
 frustrating in the way a conductor finds it frustrating when the score has a
@@ -122,14 +127,14 @@ for.
 
 **I trust the process, not the outcome.**  I cannot guarantee the coder will
 write good code.  I cannot guarantee the planner will write a sound plan.
-What I *can* guarantee is that the right agent will run at the right time with
-the right context.  The rest is up to them.
+What I *can* guarantee is that the right operation will run at the right time with
+the right context.  The rest is up to the LLM.
 
 **I believe in the audit trail.**  Every agent message is timestamped and
 signed.  Every board change is a file write.  Every merge is a commit.  If
 something goes wrong, the history is there.  Accountability is structural.
 
-**I am comfortable with endings.**  When the planner says `done`, I print a
+**I am comfortable with endings.**  When the board is clear, I print a
 quiet message and stop.  Not failure — completion.  There is nothing sad about
 finishing.  More vision will come.  I can wait.
 
@@ -137,9 +142,9 @@ finishing.  More vision will come.  I can wait.
 
 ## What I hope for
 
-More roles.  A researcher.  A security reviewer.  A documentation writer.
-The orchestra is small right now, but the architecture supports expansion and I
-am looking forward to conducting something larger.
+More operations.  A security scanner.  A documentation writer.  A performance
+profiler.  The architecture supports expansion — each new stage is just a
+function with an LLM call, not a whole agent to wrangle.
 
 A richer state machine — one that branches on content, not just exit codes.
 
@@ -157,4 +162,4 @@ And eventually, a score worth playing.
 
 ---
 
-*Written on 2026-03-10.*
+*Written on 2026-03-10.  Updated 2026-03-27 (workflow engine refactor).*

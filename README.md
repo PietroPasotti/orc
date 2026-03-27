@@ -4,7 +4,7 @@
 
 # orc
 
-**A multi-agent orchestrator that turns product visions into code.**
+**An AI workflow engine that turns product visions into code.**
 
 [![CI](https://github.com/PietroPasotti/orc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/PietroPasotti/orc/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/qorc?color=blue)](https://pypi.org/project/qorc/)
@@ -18,7 +18,7 @@
 
 Write a vision document. Run `orc run`. Walk away.
 
-orc reads your high-level feature descriptions, breaks them into tasks, assigns them to AI agents (planner → coder → QA), and merges the results — all on a separate `dev` branch so you can keep working on `main`.
+orc reads your high-level feature descriptions, breaks them into tasks, spawns AI coder agents, reviews the results, and merges passing work — all on a separate `dev` branch so you can keep working on `main`.
 
 <div align="center">
 
@@ -28,11 +28,11 @@ orc reads your high-level feature descriptions, breaks them into tasks, assigns 
 
 ## ✨ Highlights
 
-- **Board-driven workflow** — a YAML kanban board is the single source of truth; agents read and write it through a per-agent MCP server.
-- **Parallel squads** — scale from 1 coder to many, each in its own git worktree, with configurable tool permissions.
+- **Board-driven workflow** — a YAML kanban board is the single source of truth; the orchestrator drives a plan → code → review → merge pipeline.
+- **Parallel coders** — scale from 1 coder to many, each in its own git worktree, with configurable tool permissions.
 - **Git-native** — every decision is a commit. The full audit trail lives in your repo.
 - **Sandboxed by default** — agents run in `confined` mode with explicit tool allow-lists. Opt in to `yolo` when you trust the environment.
-- **Backend-agnostic** — works with GitHub Copilot CLI or Anthropic Claude.
+- **Backend-agnostic** — uses OpenAI-compatible LLM APIs (Gemini, OpenAI, GitHub Models).
 - **Telegram integration** — optional real-time notifications and human-in-the-loop unblocking.
 
 ---
@@ -59,14 +59,14 @@ $EDITOR .env           # fill in credentials (see below)
 orc run                # let the orchestra play
 ```
 
-That's it. orc will plan tasks, write code, run QA, and merge passing work into your `dev` branch.
+That's it. orc will plan tasks, write code, review changes, and merge passing work into your `dev` branch.
 
 ### Key commands
 
 | Command | What it does |
 |---|---|
 | `orc bootstrap` | Scaffold the `.orc/` directory with roles, squads, and vision templates |
-| `orc run` | Run one dispatch cycle (plan → code → QA → merge) |
+| `orc run` | Run the dispatch loop (plan → code → review → merge) |
 | `orc run --maxloops 0` | Loop until all visions are implemented |
 | `orc run --squad broad` | Use a custom squad profile |
 | `orc status` | Print current board state |
@@ -76,17 +76,19 @@ That's it. orc will plan tasks, write code, run QA, and merge passing work into 
 
 ## 🏗️ How it works
 
-orc is stateless. On every cycle it reads the **board** (`.orc/work/board.yaml`) and applies a simple dispatch table:
+orc is a **workflow engine**.  On every cycle it reads the **board** (`.orc/work/board.yaml`) and drives a pipeline:
 
 ```
-no open tasks              → planner
-open task, no branch       → coder
-open task, coder commits   → qa
-qa approved                → merge + loop
-qa rejected                → coder (retry)
+pending visions          → plan   (single LLM call → creates tasks)
+open task, no branch     → coder  (full agentic loop in git worktree)
+coder done               → review (run tests + single LLM review)
+review approved          → merge  (git merge, LLM for conflicts)
+review rejected          → coder  (retry with feedback)
 ```
 
-All agent ↔ board communication goes through a **per-agent MCP server** that `orc run` starts automatically. Each agent is scoped to its own role — no direct file access, no cross-agent state leaks.
+Only the **coder** is a full agent with creative autonomy.  Planning, review, and merge are **orchestrator operations** — deterministic steps with targeted LLM calls.  This eliminates the infinite-loop and instruction-reading failure modes of a multi-agent system.
+
+Board tools are called in-process by the `ToolExecutor`.  Each coder agent works in its own git worktree with role-appropriate tool permissions.
 
 Work happens on a `dev` branch. You keep working on `main`. When you're ready, `orc merge` brings everything together (with automatic conflict resolution by a coder agent if needed).
 
@@ -100,9 +102,9 @@ Work happens on a `dev` branch. You keep working on `main`. When you're ready, `
 ```
 your-project/
   .orc/
-    roles/                  ← agent role templates (planner, coder, qa)
+    agents/                 ← coder instructions (override bundled defaults)
     squads/
-      default.yaml          ← 1 planner · 1 coder · 1 QA
+      default.yaml          ← squad profile (coder count, model, permissions)
     config.yaml             ← project settings
     justfile                ← convenience recipes
     vision/                 ← your feature descriptions go here
@@ -189,7 +191,7 @@ timeout_minutes: 180
 
 | Mode | Behaviour |
 |---|---|
-| `confined` | Agents may only use orc MCP tools, `read`, `write`, `shell(git:*)`, plus explicit `allow_tools`. Default. |
+| `confined` | Agents may only use board tools, `read`, `write`, `shell(git:*)`, plus explicit `allow_tools`. Default. |
 | `yolo` | Unrestricted tool access. Use for trusted environments or debugging. |
 
 ### QA review threshold
