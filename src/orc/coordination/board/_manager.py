@@ -63,6 +63,8 @@ def _board_to_dict(board: Board) -> dict[str, object]:
     tasks: list[dict[str, object]] = []
     for entry in board.tasks:
         task_dict: dict[str, object] = {"name": entry.name}
+        if entry.vision:
+            task_dict["vision"] = entry.vision
         if entry.status is not None:
             task_dict["status"] = entry.status
         if entry.assigned_to is not None:
@@ -363,7 +365,9 @@ class FileBoardManager(BoardManager):
             task_filename = f"{task_id}-{title}.md"
             task_file = self._work_dir / task_filename
             task_file.write_text(self._render_task(task_id, title, vision, body))
-            board.tasks.append(TaskEntry(name=task_filename, status=TaskStatus.PLANNED))
+            board.tasks.append(
+                TaskEntry(name=task_filename, status=TaskStatus.PLANNED, vision=vision)
+            )
             board.counter += 1
             self._write_board_raw(board)
         return task_filename, task_file

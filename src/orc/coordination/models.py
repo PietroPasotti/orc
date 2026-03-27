@@ -28,6 +28,7 @@ class TaskEntry(BaseModel):
     name: str
     status: str | None = None
     assigned_to: str | None = None
+    vision: str = ""
     comments: list[TaskComment] = []
     commit_tag: str | None = None
     timestamp: str | None = None

@@ -231,7 +231,7 @@ class TestStateManagerVisions:
             "# 0042 – feature\n\n**Vision:** 0001-feature.md\n\n## Overview\n\nstuff\n"
         )
         (orc / "work" / "board.yaml").write_text(
-            "tasks:\n  - name: 0042-feature.md\n    status: planned\n"
+            'tasks:\n  - name: 0042-feature.md\n    status: planned\n    vision: "0001-feature.md"\n'
         )
         assert _state(orc).get_pending_visions() == []
 
@@ -242,7 +242,9 @@ class TestStateManagerVisions:
         (orc / "work" / "0042-feature.md").write_text(
             "# 0042 – feature\n\n**Vision:** 0001-feature.md\n"
         )
-        (orc / "work" / "board.yaml").write_text("tasks:\n  - name: 0042-feature.md\n")
+        (orc / "work" / "board.yaml").write_text(
+            'tasks:\n  - name: 0042-feature.md\n    vision: "0001-feature.md"\n'
+        )
         assert _state(orc).get_pending_visions() == []
 
     def test_read_vision_found(self, tmp_path):
