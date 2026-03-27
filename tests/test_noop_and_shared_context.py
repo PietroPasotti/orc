@@ -91,8 +91,8 @@ class TestNoopDetection:
         d = make_dispatcher(minimal_squad(), svcs)
         return d, svcs
 
-    def test_planner_noop_detected_when_board_unchanged(self, tmp_path, monkeypatch):
-        """Planner exits rc=0, board unchanged → noop."""
+    def test_planner_noop_not_detected_when_board_unchanged(self, tmp_path, monkeypatch):
+        """Planner exits rc=0, board unchanged → NOT noop (planners exempt)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         d, svcs = self._make_dispatcher_with_snapshot(tmp_path)
 
@@ -102,9 +102,9 @@ class TestNoopDetection:
         # Pre-spawn snapshot: no tasks, one pending vision (FakeBoard default).
         d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
 
-        # Board state hasn't changed → noop.
+        # Board state hasn't changed, but planners are exempt from noop detection.
         is_noop = d._handle_completion(agent, rc=0)
-        assert is_noop is True
+        assert is_noop is False
 
     def test_planner_not_noop_when_task_created(self, tmp_path, monkeypatch):
         """Planner exits rc=0, new task on board → NOT noop."""
@@ -253,11 +253,11 @@ class TestNoopAbort:
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
 
-        agent = make_agent(tmp_path, role="planner", task=None)
+        agent = make_agent(tmp_path, role="coder", task="0001-foo.md")
         d.pool.add(agent)
         d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
 
-        with pytest.raises(AgentNoopError, match="planner-1"):
+        with pytest.raises(AgentNoopError, match="coder-1"):
             d._poll_completed_agents()
 
     def test_run_exits_code_1_on_noop(self, tmp_path, monkeypatch):
@@ -266,13 +266,26 @@ class TestNoopAbort:
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
 
-        agent = make_agent(tmp_path, role="planner", task=None)
+        agent = make_agent(tmp_path, role="coder", task="0001-foo.md")
         d.pool.add(agent)
         d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
 
         with pytest.raises(click.exceptions.Exit) as exc_info:
             d.run()
         assert exc_info.value.exit_code == 1
+
+    def test_planner_noop_does_not_abort(self, tmp_path, monkeypatch):
+        """Planner unchanged board does NOT trigger AgentNoopError."""
+        monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(planner=1, coder=0, qa=0, merger=0), svcs)
+
+        agent = make_agent(tmp_path, role="planner", task=None)
+        d.pool.add(agent)
+        d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
+
+        # Should complete normally — planner noop does not abort.
+        d._poll_completed_agents()
 
 
 # ---------------------------------------------------------------------------

@@ -281,6 +281,22 @@ def _idle_planner_handler():
     return handler
 
 
+def _merger_handler():
+    """Return a callable that simulates a merger agent closing a task.
+
+    The handler removes the task from the board (same effect as
+    ``close_task``) and exits 0.
+    """
+
+    def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:
+        import orc.coordination.board as _board_mod
+
+        _board_mod.delete_task(_TASK_NAME)
+        tg._append_to_log(tg.format_agent_message("merger-1", "done", f"Merged {_TASK_NAME}."))
+
+    return handler
+
+
 # ---------------------------------------------------------------------------
 # Fixture: scripted spawn (replaces inv.spawn with deterministic handlers)
 # ---------------------------------------------------------------------------
@@ -318,6 +334,7 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
         AgentRole.PLANNER: [_planner_handler(_TASK_NAME), _idle_planner_handler()],
         AgentRole.CODER: [_coder_handler()],
         AgentRole.QA: [_qa_handler()],
+        AgentRole.MERGER: [_merger_handler()],
     }
     role_call_counts: dict[str, int] = {r: 0 for r in role_handlers}
 
@@ -386,17 +403,17 @@ class TestFullWorkflowLoop:
         scripted_spawn,
         monkeypatch,
     ):
-        """Run four agent invocations and assert the full workflow state machine."""
+        """Run five agent invocations and assert the full workflow state machine."""
         monkeypatch.setattr(_cfg, "validate_env", lambda: [])
         monkeypatch.setattr(_wf, "rebase_dev_on_main", lambda *_: None)
 
-        result = runner.invoke(m.app, ["run", "--maxcalls", "4"], catch_exceptions=False)
+        result = runner.invoke(m.app, ["run", "--maxcalls", "5"], catch_exceptions=False)
 
         assert result.exit_code == 0, f"orc run exited non-zero:\n{result.output}"
 
         # ── Spawn count ──────────────────────────────────────────────────────
-        assert len(scripted_spawn) == 4, (
-            f"Expected 4 spawns (planner→coder→qa→planner), "
+        assert len(scripted_spawn) == 5, (
+            f"Expected 5 spawns (planner→coder→qa→merger→planner), "
             f"got {len(scripted_spawn)}.\nCLI output:\n{result.output}"
         )
 
@@ -412,6 +429,7 @@ class TestFullWorkflowLoop:
         assert "planner-1" in agent_ids, f"planner-1 missing from messages: {parsed}"
         assert "coder-1" in agent_ids, f"coder-1 missing from messages: {parsed}"
         assert "qa-1" in agent_ids, f"qa-1 missing from messages: {parsed}"
+        assert "merger-1" in agent_ids, f"merger-1 missing from messages: {parsed}"
         assert "planner-2" in agent_ids, f"planner-2 missing from messages: {parsed}"
 
         # Non-boot terminal states must all be present
@@ -419,6 +437,7 @@ class TestFullWorkflowLoop:
         assert ("planner-1", "ready") in terminal, terminal
         assert ("coder-1", "done") in terminal, terminal
         assert ("qa-1", "passed") in terminal, terminal
+        assert ("merger-1", "done") in terminal, terminal
         assert ("planner-2", "ready") in terminal, terminal
 
         # The first occurrence of each agent must follow the expected order.
@@ -430,6 +449,7 @@ class TestFullWorkflowLoop:
 
         assert _first("planner-1") < _first("coder-1"), "planner must precede coder"
         assert _first("coder-1") < _first("qa-1"), "coder must precede qa"
+        assert _first("qa-1") < _first("merger-1"), "qa must precede merger"
         assert _first("coder-1") < _first("planner-2"), "coder must precede second planner"
 
         # ── Board state after merge ──────────────────────────────────────────

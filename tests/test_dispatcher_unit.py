@@ -262,12 +262,11 @@ class TestDispatcherCoverage:
         )
         svcs = make_services(tmp_path, spawn_fn=spawn_fn)
         d = make_dispatcher(squad, svcs)
-        # The second agent (FakePopen) completes without changing board state,
-        # triggering noop detection and Exit(1).
-        import click
-
-        with pytest.raises(click.exceptions.Exit):
-            d.run(maxcalls=2)
+        # The stuck agent is killed by the watchdog (timeout_minutes=0).
+        # The second agent (planner, FakePopen) completes without changing
+        # board state but planners are exempt from noop detection, so
+        # the run finishes at maxcalls.
+        d.run(maxcalls=2)
 
     def test_loop_dry_run_stops_after_one_cycle(self, tmp_path, monkeypatch):
         """Dry-run breaks after first dispatch."""
@@ -650,8 +649,6 @@ class TestDispatchCallbacksOptional:
 
     def test_on_cycle_called_each_loop_iteration(self, tmp_path, monkeypatch):
         """on_cycle is called once per dispatch loop iteration."""
-        import click
-
         import orc.engine.dispatcher as _d
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
@@ -661,17 +658,14 @@ class TestDispatchCallbacksOptional:
 
         svcs = make_services(tmp_path, get_tasks=lambda: [], get_messages=lambda: [])
         d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
-        # Agent completes without changing board state → noop exit, but
+        # Planner completes without changing board state (exempt from noop).
         # on_cycle should still have been called at least once.
-        with pytest.raises(click.exceptions.Exit):
-            d.run(maxcalls=1)
+        d.run(maxcalls=1)
 
         assert len(ticks) >= 1
 
     def test_on_cycle_none_is_safe(self, tmp_path, monkeypatch):
         """on_cycle=None (default) does not crash."""
-        import click
-
         import orc.engine.dispatcher as _d
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
@@ -679,10 +673,9 @@ class TestDispatchCallbacksOptional:
         svcs = make_services(tmp_path, get_tasks=lambda: [], get_messages=lambda: [])
         d = make_dispatcher(minimal_squad(), svcs)
         assert d.hooks.on_cycle is None
-        # Agent completes without changing board state → noop exit.
-        # The test verifies on_cycle=None doesn't crash before that.
-        with pytest.raises(click.exceptions.Exit):
-            d.run(maxcalls=1)
+        # Planner completes without changing board state (exempt from noop).
+        # The test verifies on_cycle=None doesn't crash.
+        d.run(maxcalls=1)
 
     def test_echo_routes_to_logger_when_tui_active(self, tmp_path):
         """_echo logs via structlog instead of typer when TUI hook is active."""
@@ -701,8 +694,6 @@ class TestDispatcherLoopProperty:
 
     def test_spawned_increments_each_cycle(self, tmp_path, monkeypatch):
         """_total_spawned reflects the number of agent sessions launched."""
-        import click
-
         import orc.engine.dispatcher as _d
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
@@ -713,10 +704,9 @@ class TestDispatcherLoopProperty:
             get_messages=lambda: [],
         )
         d = make_dispatcher(minimal_squad(), svcs)
-        # Agent completes without changing board state → noop exit,
+        # Planner completes without changing board state (exempt from noop),
         # but _total_spawned should already be incremented.
-        with pytest.raises(click.exceptions.Exit):
-            d.run(maxcalls=1)
+        d.run(maxcalls=1)
         assert d._total_spawned >= 1
 
 
