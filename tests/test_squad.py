@@ -208,7 +208,7 @@ class TestLoadSquad:
         assert cfg.qa == 1
         assert cfg.name == "default"
         assert cfg.description != ""
-        assert cfg.model("coder") == "gemini-2.5-flash"
+        assert cfg.model("coder") == "gemini-2.5-pro"
 
     def test_project_overrides_package(self, tmp_path):
         """Project-level squad takes precedence over package bundled squad."""

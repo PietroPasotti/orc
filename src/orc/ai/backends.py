@@ -107,7 +107,7 @@ class ThreadProcessAdapter:
 
 # Default provider and model — can be overridden via squad config.
 _DEFAULT_PROVIDER = "gemini"
-_DEFAULT_MODEL = "gemini-2.5-flash"
+_DEFAULT_MODEL = "gemini-2.5-pro"
 
 
 class InternalBackend:

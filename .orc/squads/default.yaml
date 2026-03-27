@@ -17,15 +17,15 @@ permissions:
 composition:
   - role: planner
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
   - role: coder
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
   - role: merger
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
   - role: qa
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
 
 timeout_minutes: 120

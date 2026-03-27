@@ -57,7 +57,7 @@ class TestProviderPresets:
         assert DEFAULT_PROVIDER == "gemini"
 
     def test_default_model_is_gemini_flash(self) -> None:
-        assert DEFAULT_MODEL == "gemini-2.5-flash"
+        assert DEFAULT_MODEL == "gemini-2.5-pro"
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ class TestLLMClientInit:
         monkeypatch.setenv("GEMINI_API_TOKEN", "test-key")
         client = LLMClient()
         assert client.provider == "gemini"
-        assert client.model == "gemini-2.5-flash"
+        assert client.model == "gemini-2.5-pro"
 
     def test_explicit_api_key_skips_resolution(self) -> None:
         client = LLMClient(api_key="explicit-key")

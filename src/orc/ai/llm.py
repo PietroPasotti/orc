@@ -55,7 +55,7 @@ _PROVIDER_PRESETS: dict[str, dict[str, str]] = {
 }
 
 DEFAULT_PROVIDER = "gemini"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-2.5-pro"
 
 # Transient HTTP status codes that trigger a retry.
 _RETRIABLE_STATUSES = frozenset({429, 500, 502, 503})
@@ -180,7 +180,7 @@ class LLMClient:
     provider:
         One of ``"gemini"``, ``"github"``, ``"openai"``.
     model:
-        Model name (e.g. ``"gemini-2.5-flash"``, ``"gpt-4o"``).
+        Model name (e.g. ``"gemini-2.5-pro"``, ``"gpt-4o"``).
     api_key:
         Override the API key (skips env-var resolution if given).
     base_url:

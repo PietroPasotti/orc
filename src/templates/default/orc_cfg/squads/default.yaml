@@ -23,22 +23,22 @@ permissions:
 composition:
   - role: planner
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
   - role: coder
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
     # permissions:     # uncomment to give coders extra tools, e.g.:
     #   allow_tools:
     #     - "shell(npm:*)"
     #     - "shell(cargo:*)"
   - role: qa
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
     # review-threshold: LOW  # CRITICAL, HIGH, MID, or LOW (default: LOW)
     #   Controls the minimum severity at which QA rejects work back to coders.
     #   CRITICAL = only reject critical failures, LOW = reject any issue.
   - role: merger
     count: 1
-    model: gemini-2.5-flash
+    model: gemini-2.5-pro
 
 timeout_minutes: 120
