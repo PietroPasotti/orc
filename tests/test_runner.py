@@ -295,3 +295,56 @@ class TestContextRecovery:
         exit_code = runner.run("system", "user")
         assert exit_code == 0
         assert call_count == 4
+
+    def test_malformed_function_call_retries(self, tmp_path: Path) -> None:
+        """Gemini's MALFORMED_FUNCTION_CALL should trigger a retry, not exit."""
+        executor = ToolExecutor(
+            cwd=tmp_path,
+            role=AgentRole.CODER,
+            permissions=PermissionConfig(mode="yolo"),
+        )
+
+        def _malformed_response() -> ChatResponse:
+            return ChatResponse(
+                content=None,
+                tool_calls=[],
+                finish_reason="function_call_filter: MALFORMED_FUNCTION_CALL",
+                usage={"total_tokens": 100},
+            )
+
+        client = FakeLLMClient(
+            [
+                _malformed_response(),
+                _text_response("OK, done for real."),
+            ]
+        )
+        runner = AgentRunner(client, executor)
+        exit_code = runner.run("system", "user")
+        assert exit_code == 0
+        assert client.call_count == 2
+        # Verify a retry prompt was injected.
+        user_msgs = [m for m in runner._messages if m["role"] == "user"]
+        assert any("finish_reason" in m["content"] for m in user_msgs)
+
+    def test_content_filter_retries(self, tmp_path: Path) -> None:
+        """Non-stop finish reasons (e.g. content_filter) should retry."""
+        executor = ToolExecutor(
+            cwd=tmp_path,
+            role=AgentRole.CODER,
+            permissions=PermissionConfig(mode="yolo"),
+        )
+        client = FakeLLMClient(
+            [
+                ChatResponse(
+                    content=None,
+                    tool_calls=[],
+                    finish_reason="content_filter",
+                    usage={},
+                ),
+                _text_response("Retry worked."),
+            ]
+        )
+        runner = AgentRunner(client, executor)
+        exit_code = runner.run("system", "user")
+        assert exit_code == 0
+        assert client.call_count == 2

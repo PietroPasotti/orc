@@ -119,14 +119,32 @@ class AgentRunner:
                             "content": result,
                         }
                     )
-            else:
-                # Agent is done — text-only response.
+            elif response.finish_reason == "stop":
+                # Agent is done — text-only response with explicit stop.
                 self._log(f"\n=== Agent completed successfully after {iteration} iterations ===\n")
                 if response.usage:
                     self._log(
                         f"Total tokens this call: {response.usage.get('total_tokens', '?')}\n"
                     )
                 return 0
+            else:
+                # Non-stop finish without tool calls (e.g. Gemini's
+                # MALFORMED_FUNCTION_CALL, length, content_filter).
+                # Ask the model to try again.
+                self._log(
+                    f"\n--- Unexpected finish_reason={response.finish_reason!r} "
+                    f"at iteration {iteration}, retrying ---\n"
+                )
+                self._messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your last response had finish_reason={response.finish_reason!r} "
+                            "and no tool calls. Please try again with a valid tool call "
+                            "or respond with text to finish."
+                        ),
+                    }
+                )
 
         self._log(f"\n=== Max iterations ({self.config.max_iterations}) reached ===\n")
         return 1
