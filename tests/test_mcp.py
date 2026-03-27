@@ -368,9 +368,7 @@ class TestCloseTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch(
-                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
-            ),
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)),
         ):
             mock_gc.return_value = client_mock
             result = _tools.close_task("0002", "auth module implemented")
@@ -392,9 +390,7 @@ class TestCloseTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch(
-                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
-            ),
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)),
         ):
             mock_gc.return_value = client_mock
             _tools.close_task("0002", "custom message here")
@@ -420,9 +416,7 @@ class TestCloseMerge:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch(
-                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
-            ),
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)),
         ):
             mock_gc.return_value = client_mock
             result = _tools.close_merge("0002", "Merged into dev")
@@ -489,9 +483,7 @@ class TestReviewTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch(
-                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
-            ),
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)),
         ):
             mock_gc.return_value = client_mock
             _tools.review_task("0002", "done", "looks great")
