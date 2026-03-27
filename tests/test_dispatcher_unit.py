@@ -366,19 +366,21 @@ class TestDispatcherInternalCoverage:
         result = d._dispatch(call_budget=100)
         assert result == 0
 
-    def test_drain_merge_queue_skips_done_tasks_for_merger(self, tmp_path, monkeypatch):
-        """_drain_merge_queue no longer merges done tasks — those go to merger agents."""
+    def test_drain_merge_queue_merges_done_tasks(self, tmp_path, monkeypatch):
+        """_drain_merge_queue merges done tasks when derive_task_state returns QA_PASSED."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         merged = []
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             get_pending_visions=lambda: [],
+            derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
         )
         svcs.workflow.merge_feature = lambda t: merged.append(t)
+        svcs.board.delete_task = lambda t: None
         d = make_dispatcher(minimal_squad(), svcs)
         d._drain_merge_queue()
-        assert merged == [], "done tasks should not be merged by drain — handled by merger agent"
+        assert merged == ["0001-foo.md"]
 
     def test_drain_merge_queue_skips_non_done_tasks(self, tmp_path):
         """_drain_merge_queue does not merge tasks that are not 'done'."""

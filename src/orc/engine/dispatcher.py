@@ -570,10 +570,13 @@ class Dispatcher:
         2. Already-merged board entries are cleaned up (crash recovery).
         3. Orphaned feature branches with no board entry are merged directly.
         """
-        board_task_names = {t.name for t in self.board.get_tasks()}
+        all_tasks = self.board.get_tasks()
+        board_task_names = {t.name for t in all_tasks}
+        tasks_by_name = {t.name: t for t in all_tasks}
 
         for task_name in self.board.query_tasks(status="done"):
-            token, _reason = self.workflow.derive_task_state(task_name)
+            task_entry = tasks_by_name.get(task_name)
+            token, _reason = self.workflow.derive_task_state(task_name, task_entry)
 
             if token == CLOSE_BOARD:
                 logger.info("task already merged — cleaning up board", task=task_name)

@@ -577,8 +577,7 @@ class TestGitCoverage:
         with patch("orc.git.subprocess.run", fake_run):
             _wf._merge_feature_into_dev("0001-task.md")
 
-        changelog = orc_dir / "orc-CHANGELOG.md"
-        assert changelog.exists(), "orc-CHANGELOG.md should be created after merge"
+        changelog = dev_wt / ".orc" / "orc-CHANGELOG.md"
         text = changelog.read_text()
         assert "0001-task" in text
         assert "feat/0001-task" in text
@@ -600,6 +599,9 @@ class TestGitCoverage:
         feat_wt.mkdir(exist_ok=True)
         dev_wt = tmp_path / "dev"
         dev_wt.mkdir(exist_ok=True)
+        dev_orc_dir = dev_wt / ".orc"
+        dev_orc_dir.mkdir(parents=True, exist_ok=True)
+        (dev_orc_dir / "orc-CHANGELOG.md").write_text("# Changelog\n\n## prior entry\n")
 
         monkeypatch.setattr(
             _cfg,
@@ -624,7 +626,7 @@ class TestGitCoverage:
         with patch("orc.git.subprocess.run", fake_run):
             _wf._merge_feature_into_dev("0002-bar.md")
 
-        text = (orc_dir / "orc-CHANGELOG.md").read_text()
+        text = (dev_orc_dir / "orc-CHANGELOG.md").read_text()
         assert "prior entry" in text, "existing content should be preserved"
         assert "0002-bar" in text
         assert "def5678" in text
