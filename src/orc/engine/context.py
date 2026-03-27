@@ -13,9 +13,7 @@ import structlog
 import yaml
 
 import orc.config as _cfg
-from orc.ai import invoke as inv
 from orc.coordination.state import BoardStateManager
-from orc.git import Git as _Git
 from orc.messaging import telegram as tg
 from orc.messaging.messages import (
     ChatMessage,
@@ -187,7 +185,9 @@ def build_agent_context(
 
     system_prompt = "\n\n---\n\n".join(system_parts)
     if not system_prompt.strip():
-        system_prompt = "You are an AI agent working on a software project. Follow your instructions carefully."
+        system_prompt = (
+            "You are an AI agent working on a software project. Follow your instructions carefully."
+        )
 
     # User prompt construction
     user_prompt = f"Your `agent ID` is: **`{agent_id}`**."
@@ -339,5 +339,3 @@ def wait_for_human_reply(
             if key not in seen and not _is_agent_message(msg.text):
                 return msg.text
         delay = min(delay * backoff_factor, max_delay)
-
-

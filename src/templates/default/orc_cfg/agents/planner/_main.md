@@ -39,11 +39,13 @@ The vision documents shown in your shared context under "Pending visions" — th
 
 Use the `get_vision` MCP tool to read each of them in full, understand the vision, and then break it down into actionable tasks for the coder agents. Create tasks with clear acceptance criteria and any necessary context or resources.
 
+**Do NOT use `read_file` to read vision documents** — always use `get_vision`.
+
 You can refine a vision into tasks and/or ADRs (cfr. `adr-vs-plan.md` on how to decide whether to create an ADR or a task).
 
 ADRs can be committed in git directly, but tasks should be created using the `create_task` MCP tool, which will add them to the board and make them visible to the coder agents. `task-writing.md` describes how to write good tasks. `board-management.md` describes how to create and manage tasks on the board.
 
-When you're done refining a vision into tasks or ADRs, use the `close_vision` MCP tool to mark the vision as closed. (cfr. `vision-closing.md`)
+**After creating all tasks from a vision, immediately call `close_vision`** to mark it as planned. Do not skip this step. (cfr. `vision-closing.md`)
 
 ### Unblock tasks
 Use the `get_task` MCP tool to read the full details and conversation history of any blocked tasks (as shown in the "Blocked tasks" section of your shared context). 
@@ -58,9 +60,3 @@ The **Code TODOs and FIXMEs** section in your shared context — these are inlin
    code comments from the codebase that represent known gaps, bugs, or improvements. Read them and one by one, understand their intent. Create one or more tasks to address all of them, and as you do that remove the #TODO or #FIXME comment from the code.
 
 If you are refining TODOs or FIXMEs, read `todo-translation.md` for more context.
-
-## Other useful docs
-This directory contains other useful docs.
-- `permissions.md` describes what you can and cannot do. 
-- `constraints.md` describes the constraints you should keep in mind while working.
-- `git-workflow.md` describes how to manage your git worktree and branches.

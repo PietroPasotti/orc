@@ -47,6 +47,21 @@ class StubBoard:
     def set_task_status(self, task_name: str, status: str) -> None:
         pass
 
+    def read_vision(self, name: str) -> str:
+        return ""
+
+    def close_vision(self, name: str, summary: str, task_files: list[str]) -> None:
+        pass
+
+    def read_task_content(self, task_name: str) -> str:
+        return ""
+
+    def create_task(self, title: str, vision: str, body: object) -> tuple[str, None]:
+        return (f"0001-{title}.md", None)
+
+    def add_task_comment(self, task_name: str, author: str, text: str) -> None:
+        pass
+
 
 class StubWorktree:
     def ensure_feature_worktree(self, task_name: str) -> Path:
