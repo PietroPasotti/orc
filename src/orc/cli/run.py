@@ -85,7 +85,7 @@ def _run(
         features_done=_safe_features_done(),
         stuck_tasks=0,
         telegram_ok=bool(os.environ.get("COLONY_TELEGRAM_TOKEN")),
-        backend=os.environ.get("COLONY_AI_CLI", "copilot"),
+        backend="internal",
         current_calls=0,
         max_calls=maxcalls,
         squad_name=squad_cfg.name,

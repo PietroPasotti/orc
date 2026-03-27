@@ -235,7 +235,7 @@ def _load_placeholders() -> frozenset[str]:
 def validate_env() -> list[str]:
     """Check that all required .env variables are present and not placeholders."""
     cfg = get()
-    placeholders = _load_placeholders()
+    _load_placeholders()
     errors: list[str] = []
 
     if not cfg.env_file.exists():
@@ -248,42 +248,36 @@ def validate_env() -> list[str]:
     # Telegram is optional — no validation here; orc works without it.
     # (see src/orc/telegram.py for graceful-degradation behaviour)
 
-    ai_cli = os.environ.get("COLONY_AI_CLI", "").strip().lower()
-    if not ai_cli or ai_cli in placeholders:
-        errors.append("COLONY_AI_CLI is not set. Valid values: copilot, claude.")
-    elif ai_cli not in {"copilot", "claude"}:
-        errors.append(f"COLONY_AI_CLI={ai_cli!r} is not supported. Valid values: copilot, claude.")
+    # Validate LLM API credentials.
+    # The internal backend reads the provider from squad config; for env
+    # validation we check the most common credential sources.
+    gemini_key = os.environ.get("GEMINI_API_TOKEN", "").strip()
+    gh_token = os.environ.get("GH_TOKEN", "").strip()
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
 
-    if ai_cli == "claude":
-        key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        if not key or key in placeholders:
-            errors.append(
-                "ANTHROPIC_API_KEY is not set. "
-                "For claude, set it to your Anthropic API key in .env."
-            )
-    else:
-        gh_token = os.environ.get("GH_TOKEN", "").strip()
-        if not gh_token or gh_token in placeholders:
-            apps_json = Path.home() / ".config" / "github-copilot" / "apps.json"
-            has_apps_token = False
-            if apps_json.exists():
-                try:
-                    data = json.loads(apps_json.read_text())
-                    entry = next(iter(data.values()))
-                    has_apps_token = bool(entry.get("oauth_token", ""))
-                except Exception:
-                    pass
-            if not has_apps_token:
-                try:
-                    result = subprocess.run(
-                        ["gh", "auth", "token"], capture_output=True, text=True, check=True
-                    )
-                    if not result.stdout.strip():
-                        raise ValueError("empty")
-                except Exception:
-                    errors.append(
-                        "No GitHub token found for the copilot backend. "
-                        "Set GH_TOKEN in .env, or run 'copilot /login'."
-                    )
+    has_any_key = bool(gemini_key) or bool(openai_key)
+    if not has_any_key and not gh_token:
+        # Check GH token fallback chain.
+        apps_json = Path.home() / ".config" / "github-copilot" / "apps.json"
+        has_apps_token = False
+        if apps_json.exists():
+            try:
+                data = json.loads(apps_json.read_text())
+                entry = next(iter(data.values()))
+                has_apps_token = bool(entry.get("oauth_token", ""))
+            except Exception:
+                pass
+        if not has_apps_token:
+            try:
+                result = subprocess.run(
+                    ["gh", "auth", "token"], capture_output=True, text=True, check=True
+                )
+                if not result.stdout.strip():
+                    raise ValueError("empty")
+            except Exception:
+                errors.append(
+                    "No LLM API key found. Set one of: "
+                    "GEMINI_API_TOKEN, GH_TOKEN, or OPENAI_API_KEY in .env."
+                )
 
     return errors

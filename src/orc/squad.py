@@ -237,6 +237,7 @@ class SquadConfig:
     timeout_minutes: int
     name: str = ""
     description: str = ""
+    provider: str = "gemini"
     _models: dict[str, str] = field(default_factory=dict, compare=False)
     _permissions: PermissionConfig = field(default_factory=PermissionConfig, compare=False)
     _role_permissions: dict[str, PermissionConfig] = field(default_factory=dict, compare=False)
@@ -349,6 +350,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
     timeout_minutes = int(raw.get("timeout_minutes", _DEFAULT_TIMEOUT_MINUTES))
     name = str(raw.get("name", "") or path.stem)
     description = str(raw.get("description", "") or "").strip()
+    provider = str(raw.get("provider", "gemini")).strip().lower()
 
     if planner != 1:
         raise ValueError(
@@ -376,6 +378,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         timeout_minutes=timeout_minutes,
         name=name,
         description=description,
+        provider=provider,
         _models=models,
         _permissions=squad_permissions,
         _role_permissions=role_permissions,

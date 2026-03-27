@@ -1,13 +1,17 @@
 """Agent process pool for the orc parallel orchestrator.
 
-Manages running agent subprocesses spawned by :mod:`orc.dispatcher`.
+Manages running agent processes spawned by :mod:`orc.dispatcher`.
 
 Each agent is represented by an :class:`AgentProcess` dataclass that
-records the subprocess handle, its log file, the task it is working on,
+records the process handle, its log file, the task it is working on,
 and when it was started (for watchdog purposes).
 
 :class:`AgentPool` is a thin container that provides poll/watchdog/kill
 helpers on top of a ``dict[agent_id → AgentProcess]``.
+
+The :class:`ProcessLike` protocol allows both :class:`subprocess.Popen`
+and :class:`~orc.ai.backends.ThreadProcessAdapter` to be used as process
+handles, supporting both CLI-based and internal agent backends.
 
 Log layout::
 
@@ -21,17 +25,43 @@ and the ``ORC_LOG_DIR`` environment variable.
 
 from __future__ import annotations
 
-import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO
+from typing import IO, Protocol, runtime_checkable
 
 import structlog
 
 from orc.squad import AgentRole
 
 logger = structlog.get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Process protocol — abstracts subprocess.Popen and ThreadProcessAdapter
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class ProcessLike(Protocol):
+    """Minimal interface shared by subprocess.Popen and ThreadProcessAdapter.
+
+    Both provide ``poll()``, ``kill()``, and ``wait()`` with compatible
+    signatures, allowing the pool to track either CLI subprocesses or
+    internal agent threads transparently.
+    """
+
+    def poll(self) -> int | None:
+        """Return the exit code if finished, or ``None`` if still running."""
+        ...
+
+    def kill(self) -> None:
+        """Terminate the process / cancel the agent."""
+        ...
+
+    def wait(self, timeout: float | None = None) -> int:
+        """Block until the process finishes and return the exit code."""
+        ...
 
 
 @dataclass
@@ -50,8 +80,8 @@ class AgentProcess:
     task_name: str | None
     """Name of the board task this agent is working on, or ``None`` for the planner."""
 
-    process: subprocess.Popen[bytes]
-    """The underlying subprocess handle."""
+    process: ProcessLike
+    """The underlying process handle (subprocess.Popen or ThreadProcessAdapter)."""
 
     worktree: Path
     """The git worktree the agent is running in."""
