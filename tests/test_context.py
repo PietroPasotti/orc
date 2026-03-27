@@ -433,6 +433,13 @@ class TestFormatTodos:
         assert "# TODO: do it" in result
 
 
+def test_todo_item_repr():
+    """Verify that TodoItem.__repr__ produces the expected format."""
+    item = TodoItem(file="src/orc/engine.py", line=42, tag="FIXME", text="# FIXME: bug")
+    expected = "TodoItem(FIXME, src/orc/engine.py:42)"
+    assert repr(item) == expected
+
+
 # ---------------------------------------------------------------------------
 # _extract_steps_section
 # ---------------------------------------------------------------------------

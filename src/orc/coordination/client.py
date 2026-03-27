@@ -36,8 +36,8 @@ class BoardSnapshot:
     tasks: list[TaskEntry] = field(default_factory=list)
     """Active task entries from ``GET /board/tasks``."""
 
-    # FIXME: add a __repr__ showing vision and task counts
-    # e.g. "BoardSnapshot(visions=2, tasks=5)"
+    def __repr__(self) -> str:
+        return f"BoardSnapshot(visions={len(self.visions)}, tasks={len(self.tasks)})"
 
 
 def get_board_snapshot() -> BoardSnapshot | None:

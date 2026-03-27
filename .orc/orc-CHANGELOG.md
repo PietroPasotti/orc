@@ -129,3 +129,27 @@
 **Task:** 0053-add-total-tokens-property-to-chatresponse.md
 
 **Merge commit:** 19d13f1
+
+## 0054-add-repr-to-todoitem (merged 2026-03-27T18:21:53Z)
+
+**Branch:** feat/0054-add-repr-to-todoitem
+
+**Task:** 0054-add-repr-to-todoitem.md
+
+**Merge commit:** 97d68db
+
+## 0055-add-repr-to-boardsnapshot (merged 2026-03-27T18:22:25Z)
+
+**Branch:** feat/0055-add-repr-to-boardsnapshot
+
+**Task:** 0055-add-repr-to-boardsnapshot.md
+
+**Merge commit:** b08e43a
+
+## 0056-add-repr-to-chatmessage (merged 2026-03-27T18:34:32Z)
+
+**Branch:** feat/0056-add-repr-to-chatmessage
+
+**Task:** 0056-add-repr-to-chatmessage.md
+
+**Merge commit:** f31dc6e
