@@ -296,6 +296,24 @@ class TestChatResponse:
         resp = ChatResponse(content="hi", tool_calls=[], finish_reason="stop")
         assert resp.has_tool_calls is False
 
+    def test_total_tokens_property_with_usage(self) -> None:
+        resp = ChatResponse(
+            content="hi",
+            tool_calls=[],
+            finish_reason="stop",
+            usage={"total_tokens": 100},
+        )
+        assert resp.total_tokens == 100
+
+    def test_total_tokens_property_without_usage(self) -> None:
+        resp = ChatResponse(
+            content="hi",
+            tool_calls=[],
+            finish_reason="stop",
+            usage={},
+        )
+        assert resp.total_tokens == 0
+
 
 def test_llm_client_repr() -> None:
     """The ``__repr__`` shows the provider and model."""

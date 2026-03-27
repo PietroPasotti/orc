@@ -166,8 +166,9 @@ class ChatResponse:
     def has_tool_calls(self) -> bool:
         return len(self.tool_calls) > 0
 
-    # FIXME: add a `total_tokens` property that returns
-    # usage.get("total_tokens", 0)
+    @property
+    def total_tokens(self) -> int:
+        return self.usage.get("total_tokens", 0)
 
 
 # ---------------------------------------------------------------------------
