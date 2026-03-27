@@ -293,7 +293,12 @@ class TestCreateTask:
 
         assert result == "0004-add-auth.md"
         mock_git.assert_called_once_with(
-            "commit", "--allow-empty", "--no-verify", "-m", mock_git.call_args[0][4]
+            "commit",
+            "--allow-empty",
+            "--no-verify",
+            "-m",
+            mock_git.call_args[0][4],
+            cwd=None,
         )
 
     def test_stages_extra_files(self, monkeypatch):
@@ -309,7 +314,7 @@ class TestCreateTask:
         git_calls = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)),
         ):
             mock_gc.return_value = client_mock
             _tools.create_task(
@@ -363,7 +368,9 @@ class TestCloseTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+            patch(
+                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
+            ),
         ):
             mock_gc.return_value = client_mock
             result = _tools.close_task("0002", "auth module implemented")
@@ -385,7 +392,9 @@ class TestCloseTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+            patch(
+                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
+            ),
         ):
             mock_gc.return_value = client_mock
             _tools.close_task("0002", "custom message here")
@@ -411,7 +420,9 @@ class TestCloseMerge:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+            patch(
+                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
+            ),
         ):
             mock_gc.return_value = client_mock
             result = _tools.close_merge("0002", "Merged into dev")
@@ -478,7 +489,9 @@ class TestReviewTask:
         git_calls: list[tuple[str, ...]] = []
         with (
             patch("orc.mcp.tools.get_client") as mock_gc,
-            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+            patch(
+                "orc.mcp.tools._run_git", side_effect=lambda *a, **kw: git_calls.append(a)
+            ),
         ):
             mock_gc.return_value = client_mock
             _tools.review_task("0002", "done", "looks great")
