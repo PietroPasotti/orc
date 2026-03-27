@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-import typing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -198,40 +197,10 @@ def build_agent_context(
     user_prompt += "\n\n# Additional Context:\n\n"
 
     dev_branch = cfg.work_dev_branch
-    dev_worktree = cfg.dev_worktree
     feature_branch = cfg.feature_branch(task_name) if task_name else None
     feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
 
     match role:
-        case AgentRole.PLANNER:
-            planner_ctx = f"""
-            Dev branch: `{dev_branch}`
-            Dev worktree path: `{dev_worktree}`
-            Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)
-
-            All file edits and git commands must be performed inside the dev
-            worktree (`{dev_worktree}`).
-            """
-            if feature_branch:
-                planner_ctx += f"\nActive feature branch: `{feature_branch}` (coder's branch)"
-            if pending_visions := board.get_pending_visions():
-                items = "\n".join(
-                    f"- `{name}` — call the `get_vision` MCP tool with"
-                    f" `vision_filename={name!r}` to read the full document"
-                    for name in pending_visions
-                )
-                planner_ctx += f"### Pending visions\n\n{items}\n\n"
-            if blocked_tasks := board.get_blocked_tasks():
-                items = "\n".join(
-                    f"- `{name}` — call the `get_task` MCP tool with `task_filename={name!r}`"
-                    " to view full details and conversation"
-                    for name in blocked_tasks
-                )
-                planner_ctx += f"### Blocked tasks\n\n{items}\n\n"
-            todos = _scan_todos(cfg.dev_worktree)
-            planner_ctx += f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
-            user_prompt += planner_ctx
-
         case AgentRole.CODER:
             assert feature_branch is not None
             assert feature_wt is not None
@@ -239,11 +208,11 @@ def build_agent_context(
             user_prompt += f"""
             Your branch: `{feature_branch}` (cut from `{dev_branch}`)
             Your worktree: `{feature_wt}` — all edits and git commands go here
-            Dev branch: `{dev_branch}` (managed by planner and QA — do not touch)
+            Dev branch: `{dev_branch}` (managed by the orchestrator — do not touch)
             Work exclusively in your feature worktree.
             Commit to `{feature_branch}` **EXCLUSIVELY**.
             The orchestrator will merge your branch into
-            `{dev_branch}` after QA passes.
+            `{dev_branch}` after review passes.
 
             ⚠️ **Environment note:** Your worktree does NOT have its own
             virtual environment. Use `just test` or `uv run pytest` — never
@@ -263,48 +232,12 @@ def build_agent_context(
                 except FileNotFoundError:
                     pass
 
-        case AgentRole.QA:
-            assert feature_branch is not None
-            assert feature_wt is not None
-
-            threshold = review_threshold or ReviewThreshold.LOW
-            user_prompt += f"""
-            Task: `{task_name}`
-            Branch to review: `{feature_branch}`
-            Feature worktree: `{feature_wt}`
-            Dev branch: `{dev_branch}`
-            Dev worktree: `{dev_worktree}`
-            Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
-            Review threshold: `{threshold.value}`
-
-            Review `{feature_branch}` against `{dev_branch}`
-            (e.g. `git diff {dev_branch}...{feature_branch}`).
-
-            Run in the dev worktree (`{dev_worktree}`).
-            **Do NOT merge** — the orchestrator merges only if you
-            approve this work by signalling `passed`.
-            """
-
-        case AgentRole.MERGER:
-            assert feature_branch is not None
-            assert task_name is not None
-            # Extract four-digit task code from name like "0046-add-repr.md"
-            task_code = task_name.split("-", 1)[0]
-
-            user_prompt += f"""
-            Task: `{task_name}` (task code: `{task_code}`)
-            Feature branch to merge: `{feature_branch}`
-            Dev branch: `{dev_branch}`
-            Dev worktree: `{dev_worktree}` — all operations go here
-            Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
-
-            Merge `{feature_branch}` into `{dev_branch}` using
-            `git merge --no-ff` in the dev worktree (`{dev_worktree}`).
-            Resolve any conflicts, then call `close_merge(task_code="{task_code}", message="...")`.
-            """
-
         case _:
-            typing.assert_never(role)
+            # Planner, QA, and merger are now orchestrator operations, not
+            # spawned agents.  If build_agent_context is called for these
+            # roles (e.g. by a test with plain=True), the base context
+            # (shared instructions + role file + agent_id) is sufficient.
+            pass
 
     return system_prompt, user_prompt.strip()
 

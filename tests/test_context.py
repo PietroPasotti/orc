@@ -242,17 +242,19 @@ class TestContextCoverage:
         (agents_dir / "coder.md").write_text("---\nsymbol: 🧑‍💻\n---\nYou are a coder.\n")
         assert _ctx._role_symbol("coder") == "🧑‍💻"
 
-    def test_build_agent_context_planner(self, tmp_path, monkeypatch):
+    def test_build_agent_context_planner_returns_base_context(self, tmp_path, monkeypatch):
+        """Planner is now an operation — context returns base only."""
         self._setup_context(monkeypatch, tmp_path)
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
         system, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "You are a planner." in system
         assert "planner-0" in user
+        # No planner-specific context (visions, blocked tasks) — it's an operation now
+        assert "Pending visions" not in user
 
-    def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
-        """QA agent with an active feature branch gets review-specific git info."""
+    def test_build_agent_context_qa_returns_base_context(self, tmp_path, monkeypatch):
+        """QA is now an operation — context returns base only (no review details)."""
         self._setup_context(monkeypatch, tmp_path)
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
@@ -264,58 +266,9 @@ class TestContextCoverage:
             agent_id="qa-0",
             task_name="0001-task.md",
         )
-        assert "You are a QA agent." in system
-        assert "feat/0001-task" in user
-        assert "Branch to review" in user
-
-    def test_build_agent_context_qa_review_threshold_injected(self, tmp_path, monkeypatch):
-        """QA context includes the review threshold when provided."""
-        self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
-        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
-        from orc.coordination.state import BoardStateManager
-        from orc.squad import ReviewThreshold
-
-        _, user = _ctx.build_agent_context(
-            "qa",
-            board=BoardStateManager(_cfg.get().orc_dir),
-            agent_id="qa-0",
-            task_name="0001-task.md",
-            review_threshold=ReviewThreshold.HIGH,
-        )
-        assert "Review threshold: `HIGH`" in user
-
-    def test_build_agent_context_qa_review_threshold_defaults_to_low(self, tmp_path, monkeypatch):
-        """QA context defaults to LOW when no review threshold is provided."""
-        self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
-        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
-        from orc.coordination.state import BoardStateManager
-
-        _, user = _ctx.build_agent_context(
-            "qa",
-            board=BoardStateManager(_cfg.get().orc_dir),
-            agent_id="qa-0",
-            task_name="0001-task.md",
-        )
-        assert "Review threshold: `LOW`" in user
-
-    def test_build_agent_context_qa_review_threshold_critical(self, tmp_path, monkeypatch):
-        """QA context with CRITICAL threshold only fails on critical issues."""
-        self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
-        monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
-        from orc.coordination.state import BoardStateManager
-        from orc.squad import ReviewThreshold
-
-        _, user = _ctx.build_agent_context(
-            "qa",
-            board=BoardStateManager(_cfg.get().orc_dir),
-            agent_id="qa-0",
-            task_name="0001-task.md",
-            review_threshold=ReviewThreshold.CRITICAL,
-        )
-        assert "Review threshold: `CRITICAL`" in user
+        assert "qa-0" in user
+        # No QA-specific review context — it's an operation now
+        assert "Branch to review" not in user
 
     def test_build_agent_context_plain_returns_base_only(self, tmp_path, monkeypatch):
         """plain=True returns only the base context without role-specific sections."""
@@ -323,13 +276,15 @@ class TestContextCoverage:
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
-        system, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0", plain=True)
+        system, user = _ctx.build_agent_context(
+            "planner", board=board, agent_id="planner-0", plain=True
+        )
         assert "You are a planner." in system
         assert "planner-0" in user
         assert "Additional Context" not in user
 
-    def test_build_agent_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
-        """Planner context includes feature branch when task_name is provided."""
+    def test_build_agent_context_planner_is_base_only(self, tmp_path, monkeypatch):
+        """Planner context is base-only — no feature branch injection."""
         self._setup_context(monkeypatch, tmp_path)
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
@@ -341,22 +296,8 @@ class TestContextCoverage:
             agent_id="planner-0",
             task_name="0001-task.md",
         )
-        assert "feat/0001-task" in user
-
-    def test_build_agent_context_planner_with_blocked_tasks(self, tmp_path, monkeypatch):
-        """Planner context includes blocked task section with tool hint."""
-        self._setup_context(
-            monkeypatch,
-            tmp_path,
-            board_content="counter: 1\ntasks:\n  - name: 0001-stuck.md\n    status: blocked\n",
-        )
-        from orc.coordination.state import BoardStateManager
-
-        board = BoardStateManager(_cfg.get().orc_dir)
-        _, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "Blocked tasks" in user
-        assert "0001-stuck.md" in user
-        assert "get_task" in user
+        # Planner is an operation — no agent-specific context injected
+        assert "Blocked tasks" not in user
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +497,8 @@ class TestBuildContextTodos:
         monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
 
-    def test_planner_context_includes_todos_section(self, tmp_path, monkeypatch):
+    def test_planner_context_no_todos_section(self, tmp_path, monkeypatch):
+        """Planner is an operation — no TODO injection in agent context."""
         self._setup(tmp_path, monkeypatch)
         fake_todos = [TodoItem(file="x.py", line=5, tag="TODO", text="# TODO: later")]
         monkeypatch.setattr(_ctx, "_scan_todos", lambda root: fake_todos)
@@ -564,8 +506,7 @@ class TestBuildContextTodos:
 
         board = BoardStateManager(_cfg.get().orc_dir)
         _, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "Code TODOs and FIXMEs" in user
-        assert "`TODO`" in user
+        assert "Code TODOs and FIXMEs" not in user
 
     def test_coder_context_excludes_todos_section(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
@@ -661,6 +602,3 @@ class TestBuildContextTodos:
             task_name="0001-task.md",
         )
         assert "## Steps" not in user
-
-
-
