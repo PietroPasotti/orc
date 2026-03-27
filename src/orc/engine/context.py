@@ -252,7 +252,12 @@ def build_agent_context(
             Work exclusively in your feature worktree. 
             Commit to `{feature_branch}` **EXCLUSIVELY**. 
             The orchestrator will merge your branch into 
-            `{dev_branch}` after QA passes.    
+            `{dev_branch}` after QA passes.
+
+            ⚠️ **Environment note:** Your worktree does NOT have its own
+            virtual environment. Use `just test` or `uv run pytest` — never
+            bare `pytest` or other tool commands, as they may resolve to a
+            different Python installation.
             """
 
             if task_name:
