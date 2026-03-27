@@ -60,7 +60,6 @@ class ChatMessage:
     sender_name: str
     """Display name of the sender (username or first_name)."""
 
-    # FIXME: Add __repr__
     def __repr__(self) -> str:
         """Return a developer-friendly representation of the message."""
         truncated_text = self.text
