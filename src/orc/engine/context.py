@@ -306,7 +306,7 @@ def build_agent_context(
 
             Merge `{feature_branch}` into `{dev_branch}` using
             `git merge --no-ff` in the dev worktree (`{dev_worktree}`).
-            Resolve any conflicts, then call `close_task` with code `done`.
+            Resolve any conflicts, then call `close_merge` with code `done`.
             """
 
         case _:

@@ -388,7 +388,7 @@ class TestDispatcherInternalCoverage:
 
         def _tracking_spawn(ctx, cwd, model, log, **kw):
             # When the merger is spawned, simulate it completing the merge
-            # by clearing the task list (the merger calls close_task/delete_task).
+            # by clearing the task list (the merger calls close_merge/delete_task).
             task_list_ref.clear()
             return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
 

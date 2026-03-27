@@ -285,7 +285,7 @@ def _merger_handler():
     """Return a callable that simulates a merger agent closing a task.
 
     The handler removes the task from the board (same effect as
-    ``close_task``) and exits 0.
+    ``close_merge``) and exits 0.
     """
 
     def handler(context: str, cwd: Path, model: str | None, log_path: Path | None) -> None:

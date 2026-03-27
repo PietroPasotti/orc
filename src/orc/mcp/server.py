@@ -30,7 +30,7 @@ from mcp.server.fastmcp import FastMCP
 import orc.mcp.tools as _tools
 from orc.squad import AgentRole
 
-_VALID_ROLES = frozenset({"planner", "coder", "qa"})
+_VALID_ROLES = frozenset({"planner", "coder", "qa", "merger"})
 
 
 def _get_role() -> AgentRole:
@@ -74,7 +74,7 @@ def _build_server() -> FastMCP:
         case AgentRole.QA:
             mcp.tool()(_tools.review_task)
         case AgentRole.MERGER:
-            mcp.tool()(_tools.close_task)
+            mcp.tool()(_tools.close_merge)
 
     return mcp
 

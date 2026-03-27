@@ -116,6 +116,21 @@ class TestBoardRoutes:
         task = get_task(task_name=name, state=_get_state(req))
         assert task.comments[0].text == "See line 42"
 
+    def test_delete_task(self, tmp_path):
+        from orc.coordination.routes.board import (
+            _get_state,
+            create_task,
+            delete_task,
+            get_tasks,
+        )
+
+        req = self._req(tmp_path)
+        created = create_task(body=_make_create_request("my-task"), state=_get_state(req))
+        name = created.filename
+        delete_task(task_name=name, state=_get_state(req))
+        tasks = get_tasks(state=_get_state(req))
+        assert all(t.name != name for t in tasks)
+
 
 class TestVisionRoutes:
     """Test route handlers from orc.coordination.routes.visions directly."""
