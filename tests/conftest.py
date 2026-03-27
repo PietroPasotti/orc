@@ -152,13 +152,13 @@ class FakeWorkflow:
 class FakeAgent:
     """Mutable fake for AgentService."""
 
-    def __init__(self, tmp_path, *, spawn_fn=None):
+    def __init__(self, tmp_path, *, spawn_fn=None, build_context_fn=None):
         from orc.ai.backends import SpawnResult
 
         def _default_spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
-        self.build_context = lambda role, agent_id, task_name=None: ("model", "ctx")
+        self.build_context = build_context_fn or (lambda role, agent_id, task_name=None: ("model", ("system", "user")))
         self.spawn = spawn_fn or _default_spawn
         self.boot_message_body = lambda agent_id, task_name=None: (
             f"working on something ({agent_id})"
@@ -302,6 +302,7 @@ def make_services(
     get_pending_reviews=None,
     scan_todos=None,
     get_blocked_tasks=None,
+    build_context_fn=None,
 ):
     """Return a SimpleNamespace of fully-wired fake services for Dispatcher tests."""
     import types
@@ -323,7 +324,7 @@ def make_services(
             get_messages=get_messages,
         ),
         workflow=FakeWorkflow(derive_task_state=derive_task_state),
-        agent=FakeAgent(tmp_path, spawn_fn=spawn_fn),
+        agent=FakeAgent(tmp_path, spawn_fn=spawn_fn, build_context_fn=build_context_fn),
     )
 
 

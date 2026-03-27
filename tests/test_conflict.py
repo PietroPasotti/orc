@@ -38,8 +38,8 @@ class TestResolveMergeConflict:
         resolver = _make_resolver()
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=0),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=0),
             patch("orc.git.Git.is_merge_in_progress", return_value=False),
         ):
             # Should NOT raise
@@ -51,8 +51,8 @@ class TestResolveMergeConflict:
         resolver = _make_resolver()
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=1),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=1),
         ):
             with pytest.raises(ConflictResolutionFailed):
                 resolver.resolve_merge_conflict("feat/task", tmp_path, "M src/foo.py")
@@ -64,8 +64,8 @@ class TestResolveMergeConflict:
         aborted = []
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=0),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=0),
             patch("orc.git.Git.is_merge_in_progress", return_value=True),
             patch("orc.git.Git.merge_abort", side_effect=lambda: aborted.append(True)),
         ):
@@ -80,8 +80,8 @@ class TestResolveMergeConflict:
         aborted = []
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=1),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=1),
             patch("orc.git.Git.is_merge_in_progress", return_value=True),
             patch("orc.git.Git.merge_abort", side_effect=lambda: aborted.append(True)),
         ):
@@ -96,8 +96,8 @@ class TestResolveMergeConflict:
         aborted = []
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=1),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=1),
             patch("orc.git.Git.is_merge_in_progress", return_value=False),
             patch("orc.git.Git.merge_abort", side_effect=lambda: aborted.append(True)),
         ):
@@ -121,8 +121,8 @@ class TestResolveRebaseConflict:
         aborted = []
 
         with (
-            patch.object(_ctx, "build_agent_context", return_value="ctx"),
-            patch.object(_ctx, "invoke_agent", return_value=1),
+            patch.object(_ctx, "build_agent_context", return_value=("system", "user")),
+            patch("orc.ai.invoke.invoke", return_value=1),
             patch("orc.git.Git.is_rebase_in_progress", return_value=True),
             patch("orc.git.Git.rebase_abort", side_effect=lambda: aborted.append(True)),
         ):

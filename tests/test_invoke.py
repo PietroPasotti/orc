@@ -20,7 +20,7 @@ class TestInvoke:
         text_resp = ChatResponse(content="done", tool_calls=[], finish_reason="stop", usage={})
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
-            code = iv.invoke("system\n---\nuser", cwd=tmp_path)
+            code = iv.invoke(("system", "user"), cwd=tmp_path)
         assert code == 0
 
 
@@ -37,7 +37,7 @@ class TestInvokeSpawn:
         text_resp = ChatResponse(content="done", tool_calls=[], finish_reason="stop", usage={})
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
-            result = iv.spawn("system\n---\nuser", cwd=tmp_path, model="test")
+            result = iv.spawn(("system", "user"), cwd=tmp_path, model="test")
         assert isinstance(result, SpawnResult)
         assert isinstance(result.process, ThreadProcessAdapter)
         result.process.wait(timeout=5)
@@ -49,7 +49,7 @@ class TestInvokeSpawn:
         text_resp = ChatResponse(content="done", tool_calls=[], finish_reason="stop", usage={})
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
-            result = iv.spawn("system\n---\nuser", cwd=tmp_path, log_path=log_path)
+            result = iv.spawn(("system", "user"), cwd=tmp_path, log_path=log_path)
         result.process.wait(timeout=5)
         assert result.log_fh is not None
         result.log_fh.close()

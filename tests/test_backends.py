@@ -13,7 +13,6 @@ from orc.ai.backends import (
     InternalBackend,
     SpawnResult,
     ThreadProcessAdapter,
-    _split_context,
 )
 from orc.ai.llm import ChatResponse
 from orc.engine.pool import ProcessLike
@@ -117,7 +116,7 @@ class TestInternalBackend:
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
             result = b.spawn(
-                "system prompt\n---\nuser prompt",
+                ("system prompt", "user prompt"),
                 cwd=tmp_path,
                 model="test-model",
                 agent_id="coder-1",
@@ -142,7 +141,7 @@ class TestInternalBackend:
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
             result = b.spawn(
-                "system\n---\nuser",
+                ("system", "user"),
                 cwd=tmp_path,
                 log_path=log_path,
                 agent_id="qa-1",
@@ -163,7 +162,7 @@ class TestInternalBackend:
         text_resp = ChatResponse(content="done", tool_calls=[], finish_reason="stop", usage={})
         with patch("orc.ai.backends.LLMClient") as MockClient:
             MockClient.return_value.chat.return_value = text_resp
-            rc = b.invoke("system\n---\nuser", cwd=tmp_path)
+            rc = b.invoke(("system", "user"), cwd=tmp_path)
         assert rc == 0
 
 
@@ -172,18 +171,4 @@ class TestInternalBackend:
 # ---------------------------------------------------------------------------
 
 
-class TestSplitContext:
-    def test_splits_on_separator(self) -> None:
-        system, user = _split_context("role instructions\n---\ntask description")
-        assert system == "role instructions"
-        assert user == "task description"
 
-    def test_no_separator_uses_default_system(self) -> None:
-        system, user = _split_context("just a plain prompt")
-        assert "AI agent" in system
-        assert user == "just a plain prompt"
-
-    def test_multiple_separators_splits_on_first(self) -> None:
-        system, user = _split_context("part1\n---\npart2\n---\npart3")
-        assert system == "part1"
-        assert user == "part2\n---\npart3"

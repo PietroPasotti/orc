@@ -131,7 +131,7 @@ class InternalBackend:
 
     def invoke(
         self,
-        context: str,
+        context: tuple[str, str],
         cwd: Path | None = None,
         model: str | None = None,
         agent_id: str | None = None,
@@ -158,13 +158,12 @@ class InternalBackend:
         config = RunnerConfig()
         runner = AgentRunner(client, executor, config)
 
-        # Split context into system prompt and user prompt.
-        system_prompt, user_prompt = _split_context(context)
+        system_prompt, user_prompt = context
         return runner.run(system_prompt, user_prompt)
 
     def spawn(
         self,
-        context: str,
+        context: tuple[str, str],
         cwd: Path,
         model: str | None = None,
         log_path: Path | None = None,
@@ -200,7 +199,7 @@ class InternalBackend:
         config = RunnerConfig(log_fh=log_fh, cancel_event=cancel_event)
         runner = AgentRunner(client, executor, config)
 
-        system_prompt, user_prompt = _split_context(context)
+        system_prompt, user_prompt = context
 
         adapter = ThreadProcessAdapter(
             thread=threading.Thread(target=lambda: None),  # placeholder
@@ -232,19 +231,4 @@ class InternalBackend:
 # ---------------------------------------------------------------------------
 
 
-def _split_context(context: str) -> tuple[str, str]:
-    """Split a context prompt into system and user prompts.
 
-    The context builder produces a single text block.  We use the first
-    ``---`` separator as the boundary between the system prompt (role
-    instructions, constraints) and the user prompt (task description).
-    If no separator is found, the entire context becomes the user prompt.
-    """
-    separator = "\n---\n"
-    if separator in context:
-        idx = context.index(separator)
-        return context[:idx], context[idx + len(separator) :]
-    return (
-        "You are an AI agent working on a software project. Follow your instructions carefully.",
-        context,
-    )
