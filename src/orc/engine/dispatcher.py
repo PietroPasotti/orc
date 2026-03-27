@@ -926,6 +926,15 @@ class Dispatcher:
         if before is not None:
             after = self._take_board_snapshot(agent.task_name)
             if before == after:
+                # Planners legitimately find no work (e.g. after a merge
+                # cycle empties the board).  Treat as normal completion.
+                if agent.role == AgentRole.PLANNER:
+                    logger.info(
+                        "planner found no work — not a noop",
+                        agent_id=agent.agent_id,
+                    )
+                    return False
+
                 logger.error(
                     "agent noop detected — board state unchanged",
                     agent_id=agent.agent_id,

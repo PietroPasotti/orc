@@ -20,7 +20,7 @@ _LAST = "└── "
 
 # Paths (relative to .orc/) that --upgrade must never touch.
 _UPGRADE_PRESERVE: frozenset[str] = frozenset(
-    ["orc-CHANGELOG.md", "worktrees", "logs", "work", "vision", "squads"]
+    ["orc-CHANGELOG.md", "worktrees", "logs", "work", "vision"]
 )
 
 
@@ -170,7 +170,6 @@ def _upgrade(*, yes: bool = False) -> None:
             dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # TODO verify that this overwrites existing files and folders and doesn't silently skip them
         shutil.copy2(src, dst)
         updated.append(str(dst))
 
