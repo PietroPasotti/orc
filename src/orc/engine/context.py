@@ -296,9 +296,12 @@ def build_agent_context(
 
         case AgentRole.MERGER:
             assert feature_branch is not None
+            assert task_name is not None
+            # Extract four-digit task code from name like "0046-add-repr.md"
+            task_code = task_name.split("-", 1)[0]
 
             context += f"""
-            Task: `{task_name}`
+            Task: `{task_name}` (task code: `{task_code}`)
             Feature branch to merge: `{feature_branch}`
             Dev branch: `{dev_branch}`
             Dev worktree: `{dev_worktree}` — all operations go here
@@ -306,7 +309,7 @@ def build_agent_context(
 
             Merge `{feature_branch}` into `{dev_branch}` using
             `git merge --no-ff` in the dev worktree (`{dev_worktree}`).
-            Resolve any conflicts, then call `close_merge` with code `done`.
+            Resolve any conflicts, then call `close_merge(task_code="{task_code}", message="...")`.
             """
 
         case _:

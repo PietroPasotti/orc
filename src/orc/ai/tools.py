@@ -87,20 +87,47 @@ class PermissionChecker:
         Shell permissions use patterns like ``shell(git:*)``, meaning
         ``git`` commands with any arguments are allowed.  The command
         must match at least one allow pattern and not match any deny pattern.
+
+        Compound commands (``&&``, ``||``, ``;``) are split and each
+        segment is checked independently — all must be allowed.
         """
+        segments = self._split_compound_command(command)
+        return all(self._check_single_command(seg) for seg in segments)
+
+    def _check_single_command(self, command: str) -> bool:
+        """Check a single (non-compound) command against permission patterns."""
         for deny in self.config.deny_tools:
             if deny.startswith("shell(") and deny.endswith(")"):
-                pattern = deny[6:-1]  # e.g. "git push:*"
+                pattern = deny[6:-1]
                 if self._matches_shell_pattern(command, pattern):
                     return False
 
         for allow in self.config.allow_tools:
             if allow.startswith("shell(") and allow.endswith(")"):
-                pattern = allow[6:-1]  # e.g. "git:*"
+                pattern = allow[6:-1]
                 if self._matches_shell_pattern(command, pattern):
                     return True
 
         return False
+
+    @staticmethod
+    def _split_compound_command(command: str) -> list[str]:
+        """Split a compound shell command on ``&&``, ``||``, ``;``.
+
+        Returns a list of individual command segments, stripped.
+        Ignores operators inside quotes (simple heuristic).
+        """
+        import re  # noqa: PLC0415
+
+        # Split on &&, ||, ; but not inside quotes.
+        segments = re.split(r"\s*(?:&&|\|\||;)\s*", command.strip())
+        # Also strip leading cd commands that are just changing directory.
+        result = []
+        for seg in segments:
+            seg = seg.strip()
+            if seg and not re.match(r"^cd\s+", seg):
+                result.append(seg)
+        return result or [command.strip()]
 
     @staticmethod
     def _matches_shell_pattern(command: str, pattern: str) -> bool:

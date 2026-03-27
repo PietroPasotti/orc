@@ -341,10 +341,24 @@ class FileBoardManager(BoardManager):
 
         The counter increment, file creation, and board write are performed
         atomically under the board lock.  Returns ``(filename, absolute_path)``.
+
+        If a task with the same *title* slug already exists on the board the
+        existing task is returned instead of creating a duplicate.
         """
+        slug = title.lower().strip()
         with self._board_lock():
             raw = self._read_board_raw()
             board = _board_from_dict(raw)
+            # Deduplication: check for existing task with the same title slug.
+            for entry in board.tasks:
+                # Task names look like "0046-add-repr.md"; strip the code prefix.
+                existing_slug = entry.name.rsplit(".", 1)[0]  # "0046-add-repr"
+                existing_slug = (
+                    existing_slug.split("-", 1)[1] if "-" in existing_slug else existing_slug
+                )
+                if existing_slug.lower() == slug:
+                    logger.info("duplicate task skipped", title=title, existing=entry.name)
+                    return entry.name, self._work_dir / entry.name
             task_id = f"{board.counter:04d}"
             task_filename = f"{task_id}-{title}.md"
             task_file = self._work_dir / task_filename

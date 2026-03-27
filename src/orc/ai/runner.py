@@ -86,10 +86,28 @@ class AgentRunner:
 
         self._log(f"=== Agent started (max_iterations={self.config.max_iterations}) ===\n")
 
-        for iteration in range(1, self.config.max_iterations + 1):
+        max_iter = self.config.max_iterations
+        warn_at = int(max_iter * 0.75)
+
+        for iteration in range(1, max_iter + 1):
             if self.config.cancel_event.is_set():
                 self._log(f"\n=== Cancelled at iteration {iteration} ===\n")
                 return 2
+
+            # Budget warning: inject a hint when 75% of iterations are used.
+            if iteration == warn_at:
+                self._log(f"\n⚠ Budget warning: {iteration}/{max_iter} iterations used\n")
+                self._messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"⚠ You have used {iteration} of {max_iter} iterations. "
+                            "Wrap up your current work soon — call close_task, "
+                            "review_task, or close_merge to save progress before "
+                            "the budget runs out."
+                        ),
+                    }
+                )
 
             try:
                 response = self.client.chat(

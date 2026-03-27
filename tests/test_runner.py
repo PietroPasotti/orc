@@ -127,6 +127,18 @@ class TestAgentRunnerBasic:
         assert exit_code == 1  # max iterations reached
         assert client.call_count == 3
 
+    def test_budget_warning_injected(self, executor: ToolExecutor) -> None:
+        """At 75% of max_iterations a budget-warning user message is injected."""
+        # 4 iterations, warning at iter 3 (int(4 * 0.75) == 3).
+        responses = [_tool_response([("c1", "list_directory", '{"path": "."}')]) for _ in range(6)]
+        client = FakeLLMClient(responses)
+        config = RunnerConfig(max_iterations=4)
+        runner = AgentRunner(client, executor, config)
+        runner.run("You are an agent.", "Loop forever.")
+        # The injected warning should appear in the messages list.
+        user_msgs = [m["content"] for m in runner._messages if m["role"] == "user"]
+        assert any("budget" in m.lower() for m in user_msgs), "Budget warning not found"
+
 
 # ---------------------------------------------------------------------------
 # Cancellation

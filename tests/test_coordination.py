@@ -226,15 +226,23 @@ class TestStateManagerVisions:
     def test_get_pending_visions_skips_matched_tasks(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
+        # Task file references the vision via the **Vision:** header line.
+        (orc / "work" / "0042-feature.md").write_text(
+            "# 0042 – feature\n\n**Vision:** 0001-feature.md\n\n## Overview\n\nstuff\n"
+        )
         (orc / "work" / "board.yaml").write_text(
-            "tasks:\n  - name: 0001-feature.md\n    status: planned\n"
+            "tasks:\n  - name: 0042-feature.md\n    status: planned\n"
         )
         assert _state(orc).get_pending_visions() == []
 
     def test_get_pending_visions_skips_stem_matched_tasks(self, tmp_path):
         orc = _orc_dir(tmp_path)
         (orc / "vision" / "ready" / "0001-feature.md").write_text("# Vision")
-        (orc / "work" / "board.yaml").write_text("tasks:\n  - name: 0001-feature.md\n")
+        # Task file references the vision.
+        (orc / "work" / "0042-feature.md").write_text(
+            "# 0042 – feature\n\n**Vision:** 0001-feature.md\n"
+        )
+        (orc / "work" / "board.yaml").write_text("tasks:\n  - name: 0042-feature.md\n")
         assert _state(orc).get_pending_visions() == []
 
     def test_read_vision_found(self, tmp_path):
@@ -778,6 +786,17 @@ class TestFileBoardManagerCreateTask:
         mgr.create_task("my-task", "0001-feat.md", _body)
         board = yaml.safe_load((orc / "work" / "board.yaml").read_text())
         assert board["tasks"][0]["status"] == "planned"
+
+    def test_create_task_deduplication(self, tmp_path):
+        mgr = self._mgr(tmp_path)
+        from orc.coordination.models import TaskBody
+
+        _body = TaskBody(overview="x", in_scope=[], out_of_scope=[], steps=[])
+        f1, _ = mgr.create_task("add-auth", "0001-feat.md", _body)
+        f2, _ = mgr.create_task("add-auth", "0001-feat.md", _body)
+        assert f1 == f2, "Duplicate task should return existing entry"
+        board = yaml.safe_load((mgr.work_dir / "board.yaml").read_text())
+        assert len(board["tasks"]) == 1, "Only one task should exist on the board"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
