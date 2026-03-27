@@ -36,6 +36,9 @@ class BoardSnapshot:
     tasks: list[TaskEntry] = field(default_factory=list)
     """Active task entries from ``GET /board/tasks``."""
 
+    # FIXME: add a __repr__ showing vision and task counts
+    # e.g. "BoardSnapshot(visions=2, tasks=5)"
+
 
 def get_board_snapshot() -> BoardSnapshot | None:
     """Fetch a :class:`BoardSnapshot` from the coordination API.

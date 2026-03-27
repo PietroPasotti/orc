@@ -34,6 +34,9 @@ class TodoItem:
     tag: str
     text: str
 
+    # FIXME: add a __repr__ that shows tag, file, and line
+    # e.g. "TodoItem(FIXME, src/foo.py:42)"
+
 
 # ---- Chat-history windowing -----------------------------------------------
 

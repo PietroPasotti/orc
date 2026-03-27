@@ -60,6 +60,10 @@ class ChatMessage:
     sender_name: str
     """Display name of the sender (username or first_name)."""
 
+    # FIXME: add a __repr__ showing sender and truncated text
+    # e.g. "ChatMessage(alice, 'Fix the bug in...')"
+    # Truncate text to 30 chars with ellipsis if longer.
+
 
 # ---------------------------------------------------------------------------
 # Agent ID helpers

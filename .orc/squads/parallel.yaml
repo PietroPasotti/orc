@@ -1,0 +1,33 @@
+name: parallel
+description: |
+  Parallel squad: 3 coders working simultaneously.
+  Used for testing parallel dispatch and merge throughput.
+
+provider: gemini
+
+permissions:
+  mode: confined
+  allow_tools:
+    - "shell(uv:*)"
+    - "shell(pytest:*)"
+
+composition:
+  - role: planner
+    count: 1
+    model: gemini-2.5-pro
+    permissions:
+      deny_tools:
+        - "write"
+        - "shell(uv:*)"
+        - "shell(pytest:*)"
+  - role: coder
+    count: 3
+    model: gemini-2.5-pro
+  - role: merger
+    count: 3
+    model: gemini-2.5-pro
+  - role: qa
+    count: 3
+    model: gemini-2.5-pro
+
+timeout_minutes: 120
