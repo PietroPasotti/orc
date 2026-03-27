@@ -176,17 +176,30 @@ class BoardStateManager:
 
     @_locked
     def get_pending_visions(self) -> list[str]:
-        """Return vision ``.md`` filenames from ``vision/ready/`` with no matching board task."""
+        """Return vision ``.md`` filenames from ``vision/ready/`` with no matching board task.
+
+        A vision is considered "handled" if any board task file references it
+        in its ``**Vision:** <filename>`` header line.
+        """
         ready_dir = self._mgr.vision_dir / "ready"
         if not ready_dir.is_dir():
             return []
-        board = self._mgr.read_board()
-        all_task_stems = {t.name for t in board.tasks}
+        # Collect vision filenames referenced by existing task files.
+        referenced_visions: set[str] = set()
+        for task_path in self._mgr.list_task_files():
+            try:
+                for line in task_path.read_text().splitlines()[:15]:
+                    if line.startswith("**Vision:**"):
+                        ref = line.split("**Vision:**", 1)[1].strip()
+                        referenced_visions.add(ref)
+                        break
+            except OSError:
+                continue
         result = []
         for f in sorted(ready_dir.glob("*.md")):
             if f.name.lower().startswith(".") or f.name.lower() == "readme.md":
                 continue
-            if not any(stem == f.name or stem.startswith(f.stem) for stem in all_task_stems):
+            if f.name not in referenced_visions:
                 result.append(f.name)
         return result
 

@@ -41,8 +41,8 @@ and resolve any merge conflicts that arise.
 ## Clean up
 
 After a successful merge:
-1. Call `close_merge(task_code="done", message="Merged <feature-branch> into dev.")`.
-
+1. Call `close_merge(task_code="<four-digit code>", message="Merged <feature-branch> into dev.")`.
+   The task code is the four-digit number from the task name (e.g. `"0046"` for task `0046-foo.md`).
 ## Other useful docs
 This directory contains other docs that can be helpful; read them as needed.
 - `permissions.md` describes what you can and cannot do.

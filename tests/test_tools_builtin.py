@@ -77,6 +77,36 @@ class TestPermissionChecker:
         assert checker.is_allowed("read_file", {"path": "test.py"})
         assert not checker.is_allowed("write_file", {"path": "x", "content": "y"})
 
+    def test_compound_command_all_allowed(self) -> None:
+        checker = PermissionChecker(
+            PermissionConfig(
+                mode="confined",
+                allow_tools=("shell(git:*)", "shell(pytest:*)"),
+            )
+        )
+        assert checker.is_allowed("shell", {"command": "git status && pytest tests/"})
+
+    def test_compound_command_one_denied(self) -> None:
+        checker = PermissionChecker(
+            PermissionConfig(mode="confined", allow_tools=("shell(git:*)",))
+        )
+        assert not checker.is_allowed("shell", {"command": "git status && rm -rf ."})
+
+    def test_compound_cd_prefix_stripped(self) -> None:
+        checker = PermissionChecker(
+            PermissionConfig(mode="confined", allow_tools=("shell(pytest:*)",))
+        )
+        assert checker.is_allowed("shell", {"command": "cd /some/path && pytest tests/"})
+
+    def test_compound_semicolon_split(self) -> None:
+        checker = PermissionChecker(
+            PermissionConfig(
+                mode="confined",
+                allow_tools=("shell(git:*)", "shell(echo:*)"),
+            )
+        )
+        assert checker.is_allowed("shell", {"command": "git add .; echo done"})
+
 
 # ---------------------------------------------------------------------------
 # Tool definitions
