@@ -71,7 +71,8 @@ packages = ["src/orc", "src/templates"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=orc --cov-report=term-missing"
+markers = ["integration: marks tests as integration tests (deselect with '-m not integration')"]
+addopts = "-m 'not integration'"
 
 [tool.coverage.run]
 source = ["orc"]

@@ -367,6 +367,7 @@ def scripted_spawn(orc_env, mock_telegram, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 class TestBootstrap:
     """Verify that ``orc bootstrap`` produces the expected directory layout."""
 
@@ -393,6 +394,7 @@ class TestBootstrap:
         assert content == _VISION_DOC
 
 
+@pytest.mark.integration
 class TestFullWorkflowLoop:
     """Verify the complete design → coding → QA → merge → design cycle."""
 
@@ -462,6 +464,7 @@ class TestFullWorkflowLoop:
         )
 
 
+@pytest.mark.integration
 class TestNoWorkExitsCleanly:
     """Verify that ``orc run`` exits 0 with an informational message when there
     is genuinely nothing to do: no vision docs, an empty board, and no open

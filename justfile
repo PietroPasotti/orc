@@ -14,6 +14,10 @@ install:
 test:
     uv run pytest tests/ -v
 
+# Run integration tests only
+test-integration:
+    uv run pytest tests/ -m integration -v
+
 # Lint only (no changes)
 lint:
     uv run ruff check src/ tests/
