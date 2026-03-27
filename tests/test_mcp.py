@@ -292,7 +292,9 @@ class TestCreateTask:
             )
 
         assert result == "0004-add-auth.md"
-        mock_git.assert_called_once_with("commit", "--allow-empty", "-m", mock_git.call_args[0][3])
+        mock_git.assert_called_once_with(
+            "commit", "--allow-empty", "--no-verify", "-m", mock_git.call_args[0][4]
+        )
 
     def test_stages_extra_files(self, monkeypatch):
         monkeypatch.setenv("ORC_API_SOCKET", "/fake.sock")
@@ -369,7 +371,7 @@ class TestCloseTask:
         assert ("add", "-A") in git_calls
         commit_args = [c for c in git_calls if c[0] == "commit"]
         assert commit_args
-        assert "feat(0002):" in commit_args[0][3]
+        assert "feat(0002):" in commit_args[0][4]
         assert "in-review" in result
 
     def test_commit_message_includes_message(self, monkeypatch):
@@ -389,7 +391,7 @@ class TestCloseTask:
             _tools.close_task("0002", "custom message here")
 
         commit_call = next(c for c in git_calls if c[0] == "commit")
-        assert "custom message here" in commit_call[3]
+        assert "custom message here" in commit_call[4]
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +419,7 @@ class TestCloseMerge:
         assert ("add", "-A") in git_calls
         commit_args = [c for c in git_calls if c[0] == "commit"]
         assert commit_args
-        assert "feat(0002):" in commit_args[0][3]
+        assert "feat(0002):" in commit_args[0][4]
         client_mock.delete.assert_called_once_with("/board/tasks/0002-add-auth.md")
         assert "removed from board" in result
 
@@ -482,7 +484,7 @@ class TestReviewTask:
             _tools.review_task("0002", "done", "looks great")
 
         commit_call = next(c for c in git_calls if c[0] == "commit")
-        assert "approved" in commit_call[4]
+        assert "approved" in commit_call[5]
 
 
 # ---------------------------------------------------------------------------
