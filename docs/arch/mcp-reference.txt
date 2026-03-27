@@ -2,16 +2,23 @@
 MCP CONFIGURATION QUICK REFERENCE - ORC Repository
 ═══════════════════════════════════════════════════════════════════════════════
 
+NOTE (2026-03): ORC now uses an internal agentic loop with direct LLM API
+calls via the OpenAI-compatible SDK. Agents no longer spawn a separate MCP
+server subprocess. ORC tools are called in-process by the ToolExecutor
+(src/orc/ai/tools.py). The tool definitions below remain accurate — they
+are now exposed as built-in tools rather than MCP endpoints.
+
 MAIN FILES TO UNDERSTAND:
 ────────────────────────────────────────────────────────────────────────────────
 
-1. CORE MCP IMPLEMENTATION
-   • /orc/src/orc/mcp/server.py
-     → MCP server instantiation, role-based tool registration (FastMCP)
-     → Key functions: _get_role(), _build_server(), run()
-   
+1. TOOL IMPLEMENTATION
+   • /orc/src/orc/ai/tools.py
+     → ToolExecutor: built-in file/shell/ORC tools with permission checking
+     → Replaces the MCP server for agent tool access
+
    • /orc/src/orc/mcp/tools.py
-     → Implementation of 7 MCP tools (get_task, create_task, review_task, etc.)
+     → ORC board tool functions (get_task, create_task, review_task, etc.)
+     → Called in-process by ToolExecutor._orc_tool()
      → Unix socket client for coordination API
    
    • /orc/src/orc/mcp/client.py

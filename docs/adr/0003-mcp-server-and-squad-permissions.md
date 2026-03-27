@@ -1,8 +1,15 @@
 # ADR-0003: MCP Server and Squad Permissions
 
-**Status:** Accepted  
+**Status:** Accepted (partially superseded — see note below)  
 **Date:** 2025  
 **Context:** Replacing `agent_tools` Python scripts with an MCP server; adding per-squad tool permission configuration.
+
+> **Note (2026-03):** The MCP server architecture described here has been
+> partially superseded by the internal agentic loop (direct LLM API calls).
+> Agents no longer spawn a separate MCP server subprocess — ORC tools are
+> called in-process by the `ToolExecutor`. The permission model and squad
+> configuration described here remain accurate and in use. References to
+> "Copilot CLI" and "Claude CLI" backends are historical.
 
 ---
 

@@ -122,18 +122,18 @@ Existing files are **never overwritten** unless `--force` is passed.
 Copy `.env.example` → `.env` and fill in:
 
 ```bash
-COLONY_AI_CLI=copilot          # "copilot" or "claude"
-GH_TOKEN=...                   # for copilot backend (or use `gh auth login`)
-# ANTHROPIC_API_KEY=...        # for claude backend
+GEMINI_API_TOKEN=...           # Gemini API key (default provider)
+# OPENAI_API_KEY=...           # OpenAI API key (optional)
+# GH_TOKEN=...                 # GitHub Models token (optional)
 ```
 
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `COLONY_AI_CLI` | — | **Required.** AI backend: `copilot` or `claude`. |
-| `GH_TOKEN` | — | GitHub token (copilot backend). Can omit if already authed via `gh`. |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (claude backend). |
+| `GEMINI_API_TOKEN` | — | Gemini API key. Required when using the default `gemini` provider. |
+| `OPENAI_API_KEY` | — | OpenAI API key. Required when using the `openai` provider. |
+| `GH_TOKEN` | — | GitHub token. Required when using the `github` provider. |
 | `COLONY_TELEGRAM_TOKEN` | — | Telegram bot token for notifications. |
 | `COLONY_TELEGRAM_CHAT_ID` | — | Telegram chat ID. Required when token is set. |
 | `ORC_DIR` | `.orc/` | Override config directory path. |
