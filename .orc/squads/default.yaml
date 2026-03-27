@@ -26,6 +26,9 @@ composition:
     #   allow_tools:
     #     - "shell(npm:*)"
     #     - "shell(cargo:*)"
+  - role: merger
+    count: 1
+    model: claude-sonnet-4.6
   - role: qa
     count: 1
     model: claude-sonnet-4.6

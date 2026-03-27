@@ -24,6 +24,10 @@ composition:
       allow_tools:
         - "shell(just:*)"  # just test (TDD loop), just fmt (auto-fix ruff), just lint
 
+  - role: merger
+    count: 1
+    model: claude-sonnet-4.6
+
   - role: qa
     count: 1
     model: claude-sonnet-4.6
