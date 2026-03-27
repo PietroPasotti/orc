@@ -124,16 +124,16 @@ class TestDispatcherCoverage:
 
         def _spawn(ctx, cwd, model, log, **_kwargs):
             captured["log_path"] = log
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
-        svcs = make_services(tmp_path, spawn_fn=_spawn)
+        svcs = make_services(tmp_path, spawn_fn=_spawn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
         d = make_dispatcher(minimal_squad(), svcs)
         d._spawn_agent("planner", "planner-1", None)
 
         assert captured["log_path"] == log_dir / "agents" / "planner-1.log"
 
     def test_spawn_agent_dry_run_prints(self, tmp_path, capsys):
-        svcs = make_services(tmp_path)
+        svcs = make_services(tmp_path, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
         d = make_dispatcher(minimal_squad(), svcs, dry_run=True)
         d._spawn_agent("planner", "planner-1", None)
         captured = capsys.readouterr()
@@ -146,6 +146,7 @@ class TestDispatcherCoverage:
             get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_blocked_tasks=lambda: ["0001-foo.md"],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -247,8 +248,8 @@ class TestDispatcherCoverage:
         def spawn_fn(ctx, cwd, model, log, **_kwargs):
             if not spawned[0]:
                 spawned[0] = True
-                return SpawnResult(process=StuckPopen(), log_fh=None, context_tmp="")
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+                return SpawnResult(process=StuckPopen(), log_fh=None)
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
         squad = SquadConfig(
             planner=1,
@@ -260,7 +261,7 @@ class TestDispatcherCoverage:
             description="",
             _models={},
         )
-        svcs = make_services(tmp_path, spawn_fn=spawn_fn)
+        svcs = make_services(tmp_path, spawn_fn=spawn_fn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
         d = make_dispatcher(squad, svcs)
         # The stuck agent is killed by the watchdog (timeout_minutes=0).
         # The second agent (planner, FakePopen) completes without changing
@@ -271,7 +272,7 @@ class TestDispatcherCoverage:
     def test_loop_dry_run_stops_after_one_cycle(self, tmp_path, monkeypatch):
         """Dry-run breaks after first dispatch."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        svcs = make_services(tmp_path)
+        svcs = make_services(tmp_path, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
         d = make_dispatcher(minimal_squad(), svcs, dry_run=True)
         d.run(maxcalls=sys.maxsize)
         assert d._total_spawned == 1
@@ -283,6 +284,7 @@ class TestDispatcherCoverage:
             get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
             get_pending_visions=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
@@ -390,7 +392,7 @@ class TestDispatcherInternalCoverage:
             # When the merger is spawned, simulate it completing the merge
             # by clearing the task list (the merger calls close_merge/delete_task).
             task_list_ref.clear()
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
         task_list_ref = [TaskEntry(name="0001-foo.md", status="done")]
         svcs = make_services(
@@ -399,6 +401,7 @@ class TestDispatcherInternalCoverage:
             get_pending_visions=lambda: [],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
             spawn_fn=_tracking_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=1)
@@ -471,6 +474,7 @@ class TestDispatcherInternalCoverage:
             get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=sys.maxsize)
@@ -563,12 +567,13 @@ class TestDispatchCallbacksOptional:
         started = []
 
         def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [],
             spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         hooks = _disp.DispatchHooks(on_agent_start=lambda agent: started.append(agent.agent_id))
 
@@ -610,9 +615,9 @@ class TestDispatchCallbacksOptional:
         """on_agent_start=None (default) does not crash."""
 
         def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
-        svcs = make_services(tmp_path, spawn_fn=_spawn)
+        svcs = make_services(tmp_path, spawn_fn=_spawn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
 
         d = make_dispatcher(minimal_squad(), svcs)
         assert d.hooks.on_agent_start is None
@@ -702,6 +707,7 @@ class TestDispatcherLoopProperty:
             tmp_path,
             get_tasks=lambda: [],
             get_messages=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         d = make_dispatcher(minimal_squad(), svcs)
         # Planner completes without changing board state (exempt from noop),
@@ -718,7 +724,7 @@ class TestProactivePlanner:
         spawned_roles: list[str] = []
 
         def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
         svcs = make_services(
             tmp_path,
@@ -727,6 +733,7 @@ class TestProactivePlanner:
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
             spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         svcs.board.assign_task = lambda t, a: spawned_roles.append(a.split("-")[0])
 
@@ -747,6 +754,7 @@ class TestProactivePlanner:
             get_tasks=lambda: [TaskEntry(name="0001-foo.md"), TaskEntry(name="0002-bar.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         # 2 open tasks, 2 coders → at capacity, no proactive planner
         squad = minimal_squad(coder=2)
@@ -764,6 +772,7 @@ class TestProactivePlanner:
             get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: [],  # nothing to plan
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         squad = minimal_squad(coder=2)
         d = make_dispatcher(squad, svcs)
@@ -780,6 +789,7 @@ class TestProactivePlanner:
             get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         squad = minimal_squad(coder=2)
         d = make_dispatcher(squad, svcs)
@@ -799,7 +809,7 @@ class TestProactivePlanner:
         """
 
         def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+            return SpawnResult(process=FakePopen(), log_fh=None)
 
         svcs = make_services(
             tmp_path,
@@ -808,6 +818,7 @@ class TestProactivePlanner:
             derive_task_state=lambda t, td=None: ("qa", "coder finished, awaiting QA"),
             scan_todos=lambda: [{"file": "src/x.py", "line": 1, "text": "TODO: fix me"}],
             spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
         # Default squad: 1 coder, 1 QA.
         squad = minimal_squad(coder=1)
@@ -832,6 +843,7 @@ class TestMaxcallsUnlimited:
             get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=sys.maxsize)
@@ -850,6 +862,7 @@ class TestDispatchBudgetExhaustion:
                 TaskEntry(name="0002-bar.md"),
             ],
             derive_task_state=lambda t, td=None: ("coder", "ready"),
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         # Squad allows 2 coders, but budget is capped at 1.
         squad = minimal_squad(coder=2)
@@ -875,6 +888,7 @@ class TestOnlyRoleFiltering:
             get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role="coder")
         setup_work(d)
@@ -889,6 +903,7 @@ class TestOnlyRoleFiltering:
             get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role="planner")
         setup_work(d)
@@ -908,6 +923,7 @@ class TestOnlyRoleFiltering:
             derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role="coder")
         setup_work(d)
@@ -926,6 +942,7 @@ class TestOnlyRoleFiltering:
             derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role="qa")
         setup_work(d)
@@ -944,6 +961,7 @@ class TestOnlyRoleFiltering:
             derive_task_state=lambda t, td=None: states[t],
             get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role=None)
         setup_work(d)
@@ -960,6 +978,7 @@ class TestOnlyRoleFiltering:
             get_tasks=lambda: [],
             get_pending_visions=lambda: ["v1.md"],
             get_pending_reviews=lambda: [],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs, only_role="coder")
         d.run(maxcalls=5)

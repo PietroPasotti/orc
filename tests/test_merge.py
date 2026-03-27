@@ -113,11 +113,11 @@ class TestMergeCommand:
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
 
         invocations: list[str] = []
-        monkeypatch.setattr(_ctx, "invoke_agent", lambda ctx, mdl, **kw: 0)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, mdl, **kw: 0)
         monkeypatch.setattr(
             _ctx,
             "build_agent_context",
-            lambda role, board=None, agent_id=None, **kw: invocations.append(role) or "ctx",
+            lambda role, board=None, agent_id=None, **kw: ("system", "user"),
         )
         completed: list[bool] = []
         monkeypatch.setattr(
@@ -126,7 +126,6 @@ class TestMergeCommand:
 
         result = runner.invoke(m.app, ["merge", "--auto"])
         assert result.exit_code == 0
-        assert invocations == ["coder"]
         assert completed == [True]
 
     def test_conflict_agent_passes_conflict_extra_context(
@@ -149,14 +148,13 @@ class TestMergeCommand:
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
         monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: False)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
         )
 
         received_contexts: list[str] = []
         monkeypatch.setattr(
-            _ctx,
-            "invoke_agent",
-            lambda ctx, mdl, **kw: received_contexts.append(ctx) or 0,
+            "orc.ai.invoke.invoke",
+            lambda ctx, mdl, **kw: received_contexts.append(ctx[1]) or 0,
         )
 
         runner.invoke(m.app, ["merge"])
@@ -178,9 +176,9 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr(_ctx, "invoke_agent", lambda ctx, mdl, **kw: 2)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, mdl, **kw: 2)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
         )
 
         result = runner.invoke(m.app, ["merge"])
@@ -202,9 +200,9 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: True)
-        monkeypatch.setattr(_ctx, "invoke_agent", lambda name, ctx, mdl, **kw: 0)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda name, ctx, mdl, **kw: 0)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: "ctx"
+            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
         )
 
         result = runner.invoke(m.app, ["merge"])

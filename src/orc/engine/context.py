@@ -145,80 +145,71 @@ def build_agent_context(
     task_name: str | None = None,  # this can be None only for planner
     plain: bool = False,  # plain: return only the base context, no agent-specific instructions
     review_threshold: ReviewThreshold | None = None,
-) -> str:
-    """Return the context string for the given agent.
+) -> tuple[str, str]:
+    """Return the system and user prompts for the given agent.
 
     The context is kept intentionally compact: only live runtime data is
-    injected.  Static documentation (README, CONTRIBUTING, ADRs) and full
-    role instructions are *not* inlined — the agent is told where to find its
-    ``_main.md`` and reads everything from disk itself.
+    injected into the user prompt. Static documentation (README, CONTRIBUTING,
+    ADRs) and full role instructions are inlined into the system prompt.
 
     *task_name* is the specific task assigned to this agent (coder/QA only).
     The dispatcher always knows which task it is dispatching; it must pass it
     explicitly rather than letting context.py guess from board state.
     """
-
     cfg = _cfg.get()
+
+    # System prompt construction
+    system_parts: list[str] = []
+
+    # Read shared instructions if they exist.
+    for directory in (cfg.agents_dir, _cfg._PACKAGE_AGENTS_DIR):
+        shared_path = directory / "_shared" / "_main.md"
+        if shared_path.is_file():
+            system_parts.append(shared_path.read_text())
+            break  # Project-level takes precedence
+
+    # Read role-specific instructions.
+    role_found = False
+    for directory in (cfg.agents_dir, _cfg._PACKAGE_AGENTS_DIR):
+        role_dir = directory / role
+        if role_dir.is_dir():
+            role_file = role_dir / "_main.md"
+        else:
+            role_file = directory / f"{role}.md"
+
+        if role_file.is_file():
+            system_parts.append(role_file.read_text())
+            role_found = True
+            break  # Project-level takes precedence
+
+    if not role_found:
+        logger.warning("no instruction file found for role", role=role)
+
+    system_prompt = "\n\n---\n\n".join(system_parts)
+    if not system_prompt.strip():
+        system_prompt = "You are an AI agent working on a software project. Follow your instructions carefully."
+
+    # User prompt construction
+    user_prompt = f"Your `agent ID` is: **`{agent_id}`**."
+
+    if plain:
+        return system_prompt, user_prompt
+
+    user_prompt += "\n\n# Additional Context:\n\n"
+
     dev_branch = cfg.work_dev_branch
     dev_worktree = cfg.dev_worktree
-
-    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, dev_branch)
-    try:
-        agents_rel = cfg.orc_dir.relative_to(cfg.repo_root)
-    except ValueError:
-        agents_rel = Path(cfg.orc_dir.name)
-
-    # Anchor instruction-file paths to the agent's own worktree so the AI
-    # process (which is sandboxed to that worktree) can resolve them without
-    # falling back to the main worktree (which it has no access to).
-    feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
-    if role == AgentRole.PLANNER:
-        agent_wt = dev_worktree
-    elif role == AgentRole.MERGER:
-        agent_wt = dev_worktree
-    elif feature_wt is not None:
-        agent_wt = feature_wt
-    else:  # pragma: no cover
-        raise RuntimeError(f"{role} must always have a feature worktree")
-
-    role_main_prompt_path = agent_wt / agents_rel / "agents" / role / "_main.md"
-    shared_main_prompt_path = agent_wt / agents_rel / "agents" / "_shared" / "_main.md"
-
-    # Check whether the shared instructions file exists (in either the
-    # project-level or package-level agents directory).
-    shared_exists = any(
-        (d / "_shared" / "_main.md").is_file() for d in (cfg.agents_dir, _cfg._PACKAGE_AGENTS_DIR)
-    )
-
-    if shared_exists:
-        context = f"""
-    Your ``agent ID`` is: **`{agent_id}`**.
-    Read these files before doing anything else,
-    consider them an extension of your prompt:
-    1. `{shared_main_prompt_path}` (shared instructions for all agents)
-    2. `{role_main_prompt_path}` (your role-specific instructions)
-    Reading those will clarify what to do with what follows.
-    """
-    else:
-        context = f"""
-    Your ``agent ID`` is: **`{agent_id}`**.
-    Read this file before doing anything else, 
-    consider it an extension of your prompt: `{role_main_prompt_path}`.
-    Reading that will clarify what to do with what follows.
-    """
-    if plain:
-        return context
-    context += "# Additional Context:\n\n"
-
     feature_branch = cfg.feature_branch(task_name) if task_name else None
+    feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
 
     match role:
         case AgentRole.PLANNER:
             planner_ctx = f"""
-            Dev branch: `{dev_branch}`\n
-            Dev worktree path: `{dev_worktree}`\n
-            Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)\n\n
-            All file edits and git commands must be performed inside the dev 
+            Dev branch: `{dev_branch}`
+            Dev worktree path: `{dev_worktree}`
+            Main worktree path: `{cfg.repo_root}` (human's workspace — do not touch)
+
+            All file edits and git commands must be performed inside the dev
             worktree (`{dev_worktree}`).
             """
             if feature_branch:
@@ -239,19 +230,19 @@ def build_agent_context(
                 planner_ctx += f"### Blocked tasks\n\n{items}\n\n"
             todos = _scan_todos(cfg.dev_worktree)
             planner_ctx += f"### Code TODOs and FIXMEs\n\n{_format_todos(todos)}\n\n"
-            context += planner_ctx
+            user_prompt += planner_ctx
 
         case AgentRole.CODER:
             assert feature_branch is not None
             assert feature_wt is not None
 
-            context += f"""
-            Your branch: `{feature_branch}` (cut from `{dev_branch}`)\n
-            Your worktree: `{feature_wt}` — all edits and git commands go here\n
-            Dev branch: `{dev_branch}` (managed by planner and QA — do not touch)\n
-            Work exclusively in your feature worktree. 
-            Commit to `{feature_branch}` **EXCLUSIVELY**. 
-            The orchestrator will merge your branch into 
+            user_prompt += f"""
+            Your branch: `{feature_branch}` (cut from `{dev_branch}`)
+            Your worktree: `{feature_wt}` — all edits and git commands go here
+            Dev branch: `{dev_branch}` (managed by planner and QA — do not touch)
+            Work exclusively in your feature worktree.
+            Commit to `{feature_branch}` **EXCLUSIVELY**.
+            The orchestrator will merge your branch into
             `{dev_branch}` after QA passes.
 
             ⚠️ **Environment note:** Your worktree does NOT have its own
@@ -265,7 +256,7 @@ def build_agent_context(
                     task_md = board.read_task_content(task_name)
                     steps = _extract_steps_section(task_md)
                     if steps:
-                        context += (
+                        user_prompt += (
                             f"\n## Steps\n\n{steps}\n\n"
                             "Mark each step `- [x]` in the task file as you complete it.\n"
                         )
@@ -277,7 +268,7 @@ def build_agent_context(
             assert feature_wt is not None
 
             threshold = review_threshold or ReviewThreshold.LOW
-            context += f"""
+            user_prompt += f"""
             Task: `{task_name}`
             Branch to review: `{feature_branch}`
             Feature worktree: `{feature_wt}`
@@ -285,12 +276,12 @@ def build_agent_context(
             Dev worktree: `{dev_worktree}`
             Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
             Review threshold: `{threshold.value}`
-            
-            Review `{feature_branch}` against `{dev_branch}` 
+
+            Review `{feature_branch}` against `{dev_branch}`
             (e.g. `git diff {dev_branch}...{feature_branch}`).
-            
-            Run in the dev worktree (`{dev_worktree}`). 
-            **Do NOT merge** — the orchestrator merges only if you 
+
+            Run in the dev worktree (`{dev_worktree}`).
+            **Do NOT merge** — the orchestrator merges only if you
             approve this work by signalling `passed`.
             """
 
@@ -300,7 +291,7 @@ def build_agent_context(
             # Extract four-digit task code from name like "0046-add-repr.md"
             task_code = task_name.split("-", 1)[0]
 
-            context += f"""
+            user_prompt += f"""
             Task: `{task_name}` (task code: `{task_code}`)
             Feature branch to merge: `{feature_branch}`
             Dev branch: `{dev_branch}`
@@ -315,7 +306,7 @@ def build_agent_context(
         case _:
             typing.assert_never(role)
 
-    return context
+    return system_prompt, user_prompt.strip()
 
 
 def wait_for_human_reply(
@@ -350,9 +341,3 @@ def wait_for_human_reply(
         delay = min(delay * backoff_factor, max_delay)
 
 
-def invoke_agent(context: str, model: str, worktree: Path | None = None) -> int:  # pragma: no cover
-    """Invoke the configured AI CLI with the agent's full context prompt."""
-    cfg = _cfg.get()
-    _Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)
-    cwd = worktree or cfg.dev_worktree
-    return inv.invoke(context, cwd=cwd, model=model)

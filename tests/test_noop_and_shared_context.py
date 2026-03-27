@@ -332,6 +332,7 @@ class TestSharedContext:
                 repo_root=cfg.repo_root,
                 work_dir=work_dir,
                 board_file=work_dir / "board.yaml",
+                dev_worktree=cfg.repo_root / "dev-wt",
             ),
         )
         monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
@@ -343,26 +344,25 @@ class TestSharedContext:
         orc_dir = self._setup(monkeypatch, with_shared=True)
         board = self._make_board(orc_dir)
 
-        ctx = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
-        assert "_shared/_main.md" in ctx
-        assert "shared instructions for all agents" in ctx.lower()
+        system, _ = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
+        assert "Shared instructions" in system
 
     def test_shared_context_not_injected_when_absent(self, tmp_path, monkeypatch):
         """build_agent_context omits _shared reference when the dir doesn't exist."""
         orc_dir = self._setup(monkeypatch, with_shared=False)
         board = self._make_board(orc_dir)
 
-        ctx = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
-        assert "_shared/_main.md" not in ctx
+        system, _ = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
+        assert "Shared instructions" not in system
 
     def test_shared_path_before_role_path(self, tmp_path, monkeypatch):
         """Shared instructions path appears before role-specific path."""
         orc_dir = self._setup(monkeypatch, with_shared=True)
         board = self._make_board(orc_dir)
 
-        ctx = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
-        shared_pos = ctx.index("_shared/_main.md")
-        role_pos = ctx.index("planner/_main.md")
+        system, _ = _ctx.build_agent_context("planner", board, "planner-1", plain=True)
+        shared_pos = system.index("Shared instructions")
+        role_pos = system.index("# planner")
         assert shared_pos < role_pos, "Shared context should come before role context"
 
     def test_shared_context_works_for_all_roles(self, tmp_path, monkeypatch):
@@ -378,5 +378,5 @@ class TestSharedContext:
 
         for role in ("planner", "coder", "qa"):
             task = "0001-test.md" if role != "planner" else None
-            ctx = _ctx.build_agent_context(role, board, f"{role}-1", task_name=task, plain=True)
-            assert "_shared/_main.md" in ctx, f"Shared context missing for {role}"
+            system, _ = _ctx.build_agent_context(role, board, f"{role}-1", task_name=task, plain=True)
+            assert "Shared instructions" in system, f"Shared context missing for {role}"

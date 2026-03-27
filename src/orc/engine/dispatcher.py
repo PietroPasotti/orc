@@ -838,10 +838,11 @@ class Dispatcher:
         else:
             raise ValueError(f"No worktree: role={role!r} requires task_name")
 
-        model, context = self.agent.build_context(role, agent_id, task_name=task_name)
+        model, context_tuple = self.agent.build_context(role, agent_id, task_name=task_name)
+        system_prompt, user_prompt = context_tuple
 
         if self.dry_run:
-            typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(context)} chars)")
+            typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(system_prompt)} chars system, {len(user_prompt)} chars user)")
             return
 
         # Snapshot board state for noop detection after exit.
@@ -851,7 +852,7 @@ class Dispatcher:
 
         log_path = _cfg.get().log_dir / "agents" / f"{agent_id}.log"
         spawn_result = self.agent.spawn(
-            context, worktree, model, log_path, agent_id=agent_id, role=role
+            context_tuple, worktree, model, log_path, agent_id=agent_id, role=role
         )
 
         agent = AgentProcess(

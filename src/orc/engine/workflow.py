@@ -14,6 +14,7 @@ import typer
 
 import orc.config as _cfg
 import orc.engine.context as _ctx
+from orc.ai import invoke as inv
 from orc.ai.backends import SpawnResult
 from orc.coordination.board import TaskStatus
 from orc.coordination.models import TaskEntry
@@ -112,7 +113,7 @@ class ConflictResolver:
     ) -> None:
         board = BoardStateManager(_cfg.get().orc_dir)
         # task_name is used to get the worktree.
-        context = _ctx.build_agent_context(
+        system_prompt, user_prompt = _ctx.build_agent_context(
             AgentRole.CODER, board, "merger-0", plain=True, task_name="dev"
         )
         match reason:
@@ -122,8 +123,8 @@ class ConflictResolver:
                 template = self._MERGE_RESOLVER_CONTEXT
             case _:  # pragma: no cover
                 typing.assert_never(reason)
-        context += template.format(source_branch=branch, target_branch=target)
-        rc = _ctx.invoke_agent(context, self._coder_model(), worktree=worktree)
+        user_prompt += template.format(source_branch=branch, target_branch=target)
+        rc = inv.invoke((system_prompt, user_prompt), self._coder_model(), worktree=worktree)
 
         git = Git(worktree)
 
@@ -477,7 +478,7 @@ class AgentSvc:
 
     def spawn(
         self,
-        context: str,
+        context: tuple[str, str],
         cwd: Path,
         model: str | None,
         log_path: Path | None,
