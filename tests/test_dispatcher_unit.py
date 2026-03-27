@@ -1082,3 +1082,229 @@ class TestTwoStageShutdown:
             d.run()
         assert exc_info.value.exit_code == 130
         d._kill_all_and_unassign.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Agent retry budget (A) and worktree cleanup (B) tests
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRetryBudget:
+    """Tests for _agent_failures counter and STUCK transition (feature A)."""
+
+    def test_agent_fails_once_increments_counter_and_unassigns(self, tmp_path):
+        """Single failure increments _agent_failures and unassigns task."""
+        unassigned = []
+        svcs = make_services(tmp_path)
+        svcs.board.unassign_task = lambda t: unassigned.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+        agent = make_agent(tmp_path, role="coder")
+        d.pool.add(agent)
+
+        d._handle_completion(agent, 1)
+
+        assert d._agent_failures.get("0001-foo.md") == 1
+        assert "0001-foo.md" in unassigned
+
+    def test_agent_fails_max_retries_marks_stuck(self, tmp_path, monkeypatch):
+        """After _MAX_AGENT_RETRIES failures the task is marked STUCK."""
+        monkeypatch.setattr(_disp, "_MAX_AGENT_RETRIES", 2)
+        status_updates = []
+        svcs = make_services(tmp_path)
+        svcs.board.set_task_status = lambda task, status: status_updates.append((task, status))
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        def _agent():
+            a = make_agent(tmp_path, role="coder")
+            d.pool.add(a)
+            return a
+
+        d._handle_completion(_agent(), 1)
+        assert ("0001-foo.md", "stuck") not in status_updates
+
+        d._handle_completion(_agent(), 1)
+        assert ("0001-foo.md", "stuck") in status_updates
+        # counter cleared after STUCK
+        assert "0001-foo.md" not in d._agent_failures
+
+    def test_agent_success_resets_failure_counter(self, tmp_path):
+        """Successful completion resets _agent_failures for that task."""
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        # Seed a failure count
+        d._agent_failures["0001-foo.md"] = 2
+
+        agent = make_agent(tmp_path, role="coder")
+        d.pool.add(agent)
+        d._handle_completion(agent, 0)
+
+        assert "0001-foo.md" not in d._agent_failures
+
+    def test_agent_no_task_name_no_counter_update(self, tmp_path):
+        """Agent without task_name does not touch _agent_failures."""
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        agent = make_agent(tmp_path, role="planner", task=None)
+        d.pool.add(agent)
+        d._handle_completion(agent, 1)
+
+        assert d._agent_failures == {}
+
+
+class TestWorktreeCleanupOnStuck:
+    """Tests for cleanup_feature_worktree calls on STUCK transitions (feature B)."""
+
+    def test_cleanup_called_when_agent_retry_limit_reached(self, tmp_path, monkeypatch):
+        """cleanup_feature_worktree is called when agent hits retry limit."""
+        monkeypatch.setattr(_disp, "_MAX_AGENT_RETRIES", 1)
+        cleaned = []
+        svcs = make_services(tmp_path)
+        svcs.worktree.cleanup_feature_worktree = lambda t: cleaned.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        agent = make_agent(tmp_path, role="coder")
+        d.pool.add(agent)
+        d._handle_completion(agent, 1)
+
+        assert "0001-foo.md" in cleaned
+
+    def test_cleanup_called_when_merge_retry_limit_reached(self, tmp_path, monkeypatch):
+        """cleanup_feature_worktree is called when merge hits retry limit."""
+        monkeypatch.setattr(_disp, "_MAX_MERGE_RETRIES", 1)
+        cleaned = []
+        svcs = make_services(tmp_path)
+        svcs.workflow.merge_feature = lambda task: (_ for _ in ()).throw(RuntimeError("conflict"))
+        svcs.worktree.cleanup_feature_worktree = lambda t: cleaned.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        d._do_merge("0001-foo.md")
+
+        assert "0001-foo.md" in cleaned
+
+    def test_cleanup_not_called_on_first_merge_failure(self, tmp_path, monkeypatch):
+        """cleanup_feature_worktree is NOT called when merge fails below retry limit."""
+        monkeypatch.setattr(_disp, "_MAX_MERGE_RETRIES", 3)
+        cleaned = []
+        svcs = make_services(tmp_path)
+        svcs.workflow.merge_feature = lambda task: (_ for _ in ()).throw(RuntimeError("conflict"))
+        svcs.worktree.cleanup_feature_worktree = lambda t: cleaned.append(t)
+        d = make_dispatcher(minimal_squad(), svcs)
+
+        d._do_merge("0001-foo.md")
+
+        assert cleaned == []
+
+
+class TestFmtElapsed:
+    """Tests for the _fmt_elapsed helper (feature C)."""
+
+    def test_seconds_only_below_60(self):
+        assert _disp._fmt_elapsed(42.0) == "42s"
+        assert _disp._fmt_elapsed(0.0) == "0s"
+        assert _disp._fmt_elapsed(59.9) == "59s"
+
+    def test_minutes_and_seconds_at_60_or_above(self):
+        assert _disp._fmt_elapsed(60.0) == "1m 0s"
+        assert _disp._fmt_elapsed(222.0) == "3m 42s"
+        assert _disp._fmt_elapsed(3600.0) == "60m 0s"
+
+
+class TestWorktreeManagerCleanup:
+    """Tests for WorktreeManager.cleanup_feature_worktree (feature B)."""
+
+    def test_cleanup_idempotent_when_worktree_missing(self, tmp_path, monkeypatch):
+        """cleanup_feature_worktree does not raise if worktree already gone."""
+        import orc.engine.workflow as _wf
+        from orc.engine.workflow import WorktreeManager
+
+        prune_calls = []
+        branch_delete_calls = []
+
+        class FakeGit:
+            def __init__(self, *a, **kw):
+                pass
+
+            def worktree_remove(self, path, force=True):
+                raise RuntimeError("already gone")
+
+            def worktree_prune(self):
+                prune_calls.append(True)
+
+            def branch_exists(self, name):
+                return False
+
+            def branch_delete(self, name, force=False):
+                branch_delete_calls.append(name)
+
+        monkeypatch.setattr(_wf, "Git", FakeGit)
+        monkeypatch.setattr(
+            _wf._cfg,
+            "get",
+            lambda: _MockCfg(tmp_path),
+        )
+
+        wm = WorktreeManager()
+        wm.cleanup_feature_worktree("0001-foo.md")
+
+        # prune always called; branch_delete not called (branch didn't exist)
+        assert prune_calls
+        assert branch_delete_calls == []
+
+    def test_cleanup_removes_worktree_and_branch_when_present(self, tmp_path, monkeypatch):
+        """cleanup_feature_worktree calls remove + prune + branch_delete when present."""
+        import orc.engine.workflow as _wf
+        from orc.engine.workflow import WorktreeManager
+
+        wt_path = tmp_path / "feature-wt"
+        wt_path.mkdir()
+        removed = []
+        pruned = []
+        deleted = []
+
+        class FakeGit:
+            def __init__(self, *a, **kw):
+                pass
+
+            def worktree_remove(self, path, force=True):
+                removed.append(str(path))
+
+            def worktree_prune(self):
+                pruned.append(True)
+
+            def branch_exists(self, name):
+                return True
+
+            def branch_delete(self, name, force=False):
+                deleted.append(name)
+
+        monkeypatch.setattr(_wf, "Git", FakeGit)
+        monkeypatch.setattr(
+            _wf._cfg,
+            "get",
+            lambda: _MockCfg(tmp_path, wt_override=wt_path),
+        )
+
+        wm = WorktreeManager()
+        wm.cleanup_feature_worktree("0001-foo.md")
+
+        assert removed
+        assert pruned
+        assert deleted
+
+
+class _MockCfg:
+    """Minimal stand-in for OrcConfig used in WorktreeManager tests."""
+
+    def __init__(self, root, *, wt_override=None):
+        self.repo_root = root
+        self._wt_override = wt_override
+
+    def feature_worktree_path(self, task_name):
+        if self._wt_override is not None:
+            return self._wt_override
+        return self.repo_root / "worktrees" / task_name
+
+    def feature_branch(self, task_name):
+        return f"feat/{task_name}"

@@ -114,6 +114,16 @@ _POLL_INTERVAL = 5.0
 # Maximum number of consecutive merge failures before marking a task as stuck.
 _MAX_MERGE_RETRIES = 3
 
+# Maximum number of consecutive agent failures before marking a task as stuck.
+_MAX_AGENT_RETRIES = 3
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string."""
+    if seconds >= 60:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    return f"{int(seconds)}s"
+
 
 # ---------------------------------------------------------------------------
 # Board snapshot for noop detection
@@ -438,6 +448,7 @@ class Dispatcher:
         self._total_spawned = 0
         self._stuck_notified: set[str] = set()  # task names already notified as stuck
         self._merge_failures: dict[str, int] = {}  # consecutive merge failure count per task
+        self._agent_failures: dict[str, int] = {}  # consecutive agent failure count per task
         self._board_snapshots: dict[
             str, BoardSnapshot
         ] = {}  # pre-spawn snapshots for noop detection
@@ -883,12 +894,14 @@ class Dispatcher:
         A *noop* is an agent that exited with code 0 but left the board state
         unchanged — it consumed compute without producing useful work.
         """
+        elapsed = time.monotonic() - agent.started_at
         logger.info(
             "agent exited",
             agent_id=agent.agent_id,
             role=agent.role,
             task=agent.task_name,
             exit_code=rc,
+            elapsed_s=round(elapsed, 1),
         )
         self.pool.remove(agent.agent_id)
         if self.hooks.on_agent_done is not None:
@@ -912,14 +925,37 @@ class Dispatcher:
                 f"\n✗ {agent.agent_id} exited with code {rc}. See {agent.log_path} for details."
             )
             if agent.task_name:
-                self.board.unassign_task(agent.task_name)
+                task_name = agent.task_name
+                count = self._agent_failures.get(task_name, 0) + 1
+                self._agent_failures[task_name] = count
+                if count >= _MAX_AGENT_RETRIES:
+                    logger.error(
+                        "agent retry limit reached — marking task as stuck",
+                        task=task_name,
+                        attempts=count,
+                    )
+                    self._echo(f"⚠ {task_name} failed {count} times — marking as stuck.")
+                    self.worktree.cleanup_feature_worktree(task_name)
+                    self.board.set_task_status(task_name, TaskStatus.STUCK)
+                    self._agent_failures.pop(task_name, None)
+                    self._board_snapshots.pop(agent.agent_id, None)
+                    return False
+                else:
+                    logger.warning(
+                        "agent failed — retrying task",
+                        task=task_name,
+                        attempt=count,
+                        max=_MAX_AGENT_RETRIES,
+                    )
+                    self.board.unassign_task(task_name)
             self._board_snapshots.pop(agent.agent_id, None)
             return False
 
-        self._echo(f"\n✓ {agent.agent_id} completed successfully.")
+        self._echo(f"\n✓ {agent.agent_id} completed in {_fmt_elapsed(elapsed)}.")
 
         if agent.task_name:
             self.board.unassign_task(agent.task_name)
+            self._agent_failures.pop(agent.task_name, None)
 
         # Noop detection: compare board state before and after.
         before = self._board_snapshots.pop(agent.agent_id, None)
@@ -977,6 +1013,7 @@ class Dispatcher:
                 )
                 self._echo(f"⚠ {task_name} failed to merge {count} times — marking as stuck.")
                 self.board.set_task_status(task_name, TaskStatus.STUCK)
+                self.worktree.cleanup_feature_worktree(task_name)
                 self._merge_failures.pop(task_name, None)
 
     # ------------------------------------------------------------------

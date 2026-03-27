@@ -130,6 +130,7 @@ class FakeWorktree:
     def __init__(self, tmp_path):
         self.ensure_dev_worktree = lambda: tmp_path
         self.ensure_feature_worktree = lambda t: tmp_path
+        self.cleanup_feature_worktree = lambda t: None
 
 
 class FakeMessaging:

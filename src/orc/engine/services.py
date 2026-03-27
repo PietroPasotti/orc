@@ -84,6 +84,10 @@ class WorktreeService(Protocol):
         """Ensure the dev worktree exists; return its path."""
         ...
 
+    def cleanup_feature_worktree(self, task_name: str) -> None:
+        """Remove the feature worktree and branch for *task_name* (idempotent)."""
+        ...
+
 
 @runtime_checkable
 class MessagingService(Protocol):

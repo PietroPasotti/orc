@@ -55,6 +55,9 @@ class StubWorktree:
     def ensure_dev_worktree(self) -> Path:
         return Path("/tmp/stub-dev-wt")
 
+    def cleanup_feature_worktree(self, task_name: str) -> None:
+        pass
+
 
 class StubMessaging:
     def get_messages(self) -> list[dict]:

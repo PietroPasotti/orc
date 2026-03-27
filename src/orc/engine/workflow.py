@@ -314,6 +314,21 @@ class WorktreeManager:
         Git(cfg.repo_root).ensure_worktree(cfg.dev_worktree, cfg.work_dev_branch)
         return cfg.dev_worktree
 
+    def cleanup_feature_worktree(self, task_name: str) -> None:
+        """Remove the feature worktree and branch for *task_name* (idempotent)."""
+        cfg = _cfg.get()
+        wt_path = cfg.feature_worktree_path(task_name)
+        branch = cfg.feature_branch(task_name)
+        git = Git(cfg.repo_root)
+        if wt_path.exists():
+            try:
+                git.worktree_remove(wt_path)
+            except Exception:
+                logger.warning("worktree_remove failed (may already be gone)", path=str(wt_path))
+        git.worktree_prune()
+        if git.branch_exists(branch):
+            git.branch_delete(branch, force=True)
+
 
 # ---------------------------------------------------------------------------
 # State derivation
