@@ -49,3 +49,10 @@ The orchestrator monitors board state before and after your run. If you exit
 without changing anything, it will treat the run as a **noop failure** and
 abort. Make sure every run either produces observable output or signals why
 it could not.
+
+## Shell-command hygiene
+
+Prefer short-lived, synchronous shell commands. Avoid long-running
+asynchronous shell sessions — tool session IDs can become invalid between
+turns, leaving you unable to retrieve output. If a command might take more
+than a few seconds, run it synchronously and let the tool handle the wait.

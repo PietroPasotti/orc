@@ -87,6 +87,7 @@ _ORC_DEFAULT_ALLOW_TOOLS: tuple[str, ...] = (
     "read",  # read files
     "write",  # write/edit files
     "shell(git:*)",  # git operations
+    "shell(just:*)",  # justfile targets (agents are instructed to use `just test`)
 )
 
 
