@@ -121,3 +121,11 @@
 **Task:** 0052-implement-llmclient-repr.md
 
 **Merge commit:** 839f534
+
+## 0053-add-total-tokens-property-to-chatresponse (merged 2026-03-27T18:14:45Z)
+
+**Branch:** feat/0053-add-total-tokens-property-to-chatresponse
+
+**Task:** 0053-add-total-tokens-property-to-chatresponse.md
+
+**Merge commit:** 19d13f1
