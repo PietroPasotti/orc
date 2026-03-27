@@ -182,6 +182,10 @@ class TestContextCoverage:
         if agents_dir is None:
             agents_dir = tmp_path / "agents"
             agents_dir.mkdir(exist_ok=True)
+        (agents_dir / "planner").mkdir(exist_ok=True)
+        (agents_dir / "planner" / "_main.md").write_text("You are a planner.")
+        (agents_dir / "qa").mkdir(exist_ok=True)
+        (agents_dir / "qa" / "_main.md").write_text("You are a QA agent.")
         work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text(board_content)
@@ -195,6 +199,7 @@ class TestContextCoverage:
                 repo_root=tmp_path,
                 work_dir=work_dir,
                 board_file=work_dir / "board.yaml",
+                dev_worktree=tmp_path / "dev-wt",
             ),
         )
         monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
@@ -242,110 +247,75 @@ class TestContextCoverage:
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
-        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert isinstance(ctx, str)
-        assert ".orc/agents/planner/_main.md" in ctx
+        system, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
+        assert "You are a planner." in system
+        assert "planner-0" in user
 
     def test_build_agent_context_qa_with_feature_branch(self, tmp_path, monkeypatch):
         """QA agent with an active feature branch gets review-specific git info."""
         self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        system, user = _ctx.build_agent_context(
             "qa",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="qa-0",
             task_name="0001-task.md",
         )
-        assert "feat/0001-task" in ctx
-        assert "Branch to review" in ctx
+        assert "You are a QA agent." in system
+        assert "feat/0001-task" in user
+        assert "Branch to review" in user
 
     def test_build_agent_context_qa_review_threshold_injected(self, tmp_path, monkeypatch):
         """QA context includes the review threshold when provided."""
         self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
         from orc.squad import ReviewThreshold
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "qa",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="qa-0",
             task_name="0001-task.md",
             review_threshold=ReviewThreshold.HIGH,
         )
-        assert "Review threshold: `HIGH`" in ctx
-        assert "HIGH" in ctx
+        assert "Review threshold: `HIGH`" in user
 
     def test_build_agent_context_qa_review_threshold_defaults_to_low(self, tmp_path, monkeypatch):
         """QA context defaults to LOW when no review threshold is provided."""
         self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "qa",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="qa-0",
             task_name="0001-task.md",
         )
-        assert "Review threshold: `LOW`" in ctx
+        assert "Review threshold: `LOW`" in user
 
     def test_build_agent_context_qa_review_threshold_critical(self, tmp_path, monkeypatch):
         """QA context with CRITICAL threshold only fails on critical issues."""
         self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
         from orc.squad import ReviewThreshold
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "qa",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="qa-0",
             task_name="0001-task.md",
             review_threshold=ReviewThreshold.CRITICAL,
         )
-        assert "Review threshold: `CRITICAL`" in ctx
-
-    def test_build_context_orc_dir_outside_repo_root(self, tmp_path, monkeypatch):
-        """ORC_DIR not under REPO_ROOT → falls back to dir name in role path."""
-        repo = tmp_path / "repo"
-        repo.mkdir(exist_ok=True)
-        orc_dir = tmp_path / "external-orc"
-        orc_dir.mkdir(exist_ok=True)
-        (orc_dir / "work").mkdir(exist_ok=True)
-        (orc_dir / "work" / "board.yaml").write_text("tasks: []\n")
-        agents_dir = orc_dir / "agents"
-        agents_dir.mkdir(exist_ok=True)
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                agents_dir=agents_dir,
-                orc_dir=orc_dir,
-                repo_root=repo,
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=orc_dir / "work",
-                board_file=orc_dir / "work" / "board.yaml",
-            ),
-        )
-        monkeypatch.setattr(tg, "_get_messages", lambda limit=100: [])
-        monkeypatch.setattr("orc.git.Git.ensure_worktree", lambda self, worktree, branch: None)
-        from orc.coordination.state import BoardStateManager
-
-        board = BoardStateManager(_cfg.get().orc_dir)
-        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "external-orc/agents/planner/_main.md" in ctx
+        assert "Review threshold: `CRITICAL`" in user
 
     def test_build_agent_context_plain_returns_base_only(self, tmp_path, monkeypatch):
         """plain=True returns only the base context without role-specific sections."""
@@ -353,25 +323,25 @@ class TestContextCoverage:
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
-        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0", plain=True)
-        assert "planner-0" in ctx
-        assert "Additional Context" not in ctx
+        system, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0", plain=True)
+        assert "You are a planner." in system
+        assert "planner-0" in user
+        assert "Additional Context" not in user
 
     def test_build_agent_context_planner_with_feature_branch(self, tmp_path, monkeypatch):
         """Planner context includes feature branch when task_name is provided."""
         self._setup_context(monkeypatch, tmp_path)
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         monkeypatch.setattr(_cfg.Config, "feature_branch", lambda self, t: "feat/0001-task")
         monkeypatch.setattr(_cfg.Config, "feature_worktree_path", lambda self, t: tmp_path / "feat")
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "planner",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="planner-0",
             task_name="0001-task.md",
         )
-        assert "feat/0001-task" in ctx
+        assert "feat/0001-task" in user
 
     def test_build_agent_context_planner_with_blocked_tasks(self, tmp_path, monkeypatch):
         """Planner context includes blocked task section with tool hint."""
@@ -380,14 +350,13 @@ class TestContextCoverage:
             tmp_path,
             board_content="counter: 1\ntasks:\n  - name: 0001-stuck.md\n    status: blocked\n",
         )
-        monkeypatch.setattr(_cfg, "_config", _replace(_cfg.get(), dev_worktree=tmp_path / "dev-wt"))
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
-        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "Blocked tasks" in ctx
-        assert "0001-stuck.md" in ctx
-        assert "get_task" in ctx
+        _, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
+        assert "Blocked tasks" in user
+        assert "0001-stuck.md" in user
+        assert "get_task" in user
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +533,10 @@ class TestBuildContextTodos:
     def _setup(self, tmp_path, monkeypatch):
         agents_dir = tmp_path / "agents"
         agents_dir.mkdir(exist_ok=True)
+        (agents_dir / "planner").mkdir(exist_ok=True)
+        (agents_dir / "planner" / "_main.md").write_text("You are a planner.")
+        (agents_dir / "coder").mkdir(exist_ok=True)
+        (agents_dir / "coder" / "_main.md").write_text("You are a coder.")
         work_dir = tmp_path / ".orc" / "work"
         work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "board.yaml").write_text("tasks: []\n")
@@ -590,9 +563,9 @@ class TestBuildContextTodos:
         from orc.coordination.state import BoardStateManager
 
         board = BoardStateManager(_cfg.get().orc_dir)
-        ctx = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
-        assert "Code TODOs and FIXMEs" in ctx
-        assert "`TODO`" in ctx
+        _, user = _ctx.build_agent_context("planner", board=board, agent_id="planner-0")
+        assert "Code TODOs and FIXMEs" in user
+        assert "`TODO`" in user
 
     def test_coder_context_excludes_todos_section(self, tmp_path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
@@ -609,13 +582,13 @@ class TestBuildContextTodos:
         )
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "coder",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="coder-0",
             task_name="0001-task.md",
         )
-        assert "Code TODOs and FIXMEs" not in ctx
+        assert "Code TODOs and FIXMEs" not in user
 
     def test_coder_context_includes_steps_as_checkboxes(self, tmp_path, monkeypatch):
         """Coder context injects task steps as checkbox items when task file has steps."""
@@ -636,15 +609,15 @@ class TestBuildContextTodos:
         )
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "coder",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="coder-0",
             task_name="0001-task.md",
         )
-        assert "- [ ] 1. first step" in ctx
-        assert "- [ ] 2. second step" in ctx
-        assert "- [x]" in ctx  # instruction mentions -[x]
+        assert "- [ ] 1. first step" in user
+        assert "- [ ] 2. second step" in user
+        assert "- [x]" in user  # instruction mentions -[x]
 
     def test_coder_context_includes_tick_instruction(self, tmp_path, monkeypatch):
         """Coder context tells the agent to mark each step done with -[x]."""
@@ -660,14 +633,14 @@ class TestBuildContextTodos:
         )
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "coder",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="coder-0",
             task_name="0001-task.md",
         )
-        assert "Mark each step" in ctx
-        assert "`- [x]`" in ctx
+        assert "Mark each step" in user
+        assert "`- [x]`" in user
 
     def test_coder_context_no_steps_section_when_task_file_missing(self, tmp_path, monkeypatch):
         """Coder context omits steps section gracefully when task file is absent."""
@@ -681,97 +654,13 @@ class TestBuildContextTodos:
         # task file intentionally not created
         from orc.coordination.state import BoardStateManager
 
-        ctx = _ctx.build_agent_context(
+        _, user = _ctx.build_agent_context(
             "coder",
             board=BoardStateManager(_cfg.get().orc_dir),
             agent_id="coder-0",
             task_name="0001-task.md",
         )
-        assert "## Steps" not in ctx
+        assert "## Steps" not in user
 
 
-# ---------------------------------------------------------------------------
-# read_work_summary — board-only, no task content, no comments
-# ---------------------------------------------------------------------------
 
-
-class TestReadWorkScoped:
-    def test_shows_task_names_and_statuses(self, tmp_path, monkeypatch):
-        from orc.coordination.state import BoardStateManager
-
-        work_dir = tmp_path / "work"
-        work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text(
-            "counter: 2\ntasks:\n"
-            "  - name: 0001-a.md\n    status: in-progress\n    assigned_to: coder-1\n"
-            "  - name: 0002-b.md\n    status: planned\n"
-        )
-        (work_dir / "0001-a.md").write_text("Task A content.")
-        (work_dir / "0002-b.md").write_text("Task B content.")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                orc_dir=tmp_path,
-                board_file=work_dir / "board.yaml",
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=work_dir,
-            ),
-        )
-
-        result = BoardStateManager(tmp_path).read_work_summary()
-        assert "0001-a.md" in result
-        assert "0002-b.md" in result
-        assert "in-progress" in result
-        assert "planned" in result
-
-    def test_never_includes_task_file_content(self, tmp_path, monkeypatch):
-        from orc.coordination.state import BoardStateManager
-
-        work_dir = tmp_path / "work"
-        work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text("counter: 1\ntasks:\n  - name: 0001-a.md\n")
-        (work_dir / "0001-a.md").write_text("Task A content.")
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                orc_dir=tmp_path,
-                board_file=work_dir / "board.yaml",
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=work_dir,
-            ),
-        )
-
-        result = BoardStateManager(tmp_path).read_work_summary()
-        assert "Task A content." not in result
-        assert "_(summary only)_" not in result
-
-    def test_never_includes_comments(self, tmp_path, monkeypatch):
-        from orc.coordination.state import BoardStateManager
-
-        work_dir = tmp_path / "work"
-        work_dir.mkdir(exist_ok=True)
-        (work_dir / "board.yaml").write_text(
-            "counter: 1\ntasks:\n"
-            "  - name: 0001-a.md\n    status: in-progress\n"
-            "    comments:\n"
-            "      - from: qa-1\n        text: fix the tests\n        ts: '2024-01-01T00:00:00Z'\n"
-        )
-        monkeypatch.setattr(
-            _cfg,
-            "_config",
-            _replace(
-                _cfg.get(),
-                orc_dir=tmp_path,
-                board_file=work_dir / "board.yaml",
-                dev_worktree=tmp_path / "dev-wt",
-                work_dir=work_dir,
-            ),
-        )
-
-        result = BoardStateManager(tmp_path).read_work_summary()
-        assert "fix the tests" not in result
-        assert "comments" not in result

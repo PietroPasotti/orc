@@ -28,7 +28,7 @@ class TestBootMessageSentBeforeInvoke:
     ):
         """Orchestrator sends (boot) message before invoking the agent."""
         board_file("counter: 1\ntasks:\n  - name: 0001-foo.md\n")
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: "ctx")
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("system", "user"))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         result = runner.invoke(m.app, ["run", "--maxcalls", "1"])
@@ -58,7 +58,7 @@ class TestBootMessageSentBeforeInvoke:
         def fake_get(limit=100):
             return []
 
-        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: "ctx")
+        monkeypatch.setattr(_ctx, "build_agent_context", lambda *a, **kw: ("system", "user"))
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
         # Override the telegram mocks with our custom tracking
