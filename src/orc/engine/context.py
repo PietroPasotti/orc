@@ -34,8 +34,9 @@ class TodoItem:
     tag: str
     text: str
 
-    # FIXME: add a __repr__ that shows tag, file, and line
-    # e.g. "TodoItem(FIXME, src/foo.py:42)"
+    def __repr__(self) -> str:
+        """Return a compact, informative representation."""
+        return f"TodoItem({self.tag}, {self.file}:{self.line})"
 
 
 # ---- Chat-history windowing -----------------------------------------------
