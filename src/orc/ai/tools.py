@@ -696,7 +696,9 @@ class ToolExecutor:
         """Call an ORC board tool function from :mod:`orc.mcp.tools`.
 
         Sets the required environment variables so the tool functions can
-        communicate with the ORC coordination API.
+        communicate with the ORC coordination API.  Also temporarily changes
+        the process CWD to the agent's worktree so that git operations
+        (e.g. ``close_task``) run in the right repository.
         """
         import orc.mcp.tools as mcp_tools  # noqa: PLC0415
 
@@ -711,13 +713,18 @@ class ToolExecutor:
             old_env[k] = os.environ.get(k)
             os.environ[k] = v
 
+        # Change to the agent's worktree so git commands run there.
+        old_cwd = Path.cwd()
+        os.chdir(self.cwd)
+
         try:
             func = getattr(mcp_tools, name, None)
             if func is None:
                 return f"Error: unknown ORC tool {name!r}"
             return str(func(**args))
         finally:
-            # Restore previous env.
+            # Restore CWD and env.
+            os.chdir(old_cwd)
             for k, v in old_env.items():
                 if v is None:
                     os.environ.pop(k, None)
