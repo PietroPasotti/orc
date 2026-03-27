@@ -34,7 +34,20 @@ After completing each step in the task, mark it done by changing `- [ ]` to
 
 Once all steps are complete and `just test` and `just lint` are green, you can exit with `done` (see exit-states.md).
 
-### 5. Handle blockers honestly
+### 5. Search for related tests when changing behaviour
+
+When you modify the behaviour of existing code:
+
+1. Search for tests that exercise the **old** behaviour (e.g.
+   `grep -rn "function_name" tests/`).
+2. Update or replace those tests so they match the **new** behaviour.
+3. Run the **full** test suite (`just test`), not just your new tests — you
+   may have broken something you didn't expect.
+
+Failing to update existing tests is one of the most common causes of CI
+breakage.
+
+### 6. Handle blockers honestly
 
 If you encounter a genuine blocker (ambiguous spec, missing ADR decision,
 dependency not yet built), stop and report it. Do not guess or invent

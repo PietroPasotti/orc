@@ -8,10 +8,10 @@ description: |
 # always included). Add role-specific overrides under each composition entry.
 permissions:
   mode: confined              # or set it to "yolo" if you like to live dangerously
-  allow_tools:                # grant extra tools to ALL roles, e.g.:
-    - "shell(just:*)"         # allow running justfile targets
-    - "shell(pytest:*)"       # allow running pytest
-    - "shell(uv run:*)"       # allow running uv run
+  allow_tools:                # grant extra tools to ALL roles
+                              # (`just` is already in orc defaults — no need to add it)
+    - "shell(uv:*)"           # python (uv)
+    - "shell(pytest:*)"       # direct pytest
   # deny_tools:               # revoke a default tool from ALL roles, e.g.:
   #   - "shell(git push:*)"   # prevent direct pushes
 
