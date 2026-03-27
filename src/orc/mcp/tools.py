@@ -32,9 +32,11 @@ def _git_author_env() -> dict[str, str]:
     return env
 
 
-def _run_git(*args: str) -> None:
-    """Run a git command in the current working directory, raising on failure."""
-    result = subprocess.run(["git", *args], env=_git_author_env(), capture_output=True, text=True)
+def _run_git(*args: str, cwd: str | Path | None = None) -> None:
+    """Run a git command in the given working directory, raising on failure."""
+    result = subprocess.run(
+        ["git", *args], env=_git_author_env(), capture_output=True, text=True, cwd=cwd
+    )
     if result.returncode != 0:
         raise RuntimeError(
             f"git {' '.join(args)} failed (exit {result.returncode}):\n{result.stderr}"
@@ -167,6 +169,7 @@ def create_task(
     steps: list[str],
     notes: str = "",
     extra_files: list[str] | None = None,
+    cwd: str | Path | None = None,
 ) -> str:
     """Create a new task on the board and commit any extra files.
 
@@ -189,6 +192,8 @@ def create_task(
     extra_files:
         Optional list of file paths to stage and commit alongside the task
         (e.g. ADR documents).
+    cwd:
+        Working directory for git operations.
 
     Returns
     -------
@@ -212,10 +217,10 @@ def create_task(
 
     if extra_files:
         for f in extra_files:
-            _run_git("add", "--", f)
+            _run_git("add", "--", f, cwd=cwd)
 
     commit_msg = f"chore({_agent_id()}): add task {Path(task_filename).stem}"
-    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg)
+    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg, cwd=cwd)
 
     return task_filename
 
@@ -252,7 +257,7 @@ def close_vision(vision_file: str, summary: str, task_files: list[str] | None = 
 # ---------------------------------------------------------------------------
 
 
-def close_task(task_code: str, message: str) -> str:
+def close_task(task_code: str, message: str, cwd: str | Path | None = None) -> str:
     """Signal that implementation is complete for a task.
 
     Stages all changes, commits with a ``feat(<code>)`` message, and sets the
@@ -264,15 +269,17 @@ def close_task(task_code: str, message: str) -> str:
         Four-digit zero-padded task number, e.g. ``"0002"``.
     message:
         Short description of what was implemented.
+    cwd:
+        Working directory for git operations.
 
     Returns
     -------
     str
         Confirmation message.
     """
-    _run_git("add", "-A")
+    _run_git("add", "-A", cwd=cwd)
     commit_msg = f"feat({task_code}): {message}"
-    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg)
+    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg, cwd=cwd)
 
     with get_client() as client:
         task_name = find_task_by_code(client, task_code)
@@ -287,7 +294,7 @@ def close_task(task_code: str, message: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def close_merge(task_code: str, message: str) -> str:
+def close_merge(task_code: str, message: str, cwd: str | Path | None = None) -> str:
     """Signal that a feature branch has been merged into dev.
 
     Stages all changes, commits with a ``feat(<code>)`` message, and
@@ -299,15 +306,17 @@ def close_merge(task_code: str, message: str) -> str:
         Four-digit zero-padded task number, e.g. ``"0002"``.
     message:
         Short description of the merge result.
+    cwd:
+        Working directory for git operations.
 
     Returns
     -------
     str
         Confirmation message.
     """
-    _run_git("add", "-A")
+    _run_git("add", "-A", cwd=cwd)
     commit_msg = f"feat({task_code}): {message}"
-    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg)
+    _run_git("commit", "--allow-empty", "--no-verify", "-m", commit_msg, cwd=cwd)
 
     with get_client() as client:
         task_name = find_task_by_code(client, task_code)
@@ -322,7 +331,7 @@ def close_merge(task_code: str, message: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def review_task(task_code: str, outcome: str, message: str) -> str:
+def review_task(task_code: str, outcome: str, message: str, cwd: str | Path | None = None) -> str:
     """Signal the outcome of a QA review.
 
     Commits any staged changes, updates the board status, and (on rejection)
@@ -336,6 +345,8 @@ def review_task(task_code: str, outcome: str, message: str) -> str:
         ``"done"`` to approve, ``"in-progress"`` to reject and send back to coder.
     message:
         Summary of the review outcome (reason for rejection if applicable).
+    cwd:
+        Working directory for git operations.
 
     Returns
     -------
@@ -349,7 +360,7 @@ def review_task(task_code: str, outcome: str, message: str) -> str:
 
     verdict = "approved" if outcome == "done" else "rejected"
     commit_msg = f"chore(qa/{task_code}): {verdict} — {message}"
-    _run_git("commit", "-a", "--allow-empty", "--no-verify", "-m", commit_msg)
+    _run_git("commit", "-a", "--allow-empty", "--no-verify", "-m", commit_msg, cwd=cwd)
 
     with get_client() as client:
         task_name = find_task_by_code(client, task_code)
