@@ -110,3 +110,17 @@ class TestMessagesToText:
     def test_name_fallbacks(self, msg, expected_name):
         text = messages_to_text([msg])
         assert expected_name in text
+
+
+class TestChatMessage:
+    def test_repr_short(self):
+        msg = ChatMessage(text="hello", date=0, sender_name="alice")
+        assert repr(msg) == "ChatMessage(alice, 'hello')"
+
+    def test_repr_long(self):
+        long_text = "This is a very long message that should be truncated."
+        msg = ChatMessage(text=long_text, date=0, sender_name="bob")
+        expected_repr = (
+            "ChatMessage(sender=bob, text='This is a very long message...')"
+        )
+        assert repr(msg) == expected_repr
