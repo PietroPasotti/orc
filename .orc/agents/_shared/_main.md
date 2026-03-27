@@ -3,7 +3,7 @@ symbol: "🤝"
 ---
 # Shared agent instructions
 
-These instructions apply to **all** agent roles (planner, coder, QA).
+These instructions apply to **all** agent roles.
 Role-specific instructions in your role's `_main.md` may extend or override
 what is written here.
 

@@ -6,7 +6,7 @@ description: |
 
 provider: gemini
 
-# Tool permissions for all agents (orc MCP tools, file access, and git are
+# Tool permissions for all agents (board tools, file access, and git are
 # always included). Add role-specific overrides under each composition entry.
 permissions:
   mode: confined              # or set it to "yolo" if you like to live dangerously
