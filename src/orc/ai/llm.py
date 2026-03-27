@@ -207,8 +207,8 @@ class LLMClient:
             base_url=self._base_url,
         )
 
-    # FIXME: add a __repr__ showing provider and model
-    # e.g. "LLMClient(gemini, gemini-2.5-pro)"
+    def __repr__(self) -> str:
+        return f"LLMClient({self.provider}, {self.model})"
 
     def chat(
         self,

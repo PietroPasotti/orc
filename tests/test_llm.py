@@ -295,3 +295,10 @@ class TestChatResponse:
     def test_has_tool_calls_false(self) -> None:
         resp = ChatResponse(content="hi", tool_calls=[], finish_reason="stop")
         assert resp.has_tool_calls is False
+
+
+def test_llm_client_repr() -> None:
+    """The ``__repr__`` shows the provider and model."""
+    client = LLMClient(provider="test_provider", model="test_model", api_key="test")
+    assert repr(client) == "LLMClient(test_provider, test_model)"
+
