@@ -24,6 +24,11 @@ composition:
   - role: planner
     count: 1
     model: gemini-2.5-pro
+    permissions:
+      deny_tools:
+        - "write"              # planner must NOT edit source code
+        - "shell(uv:*)"
+        - "shell(pytest:*)"
   - role: coder
     count: 1
     model: gemini-2.5-pro
