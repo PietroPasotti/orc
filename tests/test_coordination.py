@@ -814,9 +814,25 @@ class TestConfigApiSocketPath:
         assert cfg.api_socket_path == cfg.orc_dir / "run" / "orc.sock"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BoardSnapshot client tests
-# ─────────────────────────────────────────────────────────────────────────────
+    def test_board_snapshot_repr(self):
+        """repr(BoardSnapshot) shows vision and task counts."""
+        from orc.coordination.client import BoardSnapshot
+
+        # Mock TaskEntry objects for the tasks list
+        class MockTaskEntry:
+            pass
+
+        task1 = MockTaskEntry()
+        task2 = MockTaskEntry()
+
+        snapshot = BoardSnapshot(
+            visions=["vision1.md", "vision2.md", "vision3.md"],
+            tasks=[task1, task2],
+        )
+        expected_repr = "BoardSnapshot(visions=3, tasks=2)"
+        assert repr(snapshot) == expected_repr
+
+
 
 
 class TestGetBoardSnapshot:
