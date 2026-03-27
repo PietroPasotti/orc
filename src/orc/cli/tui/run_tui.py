@@ -94,8 +94,8 @@ class RunState:
     telegram_ok: bool = False
     """Whether the Telegram bot token is configured."""
 
-    backend: str = "copilot"
-    """AI backend identifier (``COLONY_AI_CLI`` env var)."""
+    backend: str = "internal"
+    """AI backend identifier."""
 
     current_calls: int = 0
     """Agent sessions invoked so far."""

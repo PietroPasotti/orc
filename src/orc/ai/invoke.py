@@ -1,29 +1,27 @@
-"""AI CLI invocation layer — thin façade over :mod:`orc.ai.backends`.
+"""AI invocation layer — thin façade over :class:`~orc.ai.backends.InternalBackend`.
 
-Backend selection
------------------
-``COLONY_AI_CLI`` (default: ``copilot``) controls which CLI is used.
-See :mod:`orc.ai.backends` for supported backends and their configuration.
+All agent invocations go through the internal backend, which runs an
+agentic loop in-process using the ``openai`` SDK.  No external CLI
+binaries are required.
+
+Provider and model are configured via squad profiles (``provider`` and
+``model`` fields).  For ad-hoc invocations (conflict resolution), defaults
+to the Gemini provider.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from orc.ai.backends import SpawnResult, get_backend
+from orc.ai.backends import InternalBackend, SpawnResult
 from orc.squad import PermissionConfig
 
 load_dotenv()  # auto-discovers .env from CWD upward
 
-_CLI = os.environ.get("COLONY_AI_CLI", "copilot").strip().lower()
-
-
-def _require_config() -> None:
-    """Raise :class:`OSError` if ``_CLI`` names an unsupported backend."""
-    get_backend(_CLI)
+# Singleton backend instance.
+_backend = InternalBackend()
 
 
 def invoke(
@@ -34,17 +32,11 @@ def invoke(
     role: str | None = None,
     permissions: PermissionConfig | None = None,
 ) -> int:
-    """Invoke the configured AI CLI with *context* as the prompt.
+    """Invoke an agent synchronously with *context* as the prompt.
 
-    *model* is forwarded to the backend where supported (``claude`` only).
-    *agent_id*, *role*, and *permissions* enable MCP config generation and
-    permission-flag injection when set.
-
-    Returns the subprocess exit code.
-    Raises :class:`OSError` if ``COLONY_AI_CLI`` is invalid or a required
-    credential is missing.
+    Returns the agent exit code (0 = success).
     """
-    return get_backend(_CLI).invoke(
+    return _backend.invoke(
         context,
         cwd=cwd,
         model=model,
@@ -63,18 +55,12 @@ def spawn(
     role: str | None = None,
     permissions: PermissionConfig | None = None,
 ) -> SpawnResult:
-    """Spawn the configured AI CLI as a **non-blocking** subprocess.
+    """Spawn an agent as a **non-blocking** background thread.
 
     Returns a :class:`~orc.ai.backends.SpawnResult` with the process handle,
-    optional log file handle, and the temporary prompt file paths for cleanup.
-
-    *agent_id*, *role*, and *permissions* enable MCP config generation and
-    permission-flag injection when set.
-
-    Raises :class:`OSError` if ``COLONY_AI_CLI`` is invalid or a required
-    credential is missing.
+    optional log file handle, and temp file paths for cleanup.
     """
-    return get_backend(_CLI).spawn(
+    return _backend.spawn(
         context,
         cwd=cwd,
         model=model,

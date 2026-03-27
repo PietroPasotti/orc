@@ -62,105 +62,55 @@ class TestConfigCoverage:
         _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok123")
         monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "456")
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
-        monkeypatch.setenv("GH_TOKEN", "ghp_abc")
+        monkeypatch.setenv("GEMINI_API_TOKEN", "test-key")
         errors = _cfg.validate_env()
         assert not errors
 
-    def test_validate_env_missing_vars(self, tmp_path, monkeypatch):
+    def test_validate_env_missing_all_api_keys(self, tmp_path, monkeypatch):
         _setup_env_config(tmp_path, monkeypatch)
         monkeypatch.delenv("COLONY_TELEGRAM_TOKEN", raising=False)
         monkeypatch.delenv("COLONY_TELEGRAM_CHAT_ID", raising=False)
-        monkeypatch.delenv("COLONY_AI_CLI", raising=False)
+        monkeypatch.delenv("GEMINI_API_TOKEN", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GH_TOKEN", raising=False)
-        errors = _cfg.validate_env()
+        with patch("orc.config.subprocess.run", side_effect=FileNotFoundError):
+            with patch("orc.config.Path") as mock_path_cls:
+                real_path = Path
+                mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
+                mock_path_cls.home.return_value = tmp_path / "nohome"
+                errors = _cfg.validate_env()
         assert not any("COLONY_TELEGRAM_TOKEN" in e for e in errors), "Telegram is optional"
-        assert any("COLONY_AI_CLI" in e for e in errors)
+        assert any("LLM API key" in e for e in errors)
 
-    def test_validate_env_unsupported_ai_cli(self, tmp_path, monkeypatch):
+    def test_validate_env_gemini_key_sufficient(self, tmp_path, monkeypatch):
         _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "gpt")
+        monkeypatch.setenv("GEMINI_API_TOKEN", "test-key")
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         errors = _cfg.validate_env()
-        assert any("not supported" in e for e in errors)
+        assert not any("LLM API key" in e for e in errors)
 
-    def test_validate_env_claude_missing_key(self, tmp_path, monkeypatch):
+    def test_validate_env_openai_key_sufficient(self, tmp_path, monkeypatch):
         _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "claude")
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.delenv("GEMINI_API_TOKEN", raising=False)
+        monkeypatch.delenv("GH_TOKEN", raising=False)
         errors = _cfg.validate_env()
-        assert any("ANTHROPIC_API_KEY" in e for e in errors)
+        assert not any("LLM API key" in e for e in errors)
 
-    def test_validate_env_copilot_no_token_no_apps_json_no_gh_cli(self, tmp_path, monkeypatch):
-        """No GH_TOKEN, no apps.json, gh auth token fails → error."""
+    def test_validate_env_gh_token_sufficient(self, tmp_path, monkeypatch):
         _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        fake_home = tmp_path / "home"
-        fake_home.mkdir(exist_ok=True)
-        with patch("orc.config.Path") as mock_path_cls:
-            real_path = Path
-            mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
-            mock_path_cls.home.return_value = fake_home
-            with patch("orc.config.subprocess.run", side_effect=FileNotFoundError):
-                errors = _cfg.validate_env()
-        assert any("GitHub" in e for e in errors)
+        monkeypatch.setenv("GH_TOKEN", "ghp_test")
+        monkeypatch.delenv("GEMINI_API_TOKEN", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        errors = _cfg.validate_env()
+        assert not any("LLM API key" in e for e in errors)
 
-    def test_validate_env_apps_json_malformed_swallows_exception(self, tmp_path, monkeypatch):
-        """Lines 140-141: apps.json empty dict → StopIteration caught silently."""
+    def test_validate_env_no_keys_but_apps_json(self, tmp_path, monkeypatch):
+        """apps.json has a valid oauth_token → no API key error."""
         _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        fake_home = tmp_path / "home"
-        fake_home.mkdir(exist_ok=True)
-        apps_dir = fake_home / ".config" / "github-copilot"
-        apps_dir.mkdir(parents=True, exist_ok=True)
-        (apps_dir / "apps.json").write_text("{}")  # empty dict → next(iter({})) raises
-        with patch("orc.config.Path") as mock_path_cls:
-            real_path = Path
-            mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
-            mock_path_cls.home.return_value = fake_home
-            with patch("orc.config.subprocess.run", side_effect=FileNotFoundError):
-                errors = _cfg.validate_env()
-        assert any("GitHub" in e for e in errors)
-
-    def test_validate_env_empty_gh_auth_token(self, tmp_path, monkeypatch):
-        """Lines 147-148: gh auth token returns empty string → error added."""
-        _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
-        monkeypatch.delenv("GH_TOKEN", raising=False)
-        fake_home = tmp_path / "home2"
-        fake_home.mkdir(exist_ok=True)
-
-        def fake_run(cmd, **kwargs):
-            from unittest.mock import MagicMock
-
-            r = MagicMock()
-            r.stdout = ""
-            r.returncode = 0
-            return r
-
-        with patch("orc.config.Path") as mock_path_cls:
-            real_path = Path
-            mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
-            mock_path_cls.home.return_value = fake_home
-            with patch("orc.config.subprocess.run", fake_run):
-                errors = _cfg.validate_env()
-        assert any("GitHub" in e or "token" in e.lower() for e in errors)
-
-    def test_validate_env_apps_json_with_oauth_token(self, tmp_path, monkeypatch):
-        """Line 134: apps.json has a valid oauth_token → no GitHub error."""
-        _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
+        monkeypatch.delenv("GEMINI_API_TOKEN", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GH_TOKEN", raising=False)
         fake_home = tmp_path / "home3"
         fake_home.mkdir(exist_ok=True)
@@ -172,16 +122,7 @@ class TestConfigCoverage:
             mock_path_cls.side_effect = lambda *a, **kw: real_path(*a, **kw)
             mock_path_cls.home.return_value = fake_home
             errors = _cfg.validate_env()
-        assert not any("GitHub" in e for e in errors)
-
-    def test_validate_env_copilot_gh_token_ok(self, tmp_path, monkeypatch):
-        _setup_env_config(tmp_path, monkeypatch)
-        monkeypatch.setenv("COLONY_TELEGRAM_TOKEN", "tok")
-        monkeypatch.setenv("COLONY_TELEGRAM_CHAT_ID", "123")
-        monkeypatch.setenv("COLONY_AI_CLI", "copilot")
-        monkeypatch.setenv("GH_TOKEN", "ghp_token")
-        errors = _cfg.validate_env()
-        assert not [e for e in errors if "GitHub" in e]
+        assert not any("LLM API key" in e for e in errors)
 
 
 class TestLoadOrcConfig:

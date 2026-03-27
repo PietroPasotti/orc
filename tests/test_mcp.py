@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -507,75 +505,12 @@ class TestRunGit:
 
 
 # ---------------------------------------------------------------------------
-# MCP config generation
+# MCP config generation — no longer applicable
 # ---------------------------------------------------------------------------
-
-
-class TestGenerateMcpConfig:
-    def test_generates_valid_json(self, tmp_path, monkeypatch):
-        from orc.ai.backends import CopilotBackend
-
-        monkeypatch.setenv("GH_TOKEN", "ghp_test")
-        b = CopilotBackend()
-        path = b.generate_mcp_config("coder-1", "coder", "/tmp/orc.sock")
-        try:
-            data = json.loads(Path(path).read_text())
-            assert "mcpServers" in data
-            assert "orc" in data["mcpServers"]
-            server = data["mcpServers"]["orc"]
-            assert server["env"]["ORC_AGENT_ID"] == "coder-1"
-            assert server["env"]["ORC_AGENT_ROLE"] == "coder"
-            assert server["env"]["ORC_API_SOCKET"] == "/tmp/orc.sock"
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_spawn_confined_generates_mcp_config(self, tmp_path, monkeypatch):
-        from unittest.mock import patch
-
-        from orc.ai.backends import CopilotBackend
-        from orc.squad import PermissionConfig
-
-        monkeypatch.setenv("GH_TOKEN", "ghp_test")
-        monkeypatch.setenv("ORC_API_SOCKET", str(tmp_path / "orc.sock"))
-        (tmp_path / "orc.sock").touch()
-
-        fake_proc = MagicMock()
-        perm = PermissionConfig(mode="confined", allow_tools=("orc",))
-
-        with patch("subprocess.Popen", return_value=fake_proc):
-            result = CopilotBackend().spawn(
-                "ctx",
-                tmp_path,
-                agent_id="coder-1",
-                role="coder",
-                permissions=perm,
-            )
-
-        assert result.mcp_config_tmp is not None
-        assert Path(result.mcp_config_tmp).exists()
-        # Cleanup
-        Path(result.mcp_config_tmp).unlink(missing_ok=True)
-        Path(result.context_tmp).unlink(missing_ok=True)
-
-    def test_spawn_yolo_does_not_generate_mcp_config(self, tmp_path, monkeypatch):
-        from unittest.mock import patch
-
-        from orc.ai.backends import CopilotBackend
-        from orc.squad import PermissionConfig
-
-        monkeypatch.setenv("GH_TOKEN", "ghp_test")
-        monkeypatch.setenv("ORC_API_SOCKET", str(tmp_path / "orc.sock"))
-
-        fake_proc = MagicMock()
-        perm = PermissionConfig(mode="yolo")
-
-        with patch("subprocess.Popen", return_value=fake_proc):
-            result = CopilotBackend().spawn(
-                "ctx", tmp_path, agent_id="coder-1", role="coder", permissions=perm
-            )
-
-        assert result.mcp_config_tmp is None
-        Path(result.context_tmp).unlink(missing_ok=True)
+# The internal backend calls tools in-process; MCP config generation was
+# part of the CLI-based backends (CopilotBackend/ClaudeBackend) that have
+# been removed.  The MCP server still exists for external tooling but the
+# internal backend bypasses it.
 
 
 # ---------------------------------------------------------------------------
