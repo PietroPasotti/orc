@@ -110,7 +110,7 @@ class TestDispatcherCoverage:
     def test_spawn_agent_raises_for_non_planner_without_task(self, tmp_path):
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
-        with pytest.raises(ValueError, match="No worktree"):
+        with pytest.raises(ValueError, match="No task_name"):
             d._spawn_agent("coder", "coder-1", None)
 
     def test_spawn_agent_log_path_is_under_log_dir_agents(self, tmp_path, monkeypatch):
@@ -126,34 +126,38 @@ class TestDispatcherCoverage:
             captured["log_path"] = log
             return SpawnResult(process=FakePopen(), log_fh=None)
 
-        svcs = make_services(tmp_path, spawn_fn=_spawn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
+        svcs = make_services(
+            tmp_path,
+            spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
+        )
         d = make_dispatcher(minimal_squad(), svcs)
-        d._spawn_agent("planner", "planner-1", None)
+        d._spawn_agent("coder", "coder-1", "0001-foo.md")
 
-        assert captured["log_path"] == log_dir / "agents" / "planner-1.log"
+        assert captured["log_path"] == log_dir / "agents" / "coder-1.log"
 
     def test_spawn_agent_dry_run_prints(self, tmp_path, capsys):
-        svcs = make_services(tmp_path, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
+        svcs = make_services(
+            tmp_path, build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+        )
         d = make_dispatcher(minimal_squad(), svcs, dry_run=True)
-        d._spawn_agent("planner", "planner-1", None)
+        d._spawn_agent("coder", "coder-1", "0001-foo.md")
         captured = capsys.readouterr()
         assert "Would spawn" in captured.out
 
-    def test_dispatch_blocked_task_spawns_planner(self, tmp_path):
-        """Blocked task → planner dispatched to resolve it."""
+    def test_dispatch_blocked_task_does_not_spawn(self, tmp_path):
+        """Blocked task → no agent dispatched (planner is now an operation)."""
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [],
             get_pending_visions=lambda: [],
             get_blocked_tasks=lambda: ["0001-foo.md"],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
         count = d._dispatch(call_budget=100)
-        assert count >= 1
-        pool_roles = [a.role for a in d.pool.all_agents()]
-        assert "planner" in pool_roles
+        assert count == 0  # no agents spawned — planning is an operation
 
     def test_dispatch_skips_assigned_task(self, tmp_path):
         """Task already assigned → skipped."""
@@ -261,7 +265,11 @@ class TestDispatcherCoverage:
             description="",
             _models={},
         )
-        svcs = make_services(tmp_path, spawn_fn=spawn_fn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
+        svcs = make_services(
+            tmp_path,
+            spawn_fn=spawn_fn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
+        )
         d = make_dispatcher(squad, svcs)
         # The stuck agent is killed by the watchdog (timeout_minutes=0).
         # The second agent (planner, FakePopen) completes without changing
@@ -272,28 +280,28 @@ class TestDispatcherCoverage:
     def test_loop_dry_run_stops_after_one_cycle(self, tmp_path, monkeypatch):
         """Dry-run breaks after first dispatch."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        svcs = make_services(tmp_path, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
+        svcs = make_services(
+            tmp_path,
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="planned")],
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
+        )
         d = make_dispatcher(minimal_squad(), svcs, dry_run=True)
         d.run(maxcalls=sys.maxsize)
         assert d._total_spawned == 1
 
-    def test_dispatch_spawns_merger_for_qa_passed_task(self, tmp_path):
-        """QA_PASSED token → merger agent dispatched."""
+    def test_dispatch_skips_qa_passed_task(self, tmp_path):
+        """QA_PASSED task is handled by merge operation, not spawned as an agent."""
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
             get_pending_visions=lambda: [],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
         count = d._dispatch(call_budget=100)
-        assert count == 1  # merger agent spawned
-        agents = d.pool.all_agents()
-        assert len(agents) == 1
-        assert agents[0].role == "merger"
-        assert agents[0].task_name == "0001-foo.md"
+        assert count == 0  # no agents spawned — merging is an operation
 
     def test_handle_completion_failed_agent_unassigns(self, tmp_path, monkeypatch):
         """Non-zero exit → task unassigned."""
@@ -384,28 +392,26 @@ class TestDispatcherInternalCoverage:
         d._drain_merge_queue()
         assert merged == []
 
-    def test_merger_dispatched_for_done_tasks_in_loop(self, tmp_path, monkeypatch):
-        """Done tasks trigger merger dispatch in the loop."""
+    def test_merger_runs_for_done_tasks_in_loop(self, tmp_path, monkeypatch):
+        """Done tasks trigger merge operation in the loop."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
 
-        def _tracking_spawn(ctx, cwd, model, log, **kw):
-            # When the merger is spawned, simulate it completing the merge
-            # by clearing the task list (the merger calls close_merge/delete_task).
-            task_list_ref.clear()
-            return SpawnResult(process=FakePopen(), log_fh=None)
-
+        merged = []
         task_list_ref = [TaskEntry(name="0001-foo.md", status="done")]
+
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: list(task_list_ref),
             get_pending_visions=lambda: [],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
-            spawn_fn=_tracking_spawn,
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
+        svcs.workflow.merge_feature = lambda t: (merged.append(t), task_list_ref.clear())
+        svcs.board.delete_task = lambda t: None
+
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=1)
-        assert d._id_counters.get("merger", 0) == 1
+        assert merged == ["0001-foo.md"]
 
     def test_do_merge_marks_stuck_after_max_retries(self, tmp_path, monkeypatch):
         """_do_merge marks a task as stuck after _MAX_MERGE_RETRIES failures."""
@@ -495,35 +501,21 @@ class TestDispatcherInternalCoverage:
         coder_names = [t.name for t in coder_bound]
         assert coder_names == ["b.md"]  # done tasks are NOT coder-bound
 
-    def test_done_tasks_do_not_block_planner(self, tmp_path, monkeypatch):
-        """Done tasks should not prevent the planner from being spawned."""
+    def test_done_tasks_do_not_generate_coder_spawns(self, tmp_path, monkeypatch):
+        """Done tasks (QA-approved) do not generate coder spawn intents."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         tasks = [TaskEntry(name="0001-foo.md", status="done")]
 
-        def _spawn(ctx, cwd, model, log, **kw):
-            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
-
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: list(tasks),
-            get_pending_visions=lambda: ["new-feature.md"],
-            spawn_fn=_spawn,
-        )
-        svcs.workflow.merge_feature = lambda t: None
-        svcs.board.delete_task = lambda t: tasks.clear()
-
         plan = _disp.plan_dispatch(
-            assignable=[],
+            assignable=tasks,
             coder_bound=[],
-            has_planner_work=True,
             only_role=None,
-            coder_capacity=1,
-            planner_running=False,
-            role_counts={"coder": 0, "qa": 0, "merger": 0},
-            role_limits={"coder": 1, "qa": 1, "merger": 1},
-            derive_task_state=svcs.workflow.derive_task_state,
+            role_counts={"coder": 0},
+            role_limits={"coder": 1},
+            derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
         )
-        assert any(s.role == "planner" for s in plan.spawns), "planner should be spawned"
+        # QA_PASSED tasks are handled by merge operation, not agent spawn
+        assert len(plan.spawns) == 0
 
     def test_drain_merge_queue_handles_orphaned_branches(self, tmp_path, monkeypatch):
         """_drain_merge_queue merges orphaned feature branches with no board entry."""
@@ -571,15 +563,15 @@ class TestDispatchCallbacksOptional:
 
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [],
+            get_tasks=lambda: [TaskEntry(name="0001-code.md")],
             spawn_fn=_spawn,
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         hooks = _disp.DispatchHooks(on_agent_start=lambda agent: started.append(agent.agent_id))
 
         d = make_dispatcher(minimal_squad(), svcs, hooks=hooks)
-        d._spawn_agent("planner", "planner-1", None)
-        assert started == ["planner-1"]
+        d._spawn_agent("coder", "coder-1", "0001-code.md")
+        assert started == ["coder-1"]
 
     def test_on_agent_done_called_after_completion(self, tmp_path):
         """on_agent_done receives the completed agent and its exit code."""
@@ -617,11 +609,15 @@ class TestDispatchCallbacksOptional:
         def _spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None)
 
-        svcs = make_services(tmp_path, spawn_fn=_spawn, build_context_fn=lambda *a, **kw: ("model", ("system", "user")))
+        svcs = make_services(
+            tmp_path,
+            spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
+        )
 
         d = make_dispatcher(minimal_squad(), svcs)
         assert d.hooks.on_agent_start is None
-        d._spawn_agent("planner", "planner-1", None)  # must not raise
+        d._spawn_agent("coder", "coder-1", "0001-task.md")  # must not raise
 
     def test_on_agent_done_none_is_safe(self, tmp_path):
         """on_agent_done=None (default) does not crash."""
@@ -703,133 +699,96 @@ class TestDispatcherLoopProperty:
 
         monkeypatch.setattr(_d, "_POLL_INTERVAL", 0)
 
+        # After spawn, task changes status → not a noop.
+        spawned = []
+
+        def _spawn(ctx, cwd, model, log, **_kwargs):
+            spawned.append(1)
+            return SpawnResult(process=FakePopen(), log_fh=None)
+
+        def _tasks():
+            if spawned:
+                return [TaskEntry(name="0001-code.md", status="in-review")]
+            return [TaskEntry(name="0001-code.md")]
+
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [],
+            get_tasks=_tasks,
+            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_messages=lambda: [],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            spawn_fn=_spawn,
+            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
         d = make_dispatcher(minimal_squad(), svcs)
-        # Planner completes without changing board state (exempt from noop),
-        # but _total_spawned should already be incremented.
         d.run(maxcalls=1)
         assert d._total_spawned >= 1
 
 
-class TestProactivePlanner:
-    """Dispatcher spawns a planner proactively when open_tasks < coder count."""
+class TestPlanOperation:
+    """Plan operation replaces the planner agent."""
 
-    def test_spawns_planner_when_tasks_below_coder_capacity(self, tmp_path):
-        """Planner spawned when open_tasks < coder count and visions pending."""
-        spawned_roles: list[str] = []
+    def test_plan_operation_creates_tasks(self, tmp_path, monkeypatch):
+        """_run_plan_operations creates tasks from vision documents."""
+        from orc.engine.operations.plan import PlanResult, TaskSpec
 
-        def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None)
+        created: list[str] = []
+
+        def _fake_plan(name, content, *, llm=None, existing_tasks=None):
+            return PlanResult(
+                tasks=[TaskSpec(title="new-task", overview="do stuff", steps=["step 1"])],
+                vision_summary="summary",
+            )
+
+        monkeypatch.setattr("orc.engine.dispatcher.plan_vision", _fake_plan)
 
         svcs = make_services(
             tmp_path,
-            # 1 open task, squad has 2 coders → pipeline has room → spawn planner
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
-            derive_task_state=lambda t, td=None: ("coder", "ready"),
             get_pending_visions=lambda: ["vision-001.md"],
-            spawn_fn=_spawn,
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
         )
-        svcs.board.assign_task = lambda t, a: spawned_roles.append(a.split("-")[0])
-
-        # Squad with 2 coders so that 1 open task < 2 triggers the proactive path.
-        squad = minimal_squad(coder=2)
-        d = make_dispatcher(squad, svcs)
-        setup_work(d)
-        d._dispatch(call_budget=100)
-
-        # Should have spawned 1 coder + 1 planner
-        pool_roles = [a.role for a in d.pool.all_agents()]
-        assert "planner" in pool_roles, f"expected planner in pool, got {pool_roles}"
-
-    def test_no_proactive_planner_when_tasks_meet_coder_capacity(self, tmp_path):
-        """No proactive planner when open_tasks >= coder count."""
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md"), TaskEntry(name="0002-bar.md")],
-            derive_task_state=lambda t, td=None: ("coder", "ready"),
-            get_pending_visions=lambda: ["vision-001.md"],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+        svcs.board.create_task = lambda title, vision, body: (
+            created.append(title) or (f"0001-{title}.md", None)
         )
-        # 2 open tasks, 2 coders → at capacity, no proactive planner
-        squad = minimal_squad(coder=2)
-        d = make_dispatcher(squad, svcs)
-        setup_work(d)
-        d._dispatch(call_budget=100)
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._run_plan_operations()
+        assert "new-task" in created
 
-        pool_roles = [a.role for a in d.pool.all_agents()]
-        assert "planner" not in pool_roles, f"unexpected planner in pool: {pool_roles}"
+    def test_plan_operation_closes_vision(self, tmp_path, monkeypatch):
+        """_run_plan_operations closes processed visions."""
+        from orc.engine.operations.plan import PlanResult, TaskSpec
 
-    def test_no_proactive_planner_when_no_pending_visions(self, tmp_path):
-        """No proactive planner when there are no pending vision docs to plan."""
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
-            derive_task_state=lambda t, td=None: ("coder", "ready"),
-            get_pending_visions=lambda: [],  # nothing to plan
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
-        )
-        squad = minimal_squad(coder=2)
-        d = make_dispatcher(squad, svcs)
-        setup_work(d)
-        d._dispatch(call_budget=100)
+        closed: list[str] = []
 
-        pool_roles = [a.role for a in d.pool.all_agents()]
-        assert "planner" not in pool_roles, f"unexpected planner in pool: {pool_roles}"
+        def _fake_plan(name, content, *, llm=None, existing_tasks=None):
+            return PlanResult(
+                tasks=[TaskSpec(title="t", overview="o", steps=["s"])],
+                vision_summary="summary",
+            )
 
-    def test_no_proactive_planner_when_planner_already_running(self, tmp_path):
-        """No second planner spawned when one is already in the pool."""
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
-            derive_task_state=lambda t, td=None: ("coder", "ready"),
-            get_pending_visions=lambda: ["vision-001.md"],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
-        )
-        squad = minimal_squad(coder=2)
-        d = make_dispatcher(squad, svcs)
-        setup_work(d)
-        # Pre-populate pool with a planner.
-        d.pool.add(make_agent(tmp_path, role="planner", task=""))
-        d._dispatch(call_budget=100)
-
-        planner_count = sum(1 for a in d.pool.all_agents() if a.role == "planner")
-        assert planner_count == 1, "second planner must not be spawned"
-
-    def test_spawns_planner_when_all_tasks_in_review(self, tmp_path):
-        """Planner spawned when all assignable tasks are in-review (going to QA).
-
-        The coder slot is free while QA handles the task, so the planner
-        should run to refine todos before the coder goes idle.
-        """
-
-        def _spawn(ctx, cwd, model, log, **_kwargs):
-            return SpawnResult(process=FakePopen(), log_fh=None)
+        monkeypatch.setattr("orc.engine.dispatcher.plan_vision", _fake_plan)
 
         svcs = make_services(
             tmp_path,
-            # 1 task in-review — routes to QA, not coder
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="in-review")],
-            derive_task_state=lambda t, td=None: ("qa", "coder finished, awaiting QA"),
-            scan_todos=lambda: [{"file": "src/x.py", "line": 1, "text": "TODO: fix me"}],
-            spawn_fn=_spawn,
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user"))
+            get_pending_visions=lambda: ["feature.md"],
         )
-        # Default squad: 1 coder, 1 QA.
-        squad = minimal_squad(coder=1)
-        d = make_dispatcher(squad, svcs)
-        setup_work(d)
-        d._dispatch(call_budget=100)
+        svcs.board.close_vision = lambda name, summary="", task_files=None: closed.append(name)
+        d = make_dispatcher(minimal_squad(), svcs)
+        d._run_plan_operations()
+        assert closed == ["feature.md"]
 
-        pool_roles = [a.role for a in d.pool.all_agents()]
-        assert "planner" in pool_roles, (
-            f"expected planner to be spawned when all tasks are in-review, got {pool_roles}"
+    def test_plan_operation_skips_when_draining(self, tmp_path, monkeypatch):
+        """_run_plan_operations does nothing in drain mode."""
+        from orc.engine.operations.plan import PlanResult
+
+        called = []
+        monkeypatch.setattr(
+            "orc.engine.dispatcher.plan_vision",
+            lambda *a, **kw: called.append(1) or PlanResult(tasks=[], vision_summary=""),
         )
+        svcs = make_services(tmp_path, get_pending_visions=lambda: ["v.md"])
+        d = make_dispatcher(minimal_squad(), svcs)
+        d.phase = _disp.DispatcherPhase.DRAINING
+        d._run_plan_operations()
+        assert called == []
 
 
 class TestMaxcallsUnlimited:
@@ -881,8 +840,8 @@ class TestDispatchBudgetExhaustion:
 class TestOnlyRoleFiltering:
     """Dispatcher.only_role restricts which roles get dispatched."""
 
-    def test_only_coder_skips_planner(self, tmp_path):
-        """With only_role='coder', planner is not dispatched even when visions exist."""
+    def test_only_coder_skips_operations(self, tmp_path):
+        """With only_role='coder', visions are not planned."""
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [],
@@ -896,25 +855,8 @@ class TestOnlyRoleFiltering:
         assert count == 0
         assert d.pool.is_empty()
 
-    def test_only_planner_dispatches_planner(self, tmp_path):
-        """With only_role='planner' and pending visions, a planner is spawned."""
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: [],
-            get_pending_visions=lambda: ["v1.md"],
-            get_pending_reviews=lambda: [],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
-        )
-        d = make_dispatcher(minimal_squad(), svcs, only_role="planner")
-        setup_work(d)
-        count = d._dispatch(call_budget=10)
-        assert count == 1
-        agents = d.pool.all_agents()
-        assert len(agents) == 1
-        assert agents[0].role == "planner"
-
-    def test_only_coder_dispatches_coder_skips_qa(self, tmp_path):
-        """With only_role='coder', coder tasks are dispatched but QA tasks are skipped."""
+    def test_only_coder_dispatches_coder_skips_non_coder(self, tmp_path):
+        """With only_role='coder', coder tasks are dispatched but QA-state tasks are skipped."""
         tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
         states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
         svcs = make_services(
@@ -932,29 +874,13 @@ class TestOnlyRoleFiltering:
         agents = d.pool.all_agents()
         assert all(a.role == "coder" for a in agents)
 
-    def test_only_qa_dispatches_qa_skips_coder(self, tmp_path):
-        """With only_role='qa', QA tasks are dispatched but coder tasks are skipped."""
-        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
-        states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
-        svcs = make_services(
-            tmp_path,
-            get_tasks=lambda: tasks,
-            derive_task_state=lambda t, td=None: states[t],
-            get_pending_visions=lambda: [],
-            get_pending_reviews=lambda: [],
-            build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
-        )
-        d = make_dispatcher(minimal_squad(), svcs, only_role="qa")
-        setup_work(d)
-        count = d._dispatch(call_budget=10)
-        assert count == 1
-        agents = d.pool.all_agents()
-        assert all(a.role == "qa" for a in agents)
+    def test_no_filter_dispatches_coders_only(self, tmp_path):
+        """Without only_role, only coder tasks are spawned as agents.
 
-    def test_no_filter_dispatches_all_roles(self, tmp_path):
-        """Without only_role, both coder and QA tasks are dispatched."""
-        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-review.md")]
-        states = {"0001-code.md": ("coder", "ready"), "0002-review.md": ("qa", "ready")}
+        QA-state tasks are handled by the review operation, not as agent spawns.
+        """
+        tasks = [TaskEntry(name="0001-code.md"), TaskEntry(name="0002-code2.md")]
+        states = {"0001-code.md": ("coder", "ready"), "0002-code2.md": ("coder", "ready")}
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: tasks,
@@ -963,12 +889,12 @@ class TestOnlyRoleFiltering:
             get_pending_reviews=lambda: [],
             build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )
-        d = make_dispatcher(minimal_squad(), svcs, only_role=None)
+        d = make_dispatcher(minimal_squad(coder=2), svcs, only_role=None)
         setup_work(d)
         count = d._dispatch(call_budget=10)
         assert count == 2
         roles = {a.role for a in d.pool.all_agents()}
-        assert roles == {"coder", "qa"}
+        assert roles == {"coder"}
 
     def test_only_role_idle_exits_when_no_work_for_role(self, tmp_path, monkeypatch):
         """Dispatcher stops when only_role is set and no work for that role exists."""
@@ -976,7 +902,7 @@ class TestOnlyRoleFiltering:
         svcs = make_services(
             tmp_path,
             get_tasks=lambda: [],
-            get_pending_visions=lambda: ["v1.md"],
+            get_pending_visions=lambda: [],
             get_pending_reviews=lambda: [],
             build_context_fn=lambda *a, **kw: ("model", ("system", "user")),
         )

@@ -106,10 +106,15 @@ class FakeBoard:
         self.unassign_task = lambda task: None
         self.delete_task = lambda task: None
         self.set_task_status = lambda task, status: None
-        self.get_pending_visions = get_pending_visions or (lambda: ["placeholder.md"])
+        self.get_pending_visions = get_pending_visions or (lambda: [])
         self.get_pending_reviews = get_pending_reviews or (lambda: [])
         self.scan_todos = scan_todos or (lambda: [])
         self.get_blocked_tasks = get_blocked_tasks or (lambda: [])
+        self.read_vision = lambda name: f"# Vision\n\nDummy content for {name}"
+        self.close_vision = lambda name, summary="", task_files=None: None
+        self.read_task_content = lambda name: f"# Task\n\nDummy content for {name}"
+        self.create_task = lambda title, vision, body: (f"0099-{title}.md", None)
+        self.add_task_comment = lambda task, author, text: None
 
     def is_empty(self) -> bool:
         return not (
@@ -158,7 +163,9 @@ class FakeAgent:
         def _default_spawn(ctx, cwd, model, log, **_kwargs):
             return SpawnResult(process=FakePopen(), log_fh=None)
 
-        self.build_context = build_context_fn or (lambda role, agent_id, task_name=None: ("model", ("system", "user")))
+        self.build_context = build_context_fn or (
+            lambda role, agent_id, task_name=None: ("model", ("system", "user"))
+        )
         self.spawn = spawn_fn or _default_spawn
         self.boot_message_body = lambda agent_id, task_name=None: (
             f"working on something ({agent_id})"

@@ -214,8 +214,18 @@ class LLMClient:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> ChatResponse:
         """Send a chat completion request with optional tool definitions.
+
+        Parameters
+        ----------
+        response_format:
+            When set, constrains the model's output format.  Common values:
+
+            * ``{"type": "json_object"}`` — model must emit valid JSON.
+            * ``{"type": "json_schema", "json_schema": {…}}`` — stricter
+              schema-constrained JSON (provider support varies).
 
         Retries on transient errors with exponential backoff.
         """
@@ -229,6 +239,8 @@ class LLMClient:
             kwargs["temperature"] = temperature
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if response_format is not None:
+            kwargs["response_format"] = response_format
 
         response = self._call_with_retry(**kwargs)
         return self._parse_response(response)

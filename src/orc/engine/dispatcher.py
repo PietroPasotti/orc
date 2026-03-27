@@ -50,11 +50,9 @@ workflow is hard-blocked".
 
 from __future__ import annotations
 
-import re
 import signal
 import sys
 import time
-import typing
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -65,8 +63,11 @@ import structlog.contextvars as contextvars
 import typer
 
 import orc.config as _cfg
+from orc.ai.llm import LLMClient
 from orc.coordination.board import TaskStatus
 from orc.coordination.models import TaskEntry
+from orc.engine.operations.plan import plan_vision
+from orc.engine.operations.review import review_task
 from orc.engine.pool import AgentPool, AgentProcess
 from orc.engine.services import (
     AgentService,
@@ -269,10 +270,7 @@ def plan_dispatch(
     *,
     assignable: list[TaskEntry],
     coder_bound: list[TaskEntry],
-    has_planner_work: bool,
     only_role: str | None,
-    coder_capacity: int,
-    planner_running: bool,
     role_counts: dict[str, int],
     role_limits: dict[str, int],
     derive_task_state: Callable[[str, TaskEntry | None], tuple[str, str]],
@@ -280,6 +278,9 @@ def plan_dispatch(
     """Build a :class:`DispatchPlan` from the current board/pool snapshot.
 
     Pure function — all inputs are plain data or callbacks; no I/O.
+
+    Only CODER agents are spawned.  Planner, QA, and merger are handled
+    as orchestrator operations (see :mod:`orc.engine.operations`).
     """
 
     def _role_allowed(role: str) -> bool:
@@ -287,38 +288,11 @@ def plan_dispatch(
 
     spawns: list[SpawnIntent] = []
     board_ops: list[BoardOp] = []
+    running: dict[str, int] = dict(role_counts)
 
-    # Per-task dispatch — merger tasks first (highest priority).
-    # We do two passes: first for merger-bound tasks (done/QA_PASSED),
-    # then for coder/QA tasks. This ensures mergers are dispatched before
-    # other agents when budget is limited.
-    running: dict[str, int] = dict(role_counts)  # mutable copy for capacity tracking
-
-    merger_tasks: list[TaskEntry] = []
-    other_tasks: list[TaskEntry] = []
     for task in assignable:
         if task.assigned_to:
             continue
-        token, _reason = derive_task_state(task.name, task)
-        if token == QA_PASSED:
-            merger_tasks.append(task)
-        else:
-            other_tasks.append(task)
-
-    # Pass 1: merger-bound tasks (highest priority).
-    for task in merger_tasks:
-        role = AgentRole.MERGER
-        if not _role_allowed(role):
-            continue
-        current = running.get(role, 0)
-        limit = role_limits.get(role, 1)
-        if current >= limit:
-            continue
-        running[role] = current + 1
-        spawns.append(SpawnIntent(role=role, task_name=task.name))
-
-    # Pass 2: coder/QA tasks.
-    for task in other_tasks:
         token, reason = derive_task_state(task.name, task)
         logger.debug("task state", task=task.name, token=token, reason=reason)
 
@@ -331,7 +305,14 @@ def plan_dispatch(
             board_ops.append(BoardOp(task_name=task.name))
             continue
 
-        # action is SPAWN — token is a role string (coder / qa).
+        # QA and MERGER are now operations, not agents.
+        if token in (AgentRole.QA, AgentRole.MERGER) or token == QA_PASSED:
+            continue
+
+        # Only CODER agents are spawned.
+        if token != AgentRole.CODER:
+            continue
+
         if not _role_allowed(token):
             continue
 
@@ -341,19 +322,7 @@ def plan_dispatch(
             continue
 
         running[token] = current + 1
-        spawns.append(SpawnIntent(role=AgentRole(token), task_name=task.name))
-
-    # Planner decision (after merger/coder/QA so priority ordering is respected).
-    if needs_planner(
-        coder_bound_count=len(coder_bound),
-        coder_capacity=coder_capacity,
-        has_planner_work=has_planner_work,
-        planner_running=planner_running,
-        role_allowed=_role_allowed(AgentRole.PLANNER),
-        has_assignable_tasks=bool(assignable),
-    ):
-        logger.debug("planner needed", coder_bound=len(coder_bound), coder_capacity=coder_capacity)
-        spawns.append(SpawnIntent(role=AgentRole.PLANNER, task_name=None))
+        spawns.append(SpawnIntent(role=AgentRole.CODER, task_name=task.name))
 
     return DispatchPlan(spawns=spawns, board_ops=board_ops)
 
@@ -454,6 +423,10 @@ class Dispatcher:
         ] = {}  # pre-spawn snapshots for noop detection
         self.phase: DispatcherPhase = DispatcherPhase.RUNNING
 
+        # LLM client is created lazily on first use (avoids API key
+        # resolution during testing).
+        self._llm_instance: LLMClient | None = None
+
         # Graceful shutdown: two-stage signal handler.
         # First signal enters drain mode; second signal force-kills.
         signal.signal(signal.SIGTERM, self._shutdown_handler)
@@ -467,6 +440,28 @@ class Dispatcher:
     @_shutting_down.setter
     def _shutting_down(self, value: bool) -> None:
         self.phase = DispatcherPhase.DRAINING if value else DispatcherPhase.RUNNING
+
+    @property
+    def _llm(self) -> LLMClient:
+        """Lazily create an LLM client for operations.
+
+        Returns a dummy client if the API key is unavailable (e.g. in tests).
+        Real calls will fail at the API level rather than at construction.
+        """
+        if self._llm_instance is None:
+            try:
+                self._llm_instance = LLMClient(
+                    provider=self.squad.provider,
+                    model=self.squad.model(AgentRole.PLANNER),
+                )
+            except OSError:
+                # No API key — create with a placeholder key so tests don't crash.
+                self._llm_instance = LLMClient(
+                    provider=self.squad.provider,
+                    model=self.squad.model(AgentRole.PLANNER),
+                    api_key="test-placeholder",
+                )
+        return self._llm_instance
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -568,38 +563,165 @@ class Dispatcher:
             self._handle_watchdog(agent)
 
     def _drain_merge_queue(self) -> None:
-        """Handle crash-recovery for tasks already merged but not cleaned up.
+        """Merge approved tasks and handle crash-recovery.
 
-        Real merging is now delegated to merger agents dispatched by
-        :meth:`plan_dispatch`.  This method only handles two edge cases:
-
-        1. Board-tracked ``done`` tasks whose branch was already merged into
-           dev (crash between merge and board cleanup) — these are cleaned up.
-        2. Orphaned feature branches with no board entry — merged directly
-           (these are rare, usually from a crash between branch creation and
-           board write).
+        1. Tasks with status ``done`` (QA approved) are merged into dev
+           using the merge operation.
+        2. Already-merged board entries are cleaned up (crash recovery).
+        3. Orphaned feature branches with no board entry are merged directly.
         """
-        # 1. Crash-recovery: board entries for already-merged tasks.
         board_task_names = {t.name for t in self.board.get_tasks()}
+
         for task_name in self.board.query_tasks(status="done"):
             token, _reason = self.workflow.derive_task_state(task_name)
+
             if token == CLOSE_BOARD:
-                logger.info(
-                    "task already merged into dev — cleaning up board",
-                    task=task_name,
-                )
+                logger.info("task already merged — cleaning up board", task=task_name)
                 self._echo(f"✓ {task_name} already merged — cleaning up board entry.")
                 self.board.delete_task(task_name)
                 self._merge_failures.pop(task_name, None)
+                continue
 
-        # 2. Orphaned branches — unmerged feature branches with no board entry.
+            if token == QA_PASSED:
+                self._do_merge(task_name)
+
         for branch in self.board.get_pending_reviews():
             task_name = _branch_to_task_name(branch)
             if task_name in board_task_names:
-                continue  # tracked by board — handled by merger agent dispatch
-            logger.info("orphaned feature branch detected — merging", branch=branch, task=task_name)
+                continue
+            logger.info("orphaned feature branch — merging", branch=branch, task=task_name)
             self._echo(f"\n⟳ Merging orphaned branch {branch} into dev…")
             self._do_merge(task_name)
+
+    # ------------------------------------------------------------------
+    # Operations (synchronous — replace planner/QA/merger agents)
+    # ------------------------------------------------------------------
+
+    def _run_plan_operations(self) -> None:
+        """Plan tasks for any pending visions via structured LLM calls.
+
+        Replaces the planner agent: reads each vision, calls the LLM once,
+        and creates tasks directly on the board.
+        """
+        if self.phase is DispatcherPhase.DRAINING:
+            return
+
+        pending = self.board.get_pending_visions()
+        if not pending:
+            return
+
+        for vision_name in pending:
+            logger.info("plan operation: processing vision", vision=vision_name)
+            self._echo(f"\n📋 Planning vision {vision_name}…")
+
+            try:
+                content = self.board.read_vision(vision_name)
+            except FileNotFoundError:
+                logger.warning("plan operation: vision file not found", vision=vision_name)
+                continue
+
+            existing = [t.name for t in self.board.get_tasks()]
+            result = plan_vision(
+                vision_name,
+                content,
+                llm=self._llm,
+                existing_tasks=existing,
+            )
+
+            if not result.success:
+                logger.error("plan operation: failed", vision=vision_name, error=result.error)
+                self._echo(f"  ✗ Planning failed: {result.error}")
+                continue
+
+            for spec in result.tasks:
+                try:
+                    filename, _path = self.board.create_task(
+                        spec.title,
+                        vision_name,
+                        spec.to_task_body(),
+                    )
+                    logger.info("plan operation: created task", task=filename, vision=vision_name)
+                    self._echo(f"  ✓ Created task {filename}")
+                except Exception as exc:
+                    logger.error("plan operation: create_task failed", error=str(exc))
+
+            try:
+                self.board.close_vision(
+                    vision_name,
+                    summary=result.vision_summary,
+                    task_files=[s.title for s in result.tasks],
+                )
+                logger.info("plan operation: closed vision", vision=vision_name)
+            except Exception as exc:
+                logger.warning("plan operation: close_vision failed", error=str(exc))
+
+    def _run_review_operations(self) -> None:
+        """Review completed tasks via test suite + single LLM call.
+
+        Replaces the QA agent: runs tests, computes diff, calls the LLM
+        once, and updates the task status based on the verdict.
+        """
+        if self.phase is DispatcherPhase.DRAINING:
+            return
+
+        cfg = _cfg.get()
+
+        # Find tasks in "in-review" status that are not assigned.
+        for task in self.board.get_tasks():
+            if task.status != TaskStatus.IN_REVIEW:
+                continue
+            if task.assigned_to:
+                continue
+
+            task_name = task.name
+            logger.info("review operation: starting", task=task_name)
+            self._echo(f"\n🔍 Reviewing {task_name}…")
+
+            try:
+                task_content = self.board.read_task_content(task_name)
+            except FileNotFoundError:
+                logger.warning("review operation: task file not found", task=task_name)
+                continue
+
+            feature_branch = cfg.feature_branch(task_name)
+            feature_wt = cfg.feature_worktree_path(task_name)
+
+            if not feature_wt.exists():
+                feature_wt = self.worktree.ensure_feature_worktree(task_name)
+
+            result = review_task(
+                task_name,
+                task_content,
+                feature_worktree=feature_wt,
+                dev_branch=cfg.work_dev_branch,
+                feature_branch=feature_branch,
+                repo_root=cfg.repo_root,
+                llm=self._llm,
+            )
+
+            if not result.success:
+                logger.error("review operation: failed", task=task_name, error=result.error)
+                self._echo(f"  ✗ Review error: {result.error}")
+                continue
+
+            if result.approved:
+                logger.info("review operation: approved", task=task_name)
+                self._echo(f"  ✓ {task_name} approved")
+                self.board.set_task_status(task_name, TaskStatus.DONE)
+                self.board.add_task_comment(
+                    task_name,
+                    "qa-op",
+                    f"Approved: {result.comments}",
+                )
+            else:
+                logger.info("review operation: rejected", task=task_name, comments=result.comments)
+                self._echo(f"  ✗ {task_name} rejected: {result.comments[:100]}")
+                self.board.set_task_status(task_name, TaskStatus.IN_PROGRESS)
+                self.board.add_task_comment(
+                    task_name,
+                    "qa-op",
+                    f"Rejected: {result.comments}",
+                )
 
     def _dispatch_agents(self, call_budget: int) -> int:
         if self.phase is DispatcherPhase.DRAINING:
@@ -623,6 +745,13 @@ class Dispatcher:
 
             self._set_orc_task("polling agents")
             self._poll_completed_agents()
+
+            # Operations (synchronous, no agent spawns consumed).
+            self._set_orc_task("planning visions")
+            self._run_plan_operations()
+
+            self._set_orc_task("reviewing tasks")
+            self._run_review_operations()
 
             self._set_orc_task("merging done tasks")
             self._drain_merge_queue()
@@ -708,18 +837,12 @@ class Dispatcher:
             )
 
     def _dispatch(self, call_budget: int) -> int:
-        """Spawn up to *call_budget* agents for all unassigned work.
+        """Spawn up to *call_budget* coder agents for unassigned tasks.
 
-        Reads fresh state from board/git services, builds a pure
-        :class:`DispatchPlan`, then executes it.  Returns number spawned.
+        Plan, review, and merge operations are handled synchronously
+        before this method is called (see :meth:`_loop`).
         """
         open_tasks = self.board.get_tasks()
-        has_planner_work = bool(
-            self.board.get_pending_visions()
-            or self.board.scan_todos()
-            or self.board.get_blocked_tasks()
-        )
-
         stuck, assignable, coder_bound = classify_tasks(open_tasks)
         logger.debug(
             "dispatch snapshot",
@@ -727,23 +850,16 @@ class Dispatcher:
             stuck=len(stuck),
             assignable=len(assignable),
             coder_bound=len(coder_bound),
-            has_planner_work=has_planner_work,
         )
         self._notify_stuck_tasks(stuck)
 
         plan = plan_dispatch(
             assignable=assignable,
             coder_bound=coder_bound,
-            has_planner_work=has_planner_work,
             only_role=self.only_role,
-            coder_capacity=self.squad.count(AgentRole.CODER),
-            planner_running=self.pool.count_by_role(AgentRole.PLANNER) > 0,
-            role_counts={
-                r: self.pool.count_by_role(r)
-                for r in (AgentRole.CODER, AgentRole.QA, AgentRole.MERGER)
-            },
+            role_counts={r: self.pool.count_by_role(r) for r in (AgentRole.CODER,)},
             role_limits={
-                r: self.squad.count(r) for r in (AgentRole.CODER, AgentRole.QA, AgentRole.MERGER)
+                AgentRole.CODER: self.squad.count(AgentRole.CODER),
             },
             derive_task_state=self.workflow.derive_task_state,
         )
@@ -827,22 +943,27 @@ class Dispatcher:
         agent_id: str,
         task_name: str | None,
     ) -> None:
-        """Build context and spawn an agent subprocess (or print for dry-run)."""
+        """Build context and spawn a coder agent (or print for dry-run).
+
+        Only coder agents are spawned as real agent loops.  Planner, QA,
+        and merger are handled as operations in the dispatch loop.
+        """
         contextvars.bind_contextvars(agent_id=agent_id)
         self._total_spawned += 1
 
-        if role in (AgentRole.PLANNER, AgentRole.MERGER):
-            worktree = self.worktree.ensure_dev_worktree()
-        elif task_name:
-            worktree = self.worktree.ensure_feature_worktree(task_name)
-        else:
-            raise ValueError(f"No worktree: role={role!r} requires task_name")
+        if not task_name:
+            raise ValueError(f"No task_name for role={role!r}")
+        worktree = self.worktree.ensure_feature_worktree(task_name)
 
         model, context_tuple = self.agent.build_context(role, agent_id, task_name=task_name)
         system_prompt, user_prompt = context_tuple
 
         if self.dry_run:
-            typer.echo(f"Would spawn agent '{agent_id}' (model={model}, {len(system_prompt)} chars system, {len(user_prompt)} chars user)")
+            sys_len, usr_len = len(system_prompt), len(user_prompt)
+            typer.echo(
+                f"Would spawn agent '{agent_id}' "
+                f"(model={model}, {sys_len} chars system, {usr_len} chars user)"
+            )
             return
 
         # Snapshot board state for noop detection after exit.
@@ -963,15 +1084,6 @@ class Dispatcher:
         if before is not None:
             after = self._take_board_snapshot(agent.task_name)
             if before == after:
-                # Planners legitimately find no work (e.g. after a merge
-                # cycle empties the board).  Treat as normal completion.
-                if agent.role == AgentRole.PLANNER:
-                    logger.info(
-                        "planner found no work — not a noop",
-                        agent_id=agent.agent_id,
-                    )
-                    return False
-
                 logger.error(
                     "agent noop detected — board state unchanged",
                     agent_id=agent.agent_id,
@@ -988,10 +1100,16 @@ class Dispatcher:
         return False
 
     # ------------------------------------------------------------------
-    # Merge (serialized)
+    # Merge operation (serialized)
     # ------------------------------------------------------------------
 
     def _do_merge(self, task_name: str) -> None:
+        """Merge a feature branch into dev.
+
+        Uses the workflow service for the basic merge.  On
+        :class:`~orc.git.MergeConflictError`, delegates to the merge
+        operation's LLM conflict resolution loop.
+        """
         self._echo(f"\n⟳ Merging {task_name} into dev…")
         try:
             self.workflow.merge_feature(task_name)
@@ -1002,20 +1120,77 @@ class Dispatcher:
             if self.hooks.on_feature_merged is not None:
                 self.hooks.on_feature_merged()
         except Exception as exc:
+            # Try LLM conflict resolution if it's a merge conflict.
+            from orc.git import MergeConflictError  # noqa: PLC0415
+
+            if isinstance(exc, MergeConflictError):
+                resolved = self._resolve_merge_conflict(task_name, exc)
+                if resolved:
+                    return
+
             count = self._merge_failures.get(task_name, 0) + 1
             self._merge_failures[task_name] = count
             logger.error("merge failed", task=task_name, error=str(exc), attempt=count)
             self._echo(f"\n✗ Merge failed for {task_name}: {exc}")
             if count >= _MAX_MERGE_RETRIES:
-                logger.warning(
-                    "merge retry limit reached — marking task as stuck",
-                    task=task_name,
-                    attempts=count,
-                )
+                logger.warning("merge retry limit reached", task=task_name, attempts=count)
                 self._echo(f"⚠ {task_name} failed to merge {count} times — marking as stuck.")
                 self.board.set_task_status(task_name, TaskStatus.STUCK)
                 self.worktree.cleanup_feature_worktree(task_name)
                 self._merge_failures.pop(task_name, None)
+
+    def _resolve_merge_conflict(self, task_name: str, exc: Exception) -> bool:
+        """Attempt LLM-driven conflict resolution.  Returns True on success."""
+        from orc.git import MergeConflictError  # noqa: PLC0415
+
+        if not isinstance(exc, MergeConflictError):
+            return False
+
+        cfg = _cfg.get()
+        logger.warning("merge conflict detected — attempting LLM resolution", task=task_name)
+        self._echo("  ⚠ Merge conflict — attempting LLM resolution…")
+
+        try:
+            task_content = self.board.read_task_content(task_name)
+        except FileNotFoundError:
+            task_content = f"(task file not found: {task_name})"
+
+        feature_branch = cfg.feature_branch(task_name)
+        log_path = cfg.log_dir / "agents" / f"merge-conflict-{task_name}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            from orc.engine.operations.merge import _resolve_conflicts  # noqa: PLC0415
+
+            log_fh = open(log_path, "w", encoding="utf-8", buffering=1)  # noqa: SIM115
+            try:
+                resolved = _resolve_conflicts(
+                    task_name=task_name,
+                    task_content=task_content,
+                    feature_branch=feature_branch,
+                    dev_branch=cfg.work_dev_branch,
+                    dev_worktree=exc.worktree,
+                    conflict_status=exc.status_output,
+                    commit_log="(from feature branch)",
+                    llm=self._llm,
+                    log_fh=log_fh,
+                    socket_path=str(cfg.api_socket_path),
+                )
+            finally:
+                log_fh.close()
+
+            if resolved:
+                self.board.delete_task(task_name)
+                self._merge_failures.pop(task_name, None)
+                logger.info("merge conflict resolved", task=task_name)
+                self._echo(f"  ✓ {task_name} conflict resolved and merged.")
+                if self.hooks.on_feature_merged is not None:
+                    self.hooks.on_feature_merged()
+                return True
+        except Exception as inner:
+            logger.error("conflict resolution failed", task=task_name, error=str(inner))
+
+        return False
 
     # ------------------------------------------------------------------
     # Watchdog
@@ -1067,28 +1242,9 @@ class Dispatcher:
         else:
             raise _ShutdownSignal(signum)
 
-    def _log_spawn_boot(self, role: AgentRole, agent_id: str, task_name: str):
-        match role:
-            case AgentRole.PLANNER:
-                out = ""
-                if visions := self.board.get_pending_visions():
-                    out += "refining vision docs: " + ", ".join(f"`{v}`" for v in visions) + ". "
-                else:
-                    # We should be more specific here. We know what the planner is doing after all.
-                    out += "no pending visions. Refining TODOs and READMEs/unblocking agents."
-            case AgentRole.CODER:
-                if task_name:
-                    self.messaging.post_boot_message(agent_id, f"picking up work/{task_name}.")
-            case AgentRole.QA:
-                if task_name:
-                    task_stem = re.sub(r"\.md$", "", task_name)
-                    self.messaging.post_boot_message(agent_id, f"reviewing feat/{task_stem}.")
-            case AgentRole.MERGER:
-                if task_name:
-                    task_stem = re.sub(r"\.md$", "", task_name)
-                    self.messaging.post_boot_message(agent_id, f"merging feat/{task_stem}.")
-            case _:
-                typing.assert_never(role)
+    def _log_spawn_boot(self, role: AgentRole, agent_id: str, task_name: str) -> None:
+        if task_name:
+            self.messaging.post_boot_message(agent_id, f"picking up work/{task_name}.")
 
 
 class _ShutdownSignal(BaseException):
