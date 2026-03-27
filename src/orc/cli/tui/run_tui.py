@@ -28,6 +28,7 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from orc.engine.dispatcher import DispatcherPhase
 from orc.squad import AgentRole
 
 
@@ -111,21 +112,13 @@ class RunState:
     run_started_at: float = 0.0
     """Monotonic timestamp when the run started (for overall elapsed)."""
 
-    draining: bool = False
-    """Whether the dispatcher is in drain mode (first signal received)."""
+    dispatcher_phase: DispatcherPhase = DispatcherPhase.RUNNING
+    """Current lifecycle phase of the dispatcher."""
 
-    # TODO group the three below into a single AgentCalls typed dict, keyed by AgentRole.
-    planner_calls: int = 0
-    """Number of planner agent sessions invoked."""
-
-    coder_calls: int = 0
-    """Number of coder agent sessions invoked."""
-
-    qa_calls: int = 0
-    """Number of QA agent sessions invoked."""
-
-    merger_calls: int = 0
-    """Number of merger agent sessions invoked."""
+    agent_calls: dict[AgentRole, int] = field(
+        default_factory=lambda: {role: 0 for role in AgentRole}
+    )
+    """Number of agent sessions invoked, keyed by role."""
 
     def _agents_table(self, agents_by_role: dict[AgentRole, list[str] | int]) -> rich.table.Table:
         """Render the live agents as a Rich table."""
@@ -153,13 +146,6 @@ class RunState:
         for agent in self.agents:
             agents_live.setdefault(agent.role, list()).append(agent.agent_id)
 
-        agent_calls: dict[AgentRole, int] = {
-            AgentRole.PLANNER: self.planner_calls,
-            AgentRole.CODER: self.coder_calls,
-            AgentRole.QA: self.qa_calls,
-            AgentRole.MERGER: self.merger_calls,
-        }
-
         labels = {
             "status": f"✗ error ({error.__class__.__name__})" if error else "✓ ok",
             "draining": "yes" if self.draining else "no",
@@ -167,7 +153,7 @@ class RunState:
             "duration": _format_duration(elapsed_seconds),
             "calls": f"{self.current_calls}/{max_calls_str}",
             "live agents": self._agents_table(agents_live),
-            "agent calls": self._agents_table(agent_calls),
+            "agent calls": self._agents_table(self.agent_calls),
             "completed features": self.features_done,
         }
         if self.stuck_tasks > 0:
@@ -193,6 +179,11 @@ class RunState:
             key_str = f"[bold cyan]{key}[/]"
             table.add_row(key_str, value if isinstance(value, str) else value)
         return table
+
+    @property
+    def draining(self) -> bool:
+        """Whether the dispatcher is in drain mode (derived from :attr:`dispatcher_phase`)."""
+        return self.dispatcher_phase is DispatcherPhase.DRAINING
 
 
 # Role → display colour mapping.

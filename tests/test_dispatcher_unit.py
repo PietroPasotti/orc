@@ -20,7 +20,7 @@ import orc.config as _cfg
 import orc.engine.dispatcher as _disp
 from orc.ai.backends import SpawnResult
 from orc.coordination.models import TaskEntry
-from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED
+from orc.engine.dispatcher import CLOSE_BOARD, QA_PASSED, DispatcherPhase
 from orc.squad import SquadConfig
 
 # ---------------------------------------------------------------------------
@@ -984,31 +984,31 @@ class TestOnlyRoleFiltering:
 class TestTwoStageShutdown:
     """Tests for the two-stage signal handler and drain mode."""
 
-    def test_first_signal_sets_shutting_down(self, tmp_path):
-        """First signal sets _shutting_down=True without raising."""
+    def test_first_signal_sets_draining_phase(self, tmp_path):
+        """First signal transitions phase to DRAINING without raising."""
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
-        assert d._shutting_down is False
+        assert d.phase is DispatcherPhase.RUNNING
 
-        # First signal: should NOT raise, should set flag.
+        # First signal: should NOT raise, should set phase.
         d._shutdown_handler(15, None)
-        assert d._shutting_down is True
+        assert d.phase is DispatcherPhase.DRAINING
 
     def test_second_signal_raises_shutdown_signal(self, tmp_path):
         """Second signal raises _ShutdownSignal."""
         svcs = make_services(tmp_path)
         d = make_dispatcher(minimal_squad(), svcs)
 
-        # First signal: sets flag.
+        # First signal: sets phase.
         d._shutdown_handler(15, None)
-        assert d._shutting_down is True
+        assert d.phase is DispatcherPhase.DRAINING
 
         # Second signal: raises.
         with pytest.raises(_disp._ShutdownSignal):
             d._shutdown_handler(15, None)
 
     def test_dispatch_agents_returns_zero_when_draining(self, tmp_path, monkeypatch):
-        """When _shutting_down is True, _dispatch_agents() returns 0 without spawning."""
+        """When phase is DRAINING, _dispatch_agents() returns 0 without spawning."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         spawned = []
 
@@ -1024,7 +1024,7 @@ class TestTwoStageShutdown:
             spawn_fn=_spawn,
         )
         d = make_dispatcher(minimal_squad(), svcs)
-        d._shutting_down = True
+        d.phase = DispatcherPhase.DRAINING
 
         result = d._dispatch_agents(call_budget=10)
         assert result == 0
@@ -1040,7 +1040,7 @@ class TestTwoStageShutdown:
             get_pending_reviews=lambda: [],
         )
         d = make_dispatcher(minimal_squad(), svcs)
-        d._shutting_down = True
+        d.phase = DispatcherPhase.DRAINING
 
         # _loop should return normally (not raise) when pool is empty + draining.
         d._loop(maxcalls=sys.maxsize)
@@ -1056,10 +1056,24 @@ class TestTwoStageShutdown:
             get_pending_reviews=lambda: [],
         )
         d = make_dispatcher(minimal_squad(), svcs)
-        d._shutting_down = True
+        d.phase = DispatcherPhase.DRAINING
 
         # Should not raise (exit code 0).
         d.run(maxcalls=sys.maxsize)
+
+    def test_shutting_down_property_compat(self, tmp_path):
+        """_shutting_down property reflects and sets phase for backward compat."""
+        svcs = make_services(tmp_path)
+        d = make_dispatcher(minimal_squad(), svcs)
+        assert d._shutting_down is False
+
+        d._shutting_down = True
+        assert d.phase is DispatcherPhase.DRAINING
+        assert d._shutting_down is True
+
+        d._shutting_down = False
+        assert d.phase is DispatcherPhase.RUNNING
+        assert d._shutting_down is False
 
     def test_run_force_shutdown_exits_130(self, tmp_path, monkeypatch):
         """run() exits 130 when _ShutdownSignal is raised (second signal)."""

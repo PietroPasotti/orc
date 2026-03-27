@@ -116,14 +116,7 @@ def _run(
 
     def _on_agent_start(agent: AgentProcess) -> None:
         state.current_calls += 1
-        if agent.role == AgentRole.PLANNER:
-            state.planner_calls += 1
-        elif agent.role == AgentRole.CODER:
-            state.coder_calls += 1
-        elif agent.role == AgentRole.QA:
-            state.qa_calls += 1
-        elif agent.role == AgentRole.MERGER:
-            state.merger_calls += 1
+        state.agent_calls[agent.role] += 1
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:
@@ -168,7 +161,7 @@ def _run(
         def _on_cycle() -> None:
             state.features_done = _safe_features_done()
             state.stuck_tasks = sum(1 for t in _coord_state.get_tasks() if t.status == "stuck")
-            state.draining = dispatcher._shutting_down
+            state.dispatcher_phase = dispatcher.phase
 
         hooks = _disp.DispatchHooks(
             on_agent_start=_on_agent_start_tui,
@@ -199,8 +192,8 @@ def _run(
         if use_tui:
 
             def _drain() -> None:
-                dispatcher._shutting_down = True
-                state.draining = True
+                dispatcher.phase = _disp.DispatcherPhase.DRAINING
+                state.dispatcher_phase = dispatcher.phase
 
             def _abort() -> None:
                 dispatcher._kill_all_and_unassign()
