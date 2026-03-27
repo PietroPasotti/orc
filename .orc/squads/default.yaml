@@ -4,36 +4,28 @@ description: |
   Lowest-risk configuration; ideal for small projects or initial setup.
   Agents run in confined mode — only approved tools are available.
 
+provider: gemini
+
 # Tool permissions for all agents (orc MCP tools, file access, and git are
 # always included). Add role-specific overrides under each composition entry.
 permissions:
   mode: confined              # or set it to "yolo" if you like to live dangerously
   allow_tools:                # grant extra tools to ALL roles
-                              # (`just` is already in orc defaults — no need to add it)
     - "shell(uv:*)"           # python (uv)
     - "shell(pytest:*)"       # direct pytest
-  # deny_tools:               # revoke a default tool from ALL roles, e.g.:
-  #   - "shell(git push:*)"   # prevent direct pushes
 
 composition:
   - role: planner
     count: 1
-    model: claude-sonnet-4.6
+    model: gemini-2.5-flash
   - role: coder
     count: 1
-    model: claude-sonnet-4.6
-    # permissions:     # uncomment to give coders extra tools, e.g.:
-    #   allow_tools:
-    #     - "shell(npm:*)"
-    #     - "shell(cargo:*)"
+    model: gemini-2.5-flash
   - role: merger
     count: 1
-    model: claude-sonnet-4.6
+    model: gemini-2.5-flash
   - role: qa
     count: 1
-    model: claude-sonnet-4.6
-    # review-threshold: LOW  # CRITICAL, HIGH, MID, or LOW (default: LOW)
-    #   Controls the minimum severity at which QA rejects work back to coders.
-    #   CRITICAL = only reject critical failures, LOW = reject any issue.
+    model: gemini-2.5-flash
 
 timeout_minutes: 120
