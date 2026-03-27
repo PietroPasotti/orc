@@ -209,7 +209,7 @@ class TestStateManagerVisions:
             "# 0042 – feature\n\n**Vision:** 0001-feature.md\n\n## Overview\n\nstuff\n"
         )
         (orc / "work" / "board.yaml").write_text(
-            "tasks:\n  - name: 0042-feature.md\n    status: planned\n"
+            'tasks:\n  - name: 0042-feature.md\n    status: planned\n    vision: "0001-feature.md"\n'
         )
         assert _state(orc).get_pending_visions() == []
 
@@ -220,8 +220,18 @@ class TestStateManagerVisions:
         (orc / "work" / "0042-feature.md").write_text(
             "# 0042 – feature\n\n**Vision:** 0001-feature.md\n"
         )
-        (orc / "work" / "board.yaml").write_text("tasks:\n  - name: 0042-feature.md\n")
+        (orc / "work" / "board.yaml").write_text(
+            'tasks:\n  - name: 0042-feature.md\n    vision: "0001-feature.md"\n'
+        )
         assert _state(orc).get_pending_visions() == []
+
+    def test_get_pending_visions_excludes_planned_vision(self, tmp_path):
+        """Visions referenced by a task on the board are not "pending"."""
+        orc = _orc_dir(tmp_path)
+        s = _state(orc)
+        (orc / "vision" / "ready" / "0001-vision.md").write_text("# Vision")
+        s.create_task("my-task", "0001-vision.md", _task_body())
+        assert s.get_pending_visions() == []
 
     def test_read_vision_found(self, tmp_path):
         orc = _orc_dir(tmp_path)
