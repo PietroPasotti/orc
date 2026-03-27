@@ -1,16 +1,13 @@
-"""orc MCP server — exposes orc board operations as MCP tools.
+"""orc MCP tools — board operations used by agents and orchestrator operations.
 
-Agents connect to this server (via stdio) to interact with the orc coordination
-API without needing to shell out to Python scripts.  The server is role-aware:
-only tools appropriate for the agent's role are registered.
+Tool functions live in :mod:`orc.mcp.tools` and are called in-process by the
+agent's :class:`~orc.ai.tools.ToolExecutor`.  The HTTP client in
+:mod:`orc.mcp.client` communicates with the coordination API over a Unix
+domain socket.
 
-Usage::
-
-    python -m orc.mcp
-
-Environment variables (required at startup):
+Environment variables (set by the orchestrator before spawning agents):
 
     ORC_API_SOCKET   Path to the orc coordination API Unix domain socket.
     ORC_AGENT_ID     Agent identifier (e.g. ``coder-1``).
-    ORC_AGENT_ROLE   Agent role: ``planner``, ``coder``, or ``qa``.
+    ORC_AGENT_ROLE   Agent role (e.g. ``coder``).
 """

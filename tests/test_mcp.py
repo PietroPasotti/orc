@@ -1,4 +1,4 @@
-"""Tests for the orc MCP server — tool implementations and role filtering."""
+"""Tests for the orc board tools and client helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import pytest
 
 import orc.mcp.tools as _tools
 from orc.mcp.client import find_task_by_code
-from orc.mcp.server import _build_server, _get_role
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,86 +22,6 @@ def _make_httpx_resp(status_code: int = 200, json_body: object = None) -> MagicM
     if status_code >= 400:
         resp.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
     return resp
-
-
-# ---------------------------------------------------------------------------
-# Server setup
-# ---------------------------------------------------------------------------
-
-
-class TestGetRole:
-    def test_returns_planner(self, monkeypatch):
-        monkeypatch.setenv("ORC_AGENT_ROLE", "planner")
-        assert _get_role() == "planner"
-
-    def test_returns_coder(self, monkeypatch):
-        monkeypatch.setenv("ORC_AGENT_ROLE", "coder")
-        assert _get_role() == "coder"
-
-    def test_returns_qa(self, monkeypatch):
-        monkeypatch.setenv("ORC_AGENT_ROLE", "qa")
-        assert _get_role() == "qa"
-
-    def test_unknown_role_falls_back_to_coder(self, monkeypatch):
-        monkeypatch.setenv("ORC_AGENT_ROLE", "wizard")
-        assert _get_role() == "coder"
-
-    def test_empty_role_falls_back_to_coder(self, monkeypatch):
-        monkeypatch.delenv("ORC_AGENT_ROLE", raising=False)
-        assert _get_role() == "coder"
-
-
-class TestBuildServer:
-    def _tool_names(self, role: str, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-        monkeypatch.setenv("ORC_AGENT_ROLE", role)
-        server = _build_server()
-        return [t.name for t in server._tool_manager.list_tools()]
-
-    def test_shared_tools_always_registered(self, monkeypatch):
-        for role in ("planner", "coder", "qa"):
-            names = self._tool_names(role, monkeypatch)
-            assert "get_task" in names, f"get_task missing for {role}"
-            assert "update_task_status" in names, f"update_task_status missing for {role}"
-            assert "add_comment" in names, f"add_comment missing for {role}"
-
-    def test_planner_gets_planner_tools(self, monkeypatch):
-        names = self._tool_names("planner", monkeypatch)
-        assert "get_vision" in names
-        assert "create_task" in names
-        assert "close_vision" in names
-
-    def test_planner_does_not_get_coder_or_qa_tools(self, monkeypatch):
-        names = self._tool_names("planner", monkeypatch)
-        assert "close_task" not in names
-        assert "review_task" not in names
-
-    def test_coder_gets_close_task(self, monkeypatch):
-        names = self._tool_names("coder", monkeypatch)
-        assert "close_task" in names
-
-    def test_coder_does_not_get_planner_or_qa_tools(self, monkeypatch):
-        names = self._tool_names("coder", monkeypatch)
-        assert "get_vision" not in names
-        assert "create_task" not in names
-        assert "review_task" not in names
-
-    def test_qa_gets_review_task(self, monkeypatch):
-        names = self._tool_names("qa", monkeypatch)
-        assert "review_task" in names
-
-    def test_qa_does_not_get_planner_or_coder_tools(self, monkeypatch):
-        names = self._tool_names("qa", monkeypatch)
-        assert "get_vision" not in names
-        assert "close_task" not in names
-
-    def test_merger_gets_close_merge(self, monkeypatch):
-        names = self._tool_names("merger", monkeypatch)
-        assert "close_merge" in names
-
-    def test_merger_does_not_get_close_task(self, monkeypatch):
-        names = self._tool_names("merger", monkeypatch)
-        assert "close_task" not in names
-        assert "review_task" not in names
 
 
 # ---------------------------------------------------------------------------
@@ -569,26 +488,3 @@ class TestGetClient:
 # ---------------------------------------------------------------------------
 # Server: run() and __main__
 # ---------------------------------------------------------------------------
-
-
-class TestServerRun:
-    def test_run_calls_server_run(self, monkeypatch):
-        from orc.mcp.server import run
-
-        monkeypatch.setenv("ORC_AGENT_ROLE", "coder")
-        with patch("orc.mcp.server._build_server") as mock_build:
-            mock_srv = MagicMock()
-            mock_build.return_value = mock_srv
-            run()
-        mock_srv.run.assert_called_once_with(transport="stdio")
-
-
-class TestMain:
-    def test_main_entrypoint_calls_run(self, monkeypatch):
-        """Verify __main__ invokes run() when executed as a module."""
-        import runpy
-
-        monkeypatch.setenv("ORC_AGENT_ROLE", "coder")
-        with patch("orc.mcp.server.run") as mock_run:
-            runpy.run_module("orc.mcp", run_name="__main__", alter_sys=True)
-        mock_run.assert_called_once()

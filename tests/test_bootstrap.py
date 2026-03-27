@@ -35,12 +35,12 @@ class TestBootstrap:
     def test_copies_bundled_roles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner.invoke(m.app, ["bootstrap"])
-        for role in ("planner", "coder", "qa"):
-            role_dir = tmp_path / ".orc" / "agents" / role
-            assert role_dir.is_dir(), f"Missing {role}/ directory"
-            main_file = role_dir / "_main.md"
-            assert main_file.exists(), f"Missing {role}/_main.md"
-            assert len(main_file.read_text()) > 100
+        # Only coder (+ _shared) are bundled; planner/qa/merger are operations.
+        role_dir = tmp_path / ".orc" / "agents" / "coder"
+        assert role_dir.is_dir(), "Missing coder/ directory"
+        main_file = role_dir / "_main.md"
+        assert main_file.exists(), "Missing coder/_main.md"
+        assert len(main_file.read_text()) > 100
 
     def test_copies_default_squad(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
