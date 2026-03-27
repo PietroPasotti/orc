@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import rich.console
@@ -120,7 +120,9 @@ class RunState:
     )
     """Number of agent sessions invoked, keyed by role."""
 
-    def _agents_table(self, agents_by_role: dict[AgentRole, list[str] | int]) -> rich.table.Table:
+    def _agents_table(
+        self, agents_by_role: Mapping[AgentRole, list[str] | int]
+    ) -> rich.table.Table:
         """Render the live agents as a Rich table."""
         agents_live_table = rich.table.Table(box=None, show_header=False, expand=False)
         for role in AgentRole:
@@ -138,7 +140,7 @@ class RunState:
         return agents_live_table
 
     def _summary(
-        self, error: BaseException | None = None, elapsed_seconds: int = 0
+        self, error: BaseException | None = None, elapsed_seconds: float = 0
     ) -> dict[str, str | RenderableType]:
         max_calls_str = str(self.max_calls) if self.max_calls > 0 else "∞"
 
@@ -146,7 +148,7 @@ class RunState:
         for agent in self.agents:
             agents_live.setdefault(agent.role, list()).append(agent.agent_id)
 
-        labels = {
+        labels: dict[str, str | RenderableType] = {
             "status": f"✗ error ({error.__class__.__name__})" if error else "✓ ok",
             "draining": "yes" if self.draining else "no",
             "backend": self.backend,
@@ -154,22 +156,19 @@ class RunState:
             "calls": f"{self.current_calls}/{max_calls_str}",
             "live agents": self._agents_table(agents_live),
             "agent calls": self._agents_table(self.agent_calls),
-            "completed features": self.features_done,
+            "completed features": str(self.features_done),
         }
         if self.stuck_tasks > 0:
-            labels["stuck"] = self.stuck_tasks
+            labels["stuck"] = str(self.stuck_tasks)
         if error:
             labels["error"] = f"{type(error).__name__}: {error}"
         if self.squad_name:
             labels["squad"] = self.squad_repr
 
-        for k, v in labels.items():
-            if isinstance(v, int | float | bool):
-                labels[k] = str(v)
         return labels
 
     def rich_summary(
-        self, error: BaseException | None = None, elapsed_seconds: int = 0
+        self, error: BaseException | None = None, elapsed_seconds: float = 0
     ) -> RenderableType:
         """Return a Rich-renderable summary string with current run statistics."""
         labels = self._summary(error=error, elapsed_seconds=elapsed_seconds)

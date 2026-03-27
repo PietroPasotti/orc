@@ -749,8 +749,8 @@ class ToolExecutor:
             return str(func(**args))
         finally:
             # Restore env.
-            for k, v in old_env.items():
-                if v is None:
+            for k, old_v in old_env.items():
+                if old_v is None:
                     os.environ.pop(k, None)
                 else:
-                    os.environ[k] = v
+                    os.environ[k] = old_v

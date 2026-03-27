@@ -152,13 +152,13 @@ class AgentService(Protocol):
         role: AgentRole,
         agent_id: str,
         task_name: str | None = None,
-    ) -> tuple[str, str]:
-        """Return ``(model, context_prompt)`` for an agent."""
+    ) -> tuple[str, tuple[str, str]]:
+        """Return ``(model, (system_prompt, user_prompt))`` for an agent."""
         ...
 
     def spawn(
         self,
-        context: str,
+        context: tuple[str, str],
         cwd: Path,
         model: str | None,
         log_path: Path | None,
@@ -166,8 +166,4 @@ class AgentService(Protocol):
         role: AgentRole | None = None,
     ) -> SpawnResult:
         """Spawn an agent subprocess; return a :class:`~orc.ai.backends.SpawnResult`."""
-        ...
-
-    def boot_message_body(self, agent_id: str, task_name: str | None) -> str:
-        """Return the role-specific body text for a boot Telegram message."""
         ...

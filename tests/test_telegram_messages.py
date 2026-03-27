@@ -122,4 +122,3 @@ class TestMessagesToText:
     def test_name_fallbacks(self, msg, expected_name):
         text = messages_to_text([msg])
         assert expected_name in text
-

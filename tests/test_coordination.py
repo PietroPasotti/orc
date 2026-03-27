@@ -231,7 +231,8 @@ class TestStateManagerVisions:
             "# 0042 – feature\n\n**Vision:** 0001-feature.md\n\n## Overview\n\nstuff\n"
         )
         (orc / "work" / "board.yaml").write_text(
-            'tasks:\n  - name: 0042-feature.md\n    status: planned\n    vision: "0001-feature.md"\n'
+            "tasks:\n  - name: 0042-feature.md\n"
+            '    status: planned\n    vision: "0001-feature.md"\n'
         )
         assert _state(orc).get_pending_visions() == []
 
@@ -813,7 +814,6 @@ class TestConfigApiSocketPath:
         cfg = _cfg.get()
         assert cfg.api_socket_path == cfg.orc_dir / "run" / "orc.sock"
 
-
     def test_board_snapshot_repr(self):
         """repr(BoardSnapshot) shows vision and task counts."""
         from orc.coordination.client import BoardSnapshot
@@ -831,8 +831,6 @@ class TestConfigApiSocketPath:
         )
         expected_repr = "BoardSnapshot(visions=3, tasks=2)"
         assert repr(snapshot) == expected_repr
-
-
 
 
 class TestGetBoardSnapshot:

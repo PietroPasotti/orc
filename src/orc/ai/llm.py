@@ -261,7 +261,7 @@ class LLMClient:
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                return self._client.chat.completions.create(**kwargs)
+                return self._client.chat.completions.create(**kwargs)  # type: ignore[no-any-return]
             except Exception as exc:
                 status = getattr(exc, "status_code", None)
                 if status in _RETRIABLE_STATUSES and attempt < _MAX_RETRIES:
@@ -287,6 +287,8 @@ class LLMClient:
         tool_calls: list[ToolCall] = []
         if msg.tool_calls:
             for tc in msg.tool_calls:
+                if not hasattr(tc, "function"):
+                    continue
                 tool_calls.append(
                     ToolCall(
                         id=tc.id,
@@ -306,7 +308,7 @@ class LLMClient:
         return ChatResponse(
             content=msg.content,
             tool_calls=tool_calls,
-            finish_reason=choice.finish_reason or "unknown",
+            finish_reason=choice.finish_reason,
             usage=usage,
             raw=response,
         )

@@ -915,7 +915,7 @@ class Dispatcher:
         commits, status changes) is also captured.
         """
         tasks = self.board.get_tasks()
-        task_statuses = tuple(sorted((t.name, t.status) for t in tasks))
+        task_statuses = tuple(sorted((t.name, t.status or "planned") for t in tasks))
         pending_visions = tuple(sorted(self.board.get_pending_visions()))
         blocked_tasks = tuple(sorted(self.board.get_blocked_tasks()))
 

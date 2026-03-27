@@ -112,8 +112,7 @@ class TestMergeCommand:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
 
-        invocations: list[str] = []
-        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, mdl, **kw: 0)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, **kw: 0)
         monkeypatch.setattr(
             _ctx,
             "build_agent_context",
@@ -148,13 +147,15 @@ class TestMergeCommand:
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: False)
         monkeypatch.setattr("orc.git.Git.merge_ff_only", lambda self, b: False)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
+            _ctx,
+            "build_agent_context",
+            lambda role, board=None, agent_id=None, **kw: ("system", "user"),
         )
 
         received_contexts: list[str] = []
         monkeypatch.setattr(
             "orc.ai.invoke.invoke",
-            lambda ctx, mdl, **kw: received_contexts.append(ctx[1]) or 0,
+            lambda ctx, **kw: received_contexts.append(ctx[1]) or 0,
         )
 
         runner.invoke(m.app, ["merge"])
@@ -176,9 +177,11 @@ class TestMergeCommand:
             return r
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, mdl, **kw: 2)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, **kw: 2)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
+            _ctx,
+            "build_agent_context",
+            lambda role, board=None, agent_id=None, **kw: ("system", "user"),
         )
 
         result = runner.invoke(m.app, ["merge"])
@@ -200,9 +203,11 @@ class TestMergeCommand:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("orc.git.Git.is_rebase_in_progress", lambda self: True)
-        monkeypatch.setattr("orc.ai.invoke.invoke", lambda name, ctx, mdl, **kw: 0)
+        monkeypatch.setattr("orc.ai.invoke.invoke", lambda ctx, **kw: 0)
         monkeypatch.setattr(
-            _ctx, "build_agent_context", lambda role, board=None, agent_id=None, **kw: ("system", "user")
+            _ctx,
+            "build_agent_context",
+            lambda role, board=None, agent_id=None, **kw: ("system", "user"),
         )
 
         result = runner.invoke(m.app, ["merge"])

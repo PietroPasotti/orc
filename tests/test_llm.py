@@ -319,4 +319,3 @@ def test_llm_client_repr() -> None:
     """The ``__repr__`` shows the provider and model."""
     client = LLMClient(provider="test_provider", model="test_model", api_key="test")
     assert repr(client) == "LLMClient(test_provider, test_model)"
-

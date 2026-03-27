@@ -124,7 +124,7 @@ class ConflictResolver:
             case _:  # pragma: no cover
                 typing.assert_never(reason)
         user_prompt += template.format(source_branch=branch, target_branch=target)
-        rc = inv.invoke((system_prompt, user_prompt), self._coder_model(), worktree=worktree)
+        rc = inv.invoke((system_prompt, user_prompt), cwd=worktree, model=self._coder_model())
 
         git = Git(worktree)
 
@@ -404,7 +404,7 @@ class _ContextBuilder(Protocol):
         role: AgentRole,
         agent_id: str,
         task_name: str | None = ...,
-    ) -> tuple[str, str]: ...
+    ) -> tuple[str, tuple[str, str]]: ...
 
 
 def _make_context_builder(
@@ -417,7 +417,7 @@ def _make_context_builder(
         role: AgentRole,
         agent_id: str,
         task_name: str | None = None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, tuple[str, str]]:
         return (
             squad_cfg.model(role),
             _ctx.build_agent_context(
@@ -476,7 +476,7 @@ class AgentSvc:
         role: AgentRole,
         agent_id: str,
         task_name: str | None = None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, tuple[str, str]]:
         return self._build(role, agent_id, task_name=task_name)
 
     def spawn(

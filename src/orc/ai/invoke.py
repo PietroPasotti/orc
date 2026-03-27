@@ -25,7 +25,7 @@ _backend = InternalBackend()
 
 
 def invoke(
-    context: str,
+    context: tuple[str, str],
     cwd: Path | None = None,
     model: str | None = None,
     agent_id: str | None = None,
@@ -47,7 +47,7 @@ def invoke(
 
 
 def spawn(
-    context: str,
+    context: tuple[str, str],
     cwd: Path,
     model: str | None = None,
     log_path: Path | None = None,
