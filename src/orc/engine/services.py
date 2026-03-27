@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from orc.ai.backends import SpawnResult
-from orc.coordination.models import TaskEntry
+from orc.coordination.models import TaskBody, TaskEntry
 from orc.engine.context import TodoItem
 from orc.messaging.messages import ChatMessage
 from orc.squad import AgentRole
@@ -69,6 +69,26 @@ class BoardService(Protocol):
 
     def set_task_status(self, task_name: str, status: str) -> None:
         """Set the ``status`` field of *task_name* in board.yaml."""
+        ...
+
+    def read_vision(self, name: str) -> str:
+        """Return the content of a vision file from ``vision/ready/``."""
+        ...
+
+    def close_vision(self, name: str, summary: str, task_files: list[str]) -> None:
+        """Move a vision from ``vision/ready/`` to ``vision/done/``."""
+        ...
+
+    def read_task_content(self, task_name: str) -> str:
+        """Return the raw markdown content of a task file."""
+        ...
+
+    def create_task(self, title: str, vision: str, body: TaskBody) -> tuple[str, Path]:
+        """Create a task file and add a planned entry to board.yaml."""
+        ...
+
+    def add_task_comment(self, task_name: str, author: str, text: str) -> None:
+        """Append a comment to a task entry."""
         ...
 
 

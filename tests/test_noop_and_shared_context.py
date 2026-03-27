@@ -91,18 +91,35 @@ class TestNoopDetection:
         d = make_dispatcher(minimal_squad(), svcs)
         return d, svcs
 
-    def test_planner_noop_not_detected_when_board_unchanged(self, tmp_path, monkeypatch):
-        """Planner exits rc=0, board unchanged → NOT noop (planners exempt)."""
+    def test_plan_operation_not_subject_to_noop_detection(self, tmp_path, monkeypatch):
+        """Plan operations are not agents — they cannot trigger noop detection.
+
+        This test replaces the old planner-noop-exemption test.  Plan is now
+        a synchronous operation, not an agent, so there is no agent-level
+        noop detection to worry about.
+        """
+        # Verify that plan_vision creates tasks (tested elsewhere).
+        # Noop detection is only for agent completions in _handle_completion.
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         d, svcs = self._make_dispatcher_with_snapshot(tmp_path)
 
-        agent = make_agent(tmp_path, role="planner", task=None)
+        # A coder agent that changes board state is not a noop.
+        agent = make_agent(tmp_path, role="coder", task="0001-foo.md")
         d.pool.add(agent)
+        # Simulate board changing (new task appears after spawn).
+        call_count = 0
 
-        # Pre-spawn snapshot: no tasks, one pending vision (FakeBoard default).
+        def evolving_tasks():
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                return []
+            return [TaskEntry(name="0001-foo.md", status="in-review")]
+
+        svcs.board.get_tasks = evolving_tasks
         d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
+        svcs.board.get_tasks = evolving_tasks  # 2nd call returns in-review
 
-        # Board state hasn't changed, but planners are exempt from noop detection.
         is_noop = d._handle_completion(agent, rc=0)
         assert is_noop is False
 
@@ -274,18 +291,19 @@ class TestNoopAbort:
             d.run()
         assert exc_info.value.exit_code == 1
 
-    def test_planner_noop_does_not_abort(self, tmp_path, monkeypatch):
-        """Planner unchanged board does NOT trigger AgentNoopError."""
+    def test_coder_noop_aborts(self, tmp_path, monkeypatch):
+        """Coder unchanged board triggers AgentNoopError (replaces planner exemption test)."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         svcs = make_services(tmp_path)
-        d = make_dispatcher(minimal_squad(planner=1, coder=0, qa=0, merger=0), svcs)
+        d = make_dispatcher(minimal_squad(), svcs)
 
-        agent = make_agent(tmp_path, role="planner", task=None)
+        agent = make_agent(tmp_path, role="coder", task="0001-foo.md")
         d.pool.add(agent)
         d._board_snapshots[agent.agent_id] = d._take_board_snapshot(agent.task_name)
 
-        # Should complete normally — planner noop does not abort.
-        d._poll_completed_agents()
+        # Board unchanged → noop → AgentNoopError
+        with pytest.raises(AgentNoopError):
+            d._poll_completed_agents()
 
 
 # ---------------------------------------------------------------------------
@@ -378,5 +396,7 @@ class TestSharedContext:
 
         for role in ("planner", "coder", "qa"):
             task = "0001-test.md" if role != "planner" else None
-            system, _ = _ctx.build_agent_context(role, board, f"{role}-1", task_name=task, plain=True)
+            system, _ = _ctx.build_agent_context(
+                role, board, f"{role}-1", task_name=task, plain=True
+            )
             assert "Shared instructions" in system, f"Shared context missing for {role}"
