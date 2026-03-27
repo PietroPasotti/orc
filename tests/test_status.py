@@ -109,7 +109,14 @@ class TestStatusCoverage:
 
     def test_status_squad_empty_board_dev_ahead(self, tmp_path, monkeypatch):
         squad = SquadConfig(
-            planner=1, coder=2, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=2,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -122,7 +129,14 @@ class TestStatusCoverage:
 
     def test_status_hard_block(self, tmp_path, monkeypatch):
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -135,7 +149,14 @@ class TestStatusCoverage:
 
     def test_status_soft_block(self, tmp_path, monkeypatch):
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -148,7 +169,14 @@ class TestStatusCoverage:
     def test_status_soft_block_with_open_tasks(self, tmp_path, monkeypatch):
         """Blocked planner note shown when tasks include blocked status."""
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -161,7 +189,14 @@ class TestStatusCoverage:
 
     def test_status_open_tasks_with_branches(self, tmp_path, monkeypatch):
         squad = SquadConfig(
-            planner=1, coder=2, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=2,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
 
         def derive(name, task_data=None):
@@ -185,7 +220,14 @@ class TestStatusCoverage:
 
     def test_status_open_tasks_no_branch(self, tmp_path, monkeypatch):
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -212,7 +254,14 @@ class TestStatusCoverage:
     def test_status_planner_ready_when_visions_pending(self, tmp_path, monkeypatch):
         """Planner note is 'ready (visions pending)' when open_visions is non-empty."""
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -227,7 +276,14 @@ class TestStatusCoverage:
     def test_status_planner_idle_when_no_visions_and_no_todos(self, tmp_path, monkeypatch):
         """Planner note is 'idle' when open_visions is empty and no todos."""
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -244,7 +300,14 @@ class TestStatusCoverage:
     def test_status_planner_ready_when_todos_pending(self, tmp_path, monkeypatch):
         """Planner note is 'ready (TODOs/FIXMEs pending)' when TODOs exist but no visions."""
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,
@@ -260,7 +323,14 @@ class TestStatusCoverage:
     def test_status_merge_pending(self, tmp_path, monkeypatch):
         """Lines 86, 126: qa-passed token → merge_pending populated and printed."""
         squad = SquadConfig(
-            planner=1, coder=1, qa=1, timeout_minutes=30, name="default", description="", _models={}
+            planner=1,
+            coder=1,
+            qa=1,
+            merger=1,
+            timeout_minutes=30,
+            name="default",
+            description="",
+            _models={},
         )
         self._setup(
             monkeypatch,

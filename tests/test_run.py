@@ -22,6 +22,7 @@ def _minimal_squad(**kw) -> SquadConfig:
         planner=1,
         coder=1,
         qa=1,
+        merger=1,
         timeout_minutes=60,
         name="test",
         description="",

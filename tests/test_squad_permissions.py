@@ -129,20 +129,22 @@ class TestParsePermissionBlock:
 
 class TestSquadConfigPermissions:
     def test_permissions_defaults_to_orc_defaults(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         p = cfg.permissions("coder")
         assert p.mode == "confined"
         for tool in _ORC_DEFAULT_ALLOW_TOOLS:
             assert tool in p.allow_tools
 
     def test_permissions_unknown_role_raises(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         with pytest.raises(ValueError, match="Unknown role"):
             cfg.permissions("wizard")
 
     def test_squad_level_permissions_merged(self):
         squad_perm = PermissionConfig(mode="confined", allow_tools=("shell(just:*)",))
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120, _permissions=squad_perm)
+        cfg = SquadConfig(
+            planner=1, coder=1, qa=1, merger=1, timeout_minutes=120, _permissions=squad_perm
+        )
         p = cfg.permissions("coder")
         assert "shell(just:*)" in p.allow_tools
         # Orc defaults still present
@@ -154,6 +156,7 @@ class TestSquadConfigPermissions:
             planner=1,
             coder=1,
             qa=1,
+            merger=1,
             timeout_minutes=120,
             _role_permissions={"coder": role_perm},
         )
@@ -169,6 +172,7 @@ class TestSquadConfigPermissions:
             planner=1,
             coder=1,
             qa=1,
+            merger=1,
             timeout_minutes=120,
             _permissions=squad_perm,
             _role_permissions={"coder": role_perm},
@@ -183,6 +187,7 @@ class TestSquadConfigPermissions:
             planner=1,
             coder=1,
             qa=1,
+            merger=1,
             timeout_minutes=120,
             _permissions=squad_perm,
             _role_permissions={"coder": role_perm},

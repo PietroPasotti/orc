@@ -73,6 +73,8 @@ def _build_server() -> FastMCP:
             mcp.tool()(_tools.close_task)
         case AgentRole.QA:
             mcp.tool()(_tools.review_task)
+        case AgentRole.MERGER:
+            mcp.tool()(_tools.close_task)
 
     return mcp
 
