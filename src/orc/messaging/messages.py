@@ -61,10 +61,11 @@ class ChatMessage:
     """Display name of the sender (username or first_name)."""
 
     def __repr__(self) -> str:
-        truncated_text = (
-            f"{self.text[:27]}..." if len(self.text) > 30 else self.text
-        )
-        return f"ChatMessage(sender={self.sender_name}, text='{truncated_text}')"
+        """Return a developer-friendly representation of the message."""
+        truncated_text = self.text
+        if len(self.text) > 30:
+            truncated_text = self.text[:27] + "..."
+        return f"ChatMessage({self.sender_name!r}, {truncated_text!r})"
 
 
 # ---------------------------------------------------------------------------
