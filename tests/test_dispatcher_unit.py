@@ -254,6 +254,7 @@ class TestDispatcherCoverage:
             planner=1,
             coder=1,
             qa=1,
+            merger=1,
             timeout_minutes=0,
             name="test",
             description="",
@@ -276,17 +277,22 @@ class TestDispatcherCoverage:
         d.run(maxcalls=sys.maxsize)
         assert d._total_spawned == 1
 
-    def test_dispatch_skips_qa_passed_task(self, tmp_path):
-        """QA_PASSED token → task skipped; merge is handled by _drain_merge_queue."""
+    def test_dispatch_spawns_merger_for_qa_passed_task(self, tmp_path):
+        """QA_PASSED token → merger agent dispatched."""
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: [TaskEntry(name="0001-foo.md")],
+            get_tasks=lambda: [TaskEntry(name="0001-foo.md", status="done")],
             derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
+            get_pending_visions=lambda: [],
         )
         d = make_dispatcher(minimal_squad(), svcs)
         setup_work(d)
         count = d._dispatch(call_budget=100)
-        assert count == 0  # no agent spawned
+        assert count == 1  # merger agent spawned
+        agents = d.pool.all_agents()
+        assert len(agents) == 1
+        assert agents[0].role == "merger"
+        assert agents[0].task_name == "0001-foo.md"
 
     def test_handle_completion_failed_agent_unassigns(self, tmp_path, monkeypatch):
         """Non-zero exit → task unassigned."""
@@ -351,8 +357,8 @@ class TestDispatcherInternalCoverage:
         result = d._dispatch(call_budget=100)
         assert result == 0
 
-    def test_drain_merge_queue_merges_done_tasks(self, tmp_path, monkeypatch):
-        """_drain_merge_queue merges tasks whose board status is 'done'."""
+    def test_drain_merge_queue_skips_done_tasks_for_merger(self, tmp_path, monkeypatch):
+        """_drain_merge_queue no longer merges done tasks — those go to merger agents."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
         merged = []
         svcs = make_services(
@@ -363,7 +369,7 @@ class TestDispatcherInternalCoverage:
         svcs.workflow.merge_feature = lambda t: merged.append(t)
         d = make_dispatcher(minimal_squad(), svcs)
         d._drain_merge_queue()
-        assert "0001-foo.md" in merged
+        assert merged == [], "done tasks should not be merged by drain — handled by merger agent"
 
     def test_drain_merge_queue_skips_non_done_tasks(self, tmp_path):
         """_drain_merge_queue does not merge tasks that are not 'done'."""
@@ -377,21 +383,27 @@ class TestDispatcherInternalCoverage:
         d._drain_merge_queue()
         assert merged == []
 
-    def test_drain_merge_queue_called_in_loop(self, tmp_path, monkeypatch):
-        """_drain_merge_queue is called each loop cycle, merging done tasks."""
+    def test_merger_dispatched_for_done_tasks_in_loop(self, tmp_path, monkeypatch):
+        """Done tasks trigger merger dispatch in the loop."""
         monkeypatch.setattr(_disp, "_POLL_INTERVAL", 0.0)
-        merged = []
-        tasks = [TaskEntry(name="0001-foo.md", status="done")]
+
+        def _tracking_spawn(ctx, cwd, model, log, **kw):
+            # When the merger is spawned, simulate it completing the merge
+            # by clearing the task list (the merger calls close_task/delete_task).
+            task_list_ref.clear()
+            return SpawnResult(process=FakePopen(), log_fh=None, context_tmp="")
+
+        task_list_ref = [TaskEntry(name="0001-foo.md", status="done")]
         svcs = make_services(
             tmp_path,
-            get_tasks=lambda: list(tasks),
+            get_tasks=lambda: list(task_list_ref),
             get_pending_visions=lambda: [],
+            derive_task_state=lambda t, td=None: (QA_PASSED, "qa passed"),
+            spawn_fn=_tracking_spawn,
         )
-        svcs.workflow.merge_feature = lambda t: merged.append(t)
-        svcs.board.delete_task = lambda t: tasks.clear()
         d = make_dispatcher(minimal_squad(), svcs)
         d.run(maxcalls=1)
-        assert "0001-foo.md" in merged
+        assert d._id_counters.get("merger", 0) == 1
 
     def test_do_merge_marks_stuck_after_max_retries(self, tmp_path, monkeypatch):
         """_do_merge marks a task as stuck after _MAX_MERGE_RETRIES failures."""
@@ -466,8 +478,8 @@ class TestDispatcherInternalCoverage:
         out = capsys.readouterr().out
         assert "Workflow complete" in out
 
-    def test_classify_tasks_done_excluded(self):
-        """classify_tasks excludes done tasks from assignable and coder_bound."""
+    def test_classify_tasks_done_included_as_merger_bound(self):
+        """classify_tasks includes done tasks in assignable (merger-bound) but not coder_bound."""
         tasks = [
             TaskEntry(name="a.md", status="done"),
             TaskEntry(name="b.md", status="planned"),
@@ -475,10 +487,10 @@ class TestDispatcherInternalCoverage:
         stuck, assignable, coder_bound = _disp.classify_tasks(tasks)
         assert stuck == []
         names = [t.name for t in assignable]
-        assert "a.md" not in names
+        assert "a.md" in names  # done → assignable (merger dispatches for it)
         assert "b.md" in names
         coder_names = [t.name for t in coder_bound]
-        assert coder_names == ["b.md"]
+        assert coder_names == ["b.md"]  # done tasks are NOT coder-bound
 
     def test_done_tasks_do_not_block_planner(self, tmp_path, monkeypatch):
         """Done tasks should not prevent the planner from being spawned."""
@@ -504,8 +516,8 @@ class TestDispatcherInternalCoverage:
             only_role=None,
             coder_capacity=1,
             planner_running=False,
-            role_counts={"coder": 0, "qa": 0},
-            role_limits={"coder": 1, "qa": 1},
+            role_counts={"coder": 0, "qa": 0, "merger": 0},
+            role_limits={"coder": 1, "qa": 1, "merger": 1},
             derive_task_state=svcs.workflow.derive_task_state,
         )
         assert any(s.role == "planner" for s in plan.spawns), "planner should be spawned"

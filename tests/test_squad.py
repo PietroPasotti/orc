@@ -232,13 +232,13 @@ class TestLoadSquad:
 
 class TestSquadConfig:
     def test_count_method(self):
-        cfg = SquadConfig(planner=1, coder=4, qa=2, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=4, qa=2, merger=1, timeout_minutes=120)
         assert cfg.count("planner") == 1
         assert cfg.count("coder") == 4
         assert cfg.count("qa") == 2
 
     def test_count_unknown_role_raises(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         with pytest.raises(ValueError):
             cfg.count("unknown_role")
 
@@ -247,6 +247,7 @@ class TestSquadConfig:
             planner=1,
             coder=1,
             qa=1,
+            merger=1,
             timeout_minutes=120,
             _models={
                 "coder": "claude-opus-4-5",
@@ -259,28 +260,30 @@ class TestSquadConfig:
         assert cfg.model("qa") == "claude-haiku-4-5"
 
     def test_model_method_falls_back_to_default(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         assert cfg.model("coder") == "claude-sonnet-4.6"
         assert cfg.model("planner") == "claude-sonnet-4.6"
         assert cfg.model("qa") == "claude-sonnet-4.6"
 
     def test_model_unknown_role_raises(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         with pytest.raises(ValueError):
             cfg.model("unknown_role")
 
     def test_frozen(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         with pytest.raises((TypeError, AttributeError)):
             cfg.coder = 5  # type: ignore[misc]
 
     def test_name_and_description_defaults(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         assert cfg.name == ""
         assert cfg.description == ""
 
     def test_name_and_description_set(self):
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120, name="x", description="y")
+        cfg = SquadConfig(
+            planner=1, coder=1, qa=1, merger=1, timeout_minutes=120, name="x", description="y"
+        )
         assert cfg.name == "x"
         assert cfg.description == "y"
 
@@ -514,7 +517,7 @@ _QA_THRESHOLD_YAML = textwrap.dedent("""\
 class TestReviewThreshold:
     def test_default_review_threshold(self):
         """SquadConfig defaults to LOW (strictest) review threshold."""
-        cfg = SquadConfig(planner=1, coder=1, qa=1, timeout_minutes=120)
+        cfg = SquadConfig(planner=1, coder=1, qa=1, merger=1, timeout_minutes=120)
         assert cfg.review_threshold == ReviewThreshold.LOW
 
     def test_review_threshold_from_yaml(self, tmp_path):

@@ -174,6 +174,8 @@ def build_agent_context(
     feature_wt = cfg.feature_worktree_path(task_name) if task_name else None
     if role == AgentRole.PLANNER:
         agent_wt = dev_worktree
+    elif role == AgentRole.MERGER:
+        agent_wt = dev_worktree
     elif feature_wt is not None:
         agent_wt = feature_wt
     else:  # pragma: no cover
@@ -286,6 +288,22 @@ def build_agent_context(
             **Do NOT merge** — the orchestrator merges only if you 
             approve this work by signalling `passed`.
             """
+
+        case AgentRole.MERGER:
+            assert feature_branch is not None
+
+            context += f"""
+            Task: `{task_name}`
+            Feature branch to merge: `{feature_branch}`
+            Dev branch: `{dev_branch}`
+            Dev worktree: `{dev_worktree}` — all operations go here
+            Main worktree: `{cfg.repo_root}` (human's workspace — do not touch)
+
+            Merge `{feature_branch}` into `{dev_branch}` using
+            `git merge --no-ff` in the dev worktree (`{dev_worktree}`).
+            Resolve any conflicts, then call `close_task` with code `done`.
+            """
+
         case _:
             typing.assert_never(role)
 

@@ -177,13 +177,13 @@ def classify_tasks(
     """Partition *tasks* into ``(stuck, assignable, coder_bound)``.
 
     * ``stuck`` — status is ``stuck``, needs human intervention.
-    * ``assignable`` — not blocked, not stuck, and not done.
-    * ``coder_bound`` — assignable tasks that route to coders (not in-review).
+    * ``assignable`` — not blocked, not stuck. Includes ``done`` tasks
+      (which are merger-bound).
+    * ``coder_bound`` — assignable tasks that route to coders (not in-review,
+      not done).
 
-    Tasks with status ``done`` are excluded from ``assignable`` because they
-    are handled exclusively by :meth:`Dispatcher._drain_merge_queue` — they
-    never spawn an agent.  Keeping them in ``assignable`` would inflate the
-    coder-bound count and could prevent the planner from being spawned.
+    Tasks with status ``done`` are included in ``assignable`` so the merger
+    agent can be dispatched for them.
     """
     stuck: list[TaskEntry] = []
     assignable: list[TaskEntry] = []
@@ -191,11 +191,11 @@ def classify_tasks(
     for t in tasks:
         if t.status == TaskStatus.STUCK:
             stuck.append(t)
-        elif t.status in (TaskStatus.BLOCKED, TaskStatus.DONE):
-            continue  # blocked → planner; done → merge queue
+        elif t.status == TaskStatus.BLOCKED:
+            continue  # blocked → planner
         else:
             assignable.append(t)
-            if t.status != TaskStatus.IN_REVIEW:
+            if t.status not in (TaskStatus.IN_REVIEW, TaskStatus.DONE):
                 coder_bound.append(t)
     return stuck, assignable, coder_bound
 
@@ -226,10 +226,10 @@ def needs_planner(
 def task_action(token: str) -> TaskAction:
     """Map a ``derive_task_state`` *token* to a :class:`TaskAction`."""
     if token == QA_PASSED:
-        return TaskAction.SKIP
+        return TaskAction.SPAWN
     if token == CLOSE_BOARD:
         return TaskAction.CLOSE_BOARD
-    if token in (AgentRole.CODER, AgentRole.QA):
+    if token in (AgentRole.CODER, AgentRole.QA, AgentRole.MERGER):
         return TaskAction.SPAWN
     return TaskAction.SKIP
 
@@ -257,24 +257,37 @@ def plan_dispatch(
     spawns: list[SpawnIntent] = []
     board_ops: list[BoardOp] = []
 
-    # Planner decision.
-    if needs_planner(
-        coder_bound_count=len(coder_bound),
-        coder_capacity=coder_capacity,
-        has_planner_work=has_planner_work,
-        planner_running=planner_running,
-        role_allowed=_role_allowed(AgentRole.PLANNER),
-        has_assignable_tasks=bool(assignable),
-    ):
-        logger.debug("planner needed", coder_bound=len(coder_bound), coder_capacity=coder_capacity)
-        spawns.append(SpawnIntent(role=AgentRole.PLANNER, task_name=None))
-
-    # Per-task dispatch.
+    # Per-task dispatch — merger tasks first (highest priority).
+    # We do two passes: first for merger-bound tasks (done/QA_PASSED),
+    # then for coder/QA tasks. This ensures mergers are dispatched before
+    # other agents when budget is limited.
     running: dict[str, int] = dict(role_counts)  # mutable copy for capacity tracking
+
+    merger_tasks: list[TaskEntry] = []
+    other_tasks: list[TaskEntry] = []
     for task in assignable:
         if task.assigned_to:
             continue
+        token, _reason = derive_task_state(task.name, task)
+        if token == QA_PASSED:
+            merger_tasks.append(task)
+        else:
+            other_tasks.append(task)
 
+    # Pass 1: merger-bound tasks (highest priority).
+    for task in merger_tasks:
+        role = AgentRole.MERGER
+        if not _role_allowed(role):
+            continue
+        current = running.get(role, 0)
+        limit = role_limits.get(role, 1)
+        if current >= limit:
+            continue
+        running[role] = current + 1
+        spawns.append(SpawnIntent(role=role, task_name=task.name))
+
+    # Pass 2: coder/QA tasks.
+    for task in other_tasks:
         token, reason = derive_task_state(task.name, task)
         logger.debug("task state", task=task.name, token=token, reason=reason)
 
@@ -298,6 +311,18 @@ def plan_dispatch(
 
         running[token] = current + 1
         spawns.append(SpawnIntent(role=AgentRole(token), task_name=task.name))
+
+    # Planner decision (after merger/coder/QA so priority ordering is respected).
+    if needs_planner(
+        coder_bound_count=len(coder_bound),
+        coder_capacity=coder_capacity,
+        has_planner_work=has_planner_work,
+        planner_running=planner_running,
+        role_allowed=_role_allowed(AgentRole.PLANNER),
+        has_assignable_tasks=bool(assignable),
+    ):
+        logger.debug("planner needed", coder_bound=len(coder_bound), coder_capacity=coder_capacity)
+        spawns.append(SpawnIntent(role=AgentRole.PLANNER, task_name=None))
 
     return DispatchPlan(spawns=spawns, board_ops=board_ops)
 
@@ -502,17 +527,20 @@ class Dispatcher:
             self._handle_watchdog(agent)
 
     def _drain_merge_queue(self) -> None:
-        """Merge tasks that have been QA-approved (board status ``done``).
+        """Handle crash-recovery for tasks already merged but not cleaned up.
 
-        Also handles *orphaned* feature branches — branches that exist in git
-        and are not merged into dev but have no corresponding board entry
-        (e.g. after a crash between merge and board cleanup).  Orphaned
-        branches whose task is not tracked on the board are merged directly.
+        Real merging is now delegated to merger agents dispatched by
+        :meth:`plan_dispatch`.  This method only handles two edge cases:
+
+        1. Board-tracked ``done`` tasks whose branch was already merged into
+           dev (crash between merge and board cleanup) — these are cleaned up.
+        2. Orphaned feature branches with no board entry — merged directly
+           (these are rare, usually from a crash between branch creation and
+           board write).
         """
-        # 1. Board-tracked done tasks.
+        # 1. Crash-recovery: board entries for already-merged tasks.
         board_task_names = {t.name for t in self.board.get_tasks()}
         for task_name in self.board.query_tasks(status="done"):
-            # Skip tasks already merged (crash-recovery: board not cleaned up).
             token, _reason = self.workflow.derive_task_state(task_name)
             if token == CLOSE_BOARD:
                 logger.info(
@@ -522,14 +550,12 @@ class Dispatcher:
                 self._echo(f"✓ {task_name} already merged — cleaning up board entry.")
                 self.board.delete_task(task_name)
                 self._merge_failures.pop(task_name, None)
-                continue
-            self._do_merge(task_name)
 
         # 2. Orphaned branches — unmerged feature branches with no board entry.
         for branch in self.board.get_pending_reviews():
             task_name = _branch_to_task_name(branch)
             if task_name in board_task_names:
-                continue  # tracked by board — handled above or by dispatch
+                continue  # tracked by board — handled by merger agent dispatch
             logger.info("orphaned feature branch detected — merging", branch=branch, task=task_name)
             self._echo(f"\n⟳ Merging orphaned branch {branch} into dev…")
             self._do_merge(task_name)
@@ -671,8 +697,13 @@ class Dispatcher:
             only_role=self.only_role,
             coder_capacity=self.squad.count(AgentRole.CODER),
             planner_running=self.pool.count_by_role(AgentRole.PLANNER) > 0,
-            role_counts={r: self.pool.count_by_role(r) for r in (AgentRole.CODER, AgentRole.QA)},
-            role_limits={r: self.squad.count(r) for r in (AgentRole.CODER, AgentRole.QA)},
+            role_counts={
+                r: self.pool.count_by_role(r)
+                for r in (AgentRole.CODER, AgentRole.QA, AgentRole.MERGER)
+            },
+            role_limits={
+                r: self.squad.count(r) for r in (AgentRole.CODER, AgentRole.QA, AgentRole.MERGER)
+            },
             derive_task_state=self.workflow.derive_task_state,
         )
         logger.debug(
@@ -759,7 +790,7 @@ class Dispatcher:
         contextvars.bind_contextvars(agent_id=agent_id)
         self._total_spawned += 1
 
-        if role == AgentRole.PLANNER:
+        if role in (AgentRole.PLANNER, AgentRole.MERGER):
             worktree = self.worktree.ensure_dev_worktree()
         elif task_name:
             worktree = self.worktree.ensure_feature_worktree(task_name)
@@ -975,6 +1006,10 @@ class Dispatcher:
                 if task_name:
                     task_stem = re.sub(r"\.md$", "", task_name)
                     self.messaging.post_boot_message(agent_id, f"reviewing feat/{task_stem}.")
+            case AgentRole.MERGER:
+                if task_name:
+                    task_stem = re.sub(r"\.md$", "", task_name)
+                    self.messaging.post_boot_message(agent_id, f"merging feat/{task_stem}.")
             case _:
                 typing.assert_never(role)
 

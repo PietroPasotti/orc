@@ -214,6 +214,7 @@ class AgentRole(StrEnum):
     PLANNER = "planner"
     CODER = "coder"
     QA = "qa"
+    MERGER = "merger"
 
 
 # Package-bundled squads directory (fallback when project-level squad not found).
@@ -231,6 +232,7 @@ class SquadConfig:
     planner: int
     coder: int
     qa: int
+    merger: int
     timeout_minutes: int
     name: str = ""
     description: str = ""
@@ -341,6 +343,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
     planner = counts.get(AgentRole.PLANNER, 1)
     coder = counts.get(AgentRole.CODER, 1)
     qa = counts.get(AgentRole.QA, 1)
+    merger = counts.get(AgentRole.MERGER, 1)
 
     timeout_minutes = int(raw.get("timeout_minutes", _DEFAULT_TIMEOUT_MINUTES))
     name = str(raw.get("name", "") or path.stem)
@@ -353,7 +356,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
             "Scale throughput by adding more coders and QA reviewers instead."
         )
 
-    for role, cnt in [(AgentRole.CODER, coder), (AgentRole.QA, qa)]:
+    for role, cnt in [(AgentRole.CODER, coder), (AgentRole.QA, qa), (AgentRole.MERGER, merger)]:
         if cnt < 1:
             raise ValueError(
                 f"Squad profile {file_name!r}: {role.value} count must be >= 1, got {cnt}."
@@ -368,6 +371,7 @@ def _parse_squad_file(file_name: str, path: Path) -> SquadConfig:
         planner=planner,
         coder=coder,
         qa=qa,
+        merger=merger,
         timeout_minutes=timeout_minutes,
         name=name,
         description=description,

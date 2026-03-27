@@ -133,10 +133,12 @@ def _status(squad: str = "default") -> None:
     # --- Squad header --------------------------------------------------------
     if squad_cfg:
         coder_label = f"{squad_cfg.coder} coder{'s' if squad_cfg.coder != 1 else ''}"
+        merger_label = f"{squad_cfg.merger} merger{'s' if squad_cfg.merger != 1 else ''}"
         qa_label = f"{squad_cfg.qa} QA"
         _echo_wrapped(
             f"Squad: {squad_cfg.name}"
-            f"  (1 planner · {coder_label} · {qa_label} · {squad_cfg.timeout_minutes} min)"
+            f"  (1 planner · {coder_label} · {merger_label}"
+            f" · {qa_label} · {squad_cfg.timeout_minutes} min)"
         )
 
     # --- Stuck task warning --------------------------------------------------
@@ -190,6 +192,7 @@ def _status(squad: str = "default") -> None:
 
         sym_p = _ctx._role_symbol(AgentRole.PLANNER)
         sym_c = _ctx._role_symbol(AgentRole.CODER)
+        sym_m = _ctx._role_symbol(AgentRole.MERGER)
         sym_q = _ctx._role_symbol(AgentRole.QA)
 
         # Compute the longest agent-name string so we can ljust only the ASCII
@@ -199,6 +202,7 @@ def _status(squad: str = "default") -> None:
         all_names = (
             ["planner-1"]
             + [f"coder-{i}" for i in range(1, squad_cfg.coder + 1)]
+            + [f"merger-{i}" for i in range(1, squad_cfg.merger + 1)]
             + [f"qa-{i}" for i in range(1, squad_cfg.qa + 1)]
         )
         name_width = max(len(n) for n in all_names)
@@ -218,6 +222,14 @@ def _status(squad: str = "default") -> None:
                 note = "idle  (no work ready)"
             _echo_wrapped(_row(sym_c, f"coder-{i}", note))
 
+        for i in range(1, squad_cfg.merger + 1):
+            idx = i - 1
+            if idx < len(merge_pending):
+                note = f"ready (next up: {merge_pending[idx]})"
+            else:
+                note = "idle"
+            _echo_wrapped(_row(sym_m, f"merger-{i}", note))
+
         for i in range(1, squad_cfg.qa + 1):
             idx = i - 1
             if idx < len(qa_tasks):
@@ -226,9 +238,6 @@ def _status(squad: str = "default") -> None:
             else:
                 note = "idle"
             _echo_wrapped(_row(sym_q, f"qa-{i}", note))
-
-        if merge_pending:
-            _echo_wrapped(f"\n  ⟳ Merge pending: {', '.join(merge_pending)}")
 
     # --- Board summary -------------------------------------------------------
     if open_tasks:

@@ -89,7 +89,10 @@ def _run(
         current_calls=0,
         max_calls=maxcalls,
         squad_name=squad_cfg.name,
-        squad_repr=f"{squad_cfg.name} ({squad_cfg.planner}-{squad_cfg.coder}-{squad_cfg.qa})",
+        squad_repr=(
+            f"{squad_cfg.name}"
+            f" ({squad_cfg.planner}-{squad_cfg.coder}-{squad_cfg.merger}-{squad_cfg.qa})"
+        ),
         run_started_at=time.monotonic(),
     )
 
@@ -119,6 +122,8 @@ def _run(
             state.coder_calls += 1
         elif agent.role == AgentRole.QA:
             state.qa_calls += 1
+        elif agent.role == AgentRole.MERGER:
+            state.merger_calls += 1
 
     hooks: _disp.DispatchHooks | None = None
     if use_tui:

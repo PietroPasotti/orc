@@ -124,6 +124,9 @@ class RunState:
     qa_calls: int = 0
     """Number of QA agent sessions invoked."""
 
+    merger_calls: int = 0
+    """Number of merger agent sessions invoked."""
+
     def _agents_table(self, agents_by_role: dict[AgentRole, list[str] | int]) -> rich.table.Table:
         """Render the live agents as a Rich table."""
         agents_live_table = rich.table.Table(box=None, show_header=False, expand=False)
@@ -154,6 +157,7 @@ class RunState:
             AgentRole.PLANNER: self.planner_calls,
             AgentRole.CODER: self.coder_calls,
             AgentRole.QA: self.qa_calls,
+            AgentRole.MERGER: self.merger_calls,
         }
 
         labels = {
@@ -196,6 +200,7 @@ _ROLE_STYLE: dict[AgentRole, str] = {
     AgentRole.PLANNER: "cyan",
     AgentRole.CODER: "green",
     AgentRole.QA: "yellow",
+    AgentRole.MERGER: "magenta",
 }
 
 
@@ -285,14 +290,17 @@ def render(state: RunState) -> RenderableType:
     planners = [r for r in state.agents if r.role == AgentRole.PLANNER]
     coders = [r for r in state.agents if r.role == AgentRole.CODER]
     qa_agents = [r for r in state.agents if r.role == AgentRole.QA]
+    mergers = [r for r in state.agents if r.role == AgentRole.MERGER]
 
     workers_grid = rich.table.Table.grid(expand=True)
+    workers_grid.add_column(ratio=1)
     workers_grid.add_column(ratio=1)
     workers_grid.add_column(ratio=1)
     workers_grid.add_column(ratio=1)
     workers_grid.add_row(
         _column_panel("Planner", planners),
         _column_panel("Coder", coders),
+        _column_panel("Merger", mergers),
         _column_panel("QA", qa_agents),
     )
 
