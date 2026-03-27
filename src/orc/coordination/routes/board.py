@@ -80,6 +80,15 @@ def set_status(
     state.set_task_status(task_name, body.status)
 
 
+@router.delete("/tasks/{task_name:path}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_name: str,
+    state: BoardStateManager = Depends(_get_state),
+) -> None:
+    """Remove a task from board.yaml and delete its task file."""
+    state.delete_task(task_name)
+
+
 @router.post(
     "/tasks/{task_name:path}/comments",
     response_model=OkResponse,

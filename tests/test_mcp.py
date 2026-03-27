@@ -97,6 +97,15 @@ class TestBuildServer:
         assert "get_vision" not in names
         assert "close_task" not in names
 
+    def test_merger_gets_close_merge(self, monkeypatch):
+        names = self._tool_names("merger", monkeypatch)
+        assert "close_merge" in names
+
+    def test_merger_does_not_get_close_task(self, monkeypatch):
+        names = self._tool_names("merger", monkeypatch)
+        assert "close_task" not in names
+        assert "review_task" not in names
+
 
 # ---------------------------------------------------------------------------
 # Client helpers
@@ -386,8 +395,33 @@ class TestCloseTask:
 
 
 # ---------------------------------------------------------------------------
-# QA tools
+# Merger tools
 # ---------------------------------------------------------------------------
+
+
+class TestCloseMerge:
+    def test_stages_commits_and_deletes_task(self, monkeypatch):
+        monkeypatch.setenv("ORC_API_SOCKET", "/fake.sock")
+        client_mock = MagicMock()
+        client_mock.__enter__ = MagicMock(return_value=client_mock)
+        client_mock.__exit__ = MagicMock(return_value=False)
+        client_mock.get.return_value = _make_httpx_resp(200, [{"name": "0002-add-auth.md"}])
+        client_mock.delete.return_value = _make_httpx_resp(204)
+
+        git_calls: list[tuple[str, ...]] = []
+        with (
+            patch("orc.mcp.tools.get_client") as mock_gc,
+            patch("orc.mcp.tools._run_git", side_effect=lambda *a: git_calls.append(a)),
+        ):
+            mock_gc.return_value = client_mock
+            result = _tools.close_merge("0002", "Merged into dev")
+
+        assert ("add", "-A") in git_calls
+        commit_args = [c for c in git_calls if c[0] == "commit"]
+        assert commit_args
+        assert "feat(0002):" in commit_args[0][3]
+        client_mock.delete.assert_called_once_with("/board/tasks/0002-add-auth.md")
+        assert "removed from board" in result
 
 
 class TestReviewTask:

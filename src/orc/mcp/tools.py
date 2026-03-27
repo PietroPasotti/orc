@@ -283,6 +283,41 @@ def close_task(task_code: str, message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Merger tools
+# ---------------------------------------------------------------------------
+
+
+def close_merge(task_code: str, message: str) -> str:
+    """Signal that a feature branch has been merged into dev.
+
+    Stages all changes, commits with a ``feat(<code>)`` message, and
+    **deletes** the task from the board (the merge is the final lifecycle step).
+
+    Parameters
+    ----------
+    task_code:
+        Four-digit zero-padded task number, e.g. ``"0002"``.
+    message:
+        Short description of the merge result.
+
+    Returns
+    -------
+    str
+        Confirmation message.
+    """
+    _run_git("add", "-A")
+    commit_msg = f"feat({task_code}): {message}"
+    _run_git("commit", "--allow-empty", "-m", commit_msg)
+
+    with get_client() as client:
+        task_name = find_task_by_code(client, task_code)
+        resp = client.delete(f"/board/tasks/{task_name}")
+        resp.raise_for_status()
+
+    return f"Task {task_name} merged and removed from board."
+
+
+# ---------------------------------------------------------------------------
 # QA tools
 # ---------------------------------------------------------------------------
 

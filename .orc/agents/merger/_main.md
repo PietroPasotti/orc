@@ -41,7 +41,7 @@ and resolve any merge conflicts that arise.
 ## Clean up
 
 After a successful merge:
-1. Call `close_task(task_code="done", message="Merged <feature-branch> into dev.")`.
+1. Call `close_merge(task_code="done", message="Merged <feature-branch> into dev.")`.
 
 ## Other useful docs
 This directory contains other docs that can be helpful; read them as needed.
